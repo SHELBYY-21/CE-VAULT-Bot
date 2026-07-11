@@ -58,9 +58,15 @@ export async function setSession(
     .upsert(full, { onConflict: 'chat_id,telegram_user_id' });
   // ถ้ายังไม่ได้รัน patch-v2 (คอลัมน์ slip_* ยังไม่มี) → fallback เขียนเฉพาะคอลัมน์เดิม
   if (error) {
-    await supabaseAdmin
+    const { error: fallbackError } = await supabaseAdmin
       .from('bot_sessions')
       .upsert(base, { onConflict: 'chat_id,telegram_user_id' });
+    // ถ้า fallback ก็ยังล้ม แปลว่าปัญหาระดับ connection/คีย์ ไม่ใช่แค่คอลัมน์ขาด → log ให้เห็น
+    if (fallbackError) {
+      console.error(
+        `[setSession] เขียน session ไม่สำเร็จ (chat=${chatId}, user=${userId}): ${fallbackError.message}`,
+      );
+    }
   }
 }
 
