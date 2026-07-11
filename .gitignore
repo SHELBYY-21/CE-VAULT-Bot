@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local dev
 .supabase/
+
+# Session-continuity notes from the "remember" skill (tooling state, not code)
+.remember/
