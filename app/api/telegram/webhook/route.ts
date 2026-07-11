@@ -182,7 +182,7 @@ async function handleUpdate(update: any): Promise<void> {
         return;
       }
       const sell = nums[0];
-      const market = nums[1] ?? r.marketUsdtRate; // ไม่ระบุ = อิงเรตตลาดสด
+      const market = nums[1] ?? r.marketUsdtRate ?? Number(process.env.DEFAULT_MARKET_RATE) ?? 34.8;
       await insertRate(admin.id, sell, market);
       await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
     } else {
