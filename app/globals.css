@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   CE VAULT — Premium AI-grade theme (dark glass + aurora)
+   inspired by Linear / Vercel / Claude / Perplexity
+   ============================================================ */
+:root {
+  --bg: #06060d;
+  --bg-2: #0b0b17;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #e9ebf7;
+  --muted: #9aa0b8;
+  --brand-1: #6366f1;
+  --brand-2: #a855f7;
+  --accent: #22d3ee;
+  --good: #34d399;
+  --bad: #fb7185;
+  --warn: #fbbf24;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-feature-settings: 'tnum' 1, 'cv01' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Aurora background (fixed, drifting blobs) ---- */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 15% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
+    radial-gradient(50% 45% at 100% 10%, rgba(168, 85, 247, 0.16), transparent 60%),
+    radial-gradient(45% 40% at 50% 100%, rgba(34, 211, 238, 0.12), transparent 60%),
+    var(--bg);
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  width: 46rem;
+  height: 46rem;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.aurora::before {
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.55), transparent 65%);
+  top: -12rem;
+  left: -8rem;
+  animation: drift1 20s ease-in-out infinite alternate;
+}
+.aurora::after {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.5), transparent 65%);
+  bottom: -14rem;
+  right: -8rem;
+  animation: drift2 26s ease-in-out infinite alternate;
+}
+@keyframes drift1 {
+  to {
+    transform: translate(8rem, 6rem) scale(1.15);
+  }
+}
+@keyframes drift2 {
+  to {
+    transform: translate(-7rem, -5rem) scale(1.1);
+  }
+}
+
+/* ---- Glass surface ---- */
+.glass {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.15rem;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 20px 40px -24px rgba(0, 0, 0, 0.8);
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1),
+    border-color 0.35s ease,
+    box-shadow 0.35s ease;
+}
+.glass-hover:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+    0 26px 50px -22px rgba(99, 102, 241, 0.35);
+}
+
+/* ---- Gradient animated brand text ---- */
+.gradient-text {
+  background: linear-gradient(100deg, #a5b4fc, #d8b4fe 40%, #67e8f9 75%, #a5b4fc);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradientShift 6s linear infinite;
+}
+@keyframes gradientShift {
+  to {
+    background-position: 220% 0;
+  }
+}
+
+/* ---- Live pulse dot ---- */
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  animation: pulseDot 1.8s ease-out infinite;
+}
+@keyframes pulseDot {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(52, 211, 153, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+}
+
+/* ---- Entrance reveal (stagger via inline animation-delay) ---- */
+.reveal {
+  opacity: 0;
+  animation: fadeInUp 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Shimmer sweep (for the live-rate tile) ---- */
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+/* ---- Top hairline gradient accent for cards ---- */
+.accent-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-1), var(--brand-2), transparent);
+  opacity: 0.7;
+}
+
+/* ---- Row hover glow ---- */
+.row-glow {
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.row-glow:hover {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), transparent);
+  box-shadow: inset 3px 0 0 0 var(--brand-1);
+}
+
+/* ---- Prefers reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

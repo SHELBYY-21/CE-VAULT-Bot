@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["sin1"],
+  "crons": [
+    {
+      "path": "/api/cron/daily-summary?secret=$API_SECRET",
+      "schedule": "59 16 * * *"
+    }
+  ]
+}
