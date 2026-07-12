@@ -30,7 +30,7 @@ function table(rows: [string, string][], width = 15): string {
 }
 
 // Ledger ID: #CE-YYYYMMDD-XXXX (XXXX = 4 ตัวแรกของ uuid) — ค้นย้อนหลังง่าย
-function refCode(txId: string): string {
+export function refCode(txId: string): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const tail = (txId || '').replace(/-/g, '').slice(0, 4).toUpperCase() || '----';
@@ -147,6 +147,7 @@ export interface SlipReadyData {
   receiverName?: string | null;
   confidence?: number | null;    // ความมั่นใจ OCR 0-100
   chatRate?: number | null;      // เรตต่อกลุ่มที่ตั้งไว้
+  historyLine?: string | null;   // บรรทัด Receiver History (จาก receiverBrief)
 }
 
 // แสดงความมั่นใจ OCR + สัญญาณเตือน
@@ -196,7 +197,8 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
       `${progress(2)}\n${THIN}\n` +
       (detail.length ? detail.join('\n') + `\n${THIN}\n` : '') +
       (lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n` : '') +
-      ask,
+      ask +
+      (d.historyLine ? `\n${d.historyLine}` : ''),
     reply_markup: canAuto
       ? {
           inline_keyboard: [
@@ -502,6 +504,84 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
     reply_markup: APP
       ? { inline_keyboard: [[{ text: '📊 เปิดแดชบอร์ด CE Vault', url: `${APP}/dashboard` }]] }
       : undefined,
+  };
+}
+
+// ═══════════════ Receiver History ═══════════════
+export interface ReceiverCardData {
+  bank: string | null;
+  last4: string;
+  name?: string | null;
+  status?: string;
+  totalTx?: number;
+  totalThb?: number;
+  totalUsdt?: number;
+  maxThb?: number;
+  lastThb?: number;
+  lastAt?: string | null;   // ISO
+  lastRef?: string | null;
+  todayCount?: number;
+  todayThb?: number;
+}
+
+const fmtDT = (iso?: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString('th-TH', {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+      })
+    : '-';
+
+/** บรรทัดสรุปผู้รับ แทรกในการ์ดสลิป: เคยรับแล้ว n รายการ / บัญชีใหม่ */
+export function receiverBrief(r: ReceiverCardData | null, bank: string | null, last4: string): string {
+  if (!r) {
+    return (
+      `${THIN}\n` +
+      `⚠️ <b>บัญชีใหม่</b>  ${bank ?? '-'} <code>••••${last4}</code>\n` +
+      `<i>ยังไม่เคยมีประวัติในระบบ</i>`
+    );
+  }
+  const star = r.status === 'trusted' ? '  ⭐ <b>Trusted</b>' : r.status === 'blacklist' ? '  🚫 <b>BLACKLIST</b>' : '';
+  return (
+    `${THIN}\n` +
+    `🏦 <b>${r.bank ?? '-'} ••••${r.last4}</b>${r.name ? `  👤 ${r.name}` : ''}${star}\n` +
+    `📊 เคยรับแล้ว <b>${r.totalTx ?? 0} รายการ</b> · รวม <b>฿${money(r.totalThb ?? 0)}</b>\n` +
+    (r.todayCount ? `📅 วันนี้ <b>${r.todayCount} รายการ</b> · <b>฿${money(r.todayThb ?? 0)}</b>\n` : '') +
+    `⏱ ล่าสุด ${fmtDT(r.lastAt)}${r.lastRef ? `  <code>#${r.lastRef}</code>` : ''}`
+  );
+}
+
+/** การ์ดเต็มสำหรับ /receiver 6578 */
+export function receiverCard(r: ReceiverCardData): OutgoingMessage {
+  const star = r.status === 'trusted' ? '⭐ Trusted Receiver' : r.status === 'blacklist' ? '🚫 BLACKLIST' : '';
+  const avg = r.totalTx ? (r.totalThb ?? 0) / r.totalTx : 0;
+  return {
+    text:
+      `${GRAD_INDIGO}\n` +
+      `${BRAND}  <i>· Receiver</i>\n${THIN}\n` +
+      `🏦 <b>${r.bank ?? '-'}</b>  <code>••••${r.last4}</code>\n` +
+      (r.name ? `👤 <b>${r.name}</b>\n` : '') +
+      (star ? `${star}\n` : '') +
+      table(
+        [
+          ['รายการ', String(r.totalTx ?? 0)],
+          ['รวม฿', money(r.totalThb ?? 0)],
+          ['สูงสุด', money(r.maxThb ?? 0)],
+          ['ล่าสุด', money(r.lastThb ?? 0)],
+          ['USDT', money(r.totalUsdt ?? 0)],
+          ['เฉลี่ย', money(avg)],
+        ],
+        17,
+      ) +
+      `⏱ ล่าสุด ${fmtDT(r.lastAt)}\n` +
+      (r.lastRef ? `🧾 <code>#${r.lastRef}</code>\n` : '') +
+      `${SIG}`,
+  };
+}
+
+export function receiverNotFound(last4: string): OutgoingMessage {
+  return {
+    text: `${MARK} ไม่พบประวัติผู้รับ <code>••••${last4}</code>\n<i>บัญชีนี้ยังไม่เคยมีธุรกรรมในระบบ</i>`,
   };
 }
 

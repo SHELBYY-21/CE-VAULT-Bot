@@ -28,6 +28,7 @@ import { getChatRate, setChatRate } from '@/lib/botSessions';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip } from '@/lib/ocr';
+import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30; // Vercel serverless max 30s
@@ -101,6 +102,32 @@ async function handleUpdate(update: any): Promise<void> {
   // ----- /ping : เช็คสถานะ CEempire -----
   if (text && text.startsWith('/ping')) {
     await notifyReady();
+    return;
+  }
+
+  // ----- /receiver <last4> : ดูประวัติผู้รับ -----
+  if (text && text.startsWith('/receiver')) {
+    const last4 = (text.replace('/receiver', '').trim().match(/\d{4}/) || [])[0];
+    if (!last4) {
+      await sendMessage(chatId, { text: 'พิมพ์ <code>/receiver 6578</code> (เลขท้ายบัญชี 4 ตัว)' });
+      return;
+    }
+    const found = await findReceiversByLast4(last4);
+    if (found.length === 0) {
+      await sendMessage(chatId, UI.receiverNotFound(last4));
+      return;
+    }
+    for (const r of found.slice(0, 3)) {
+      await sendMessage(
+        chatId,
+        UI.receiverCard({
+          bank: r.bank, last4: r.account_last4, name: r.receiver_name, status: r.status,
+          totalTx: r.total_transactions, totalThb: Number(r.total_amount_thb),
+          totalUsdt: Number(r.total_usdt), maxThb: Number(r.max_amount_thb),
+          lastThb: Number(r.last_amount_thb), lastAt: r.last_transaction_at, lastRef: r.last_ledger_ref,
+        }),
+      );
+    }
     return;
   }
 
@@ -205,6 +232,23 @@ async function handleUpdate(update: any): Promise<void> {
       await editMessage(chatId, placeholderId, UI.uploading(2)); // เฟรม 3
 
       const chatRate = type === 'THB_DEPOSIT' ? await getChatRate(chatId) : null;
+      // Receiver History — ถ้า OCR อ่านเลขท้ายบัญชีได้ ดึงประวัติผู้รับ
+      let historyLine: string | null = null;
+      if (slip?.receiverLast4) {
+        const hist = await getReceiver(slip.bank, slip.receiverLast4);
+        historyLine = UI.receiverBrief(
+          hist
+            ? {
+                bank: hist.bank, last4: hist.account_last4, name: hist.receiver_name,
+                status: hist.status, totalTx: hist.total_transactions,
+                totalThb: Number(hist.total_amount_thb), lastAt: hist.last_transaction_at,
+                lastRef: hist.last_ledger_ref, todayCount: hist.todayCount, todayThb: hist.todayThb,
+              }
+            : null,
+          slip.bank,
+          slip.receiverLast4,
+        );
+      }
       await setSession(chatId, userId, {
         state: 'AWAITING_AMOUNT',
         pending_type: type,
@@ -215,6 +259,7 @@ async function handleUpdate(update: any): Promise<void> {
         slip_time: slip?.time ?? null,
         slip_last4: slip?.receiverLast4 ?? null,
         slip_bank: slip?.bank ?? null,
+        slip_receiver_name: slip?.receiverName ?? null,
         admin_id: admin?.id,
         admin_name: admin?.name,
       });
@@ -231,6 +276,7 @@ async function handleUpdate(update: any): Promise<void> {
           receiverName: slip?.receiverName ?? null,
           confidence: slip?.confidence ?? null,
           chatRate,
+          historyLine,
         }),
       );
     } catch (e: any) {
@@ -334,6 +380,7 @@ async function handleUpdate(update: any): Promise<void> {
           slip_time: session.slip_time,
           slip_last4: session.slip_last4,
           slip_bank: session.slip_bank,
+          slip_receiver_name: session.slip_receiver_name,
           admin_id: admin?.id,
           admin_name: admin?.name,
         });
@@ -383,6 +430,27 @@ async function finalizeDeposit(
     note: meta || note,
     slipImageUrl: session.slip_url || '',
   });
+
+  // Receiver History — สะสมสถิติผู้รับ + ผูก tx (fire-and-forget, degrade เงียบ)
+  if (session.slip_last4) {
+    upsertReceiverOnDeposit({
+      bank: session.slip_bank ?? null,
+      last4: session.slip_last4,
+      receiverName: session.slip_receiver_name ?? null,
+      thb: thbAmount,
+      usdt: usdtAmount,
+      ledgerRef: UI.refCode(r.transactionId),
+    })
+      .then((receiverId) => {
+        if (receiverId)
+          return supabaseAdmin
+            .from('transactions')
+            .update({ receiver_id: receiverId })
+            .eq('id', r.transactionId)
+            .then(() => undefined, () => undefined);
+      })
+      .catch(() => undefined);
+  }
 
   // การ์ดยืนยันธุรกรรมนี้ (มีปุ่มแก้ไข/ลบ)
   await sendMessage(

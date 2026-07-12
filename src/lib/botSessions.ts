@@ -17,6 +17,7 @@ export interface BotSession {
   slip_time?: string | null;
   slip_last4?: string | null;
   slip_bank?: string | null;
+  slip_receiver_name?: string | null;
   admin_id?: string | null; // cache admin id เพื่อไม่ต้อง re-query
   admin_name?: string | null; // cache admin name
 }
@@ -52,6 +53,7 @@ export async function setSession(
     slip_time: patch.slip_time ?? null,
     slip_last4: patch.slip_last4 ?? null,
     slip_bank: patch.slip_bank ?? null,
+    slip_receiver_name: patch.slip_receiver_name ?? null,
   };
   const { error } = await supabaseAdmin
     .from('bot_sessions')
