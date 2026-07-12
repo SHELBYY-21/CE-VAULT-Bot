@@ -60,16 +60,18 @@ export async function getLatestRates(): Promise<{
     return cachedRates; // จาก cache ตอบเลย
   }
 
-  const { data } = await supabaseAdmin
-    .from('rates')
-    .select('sell_rate, market_usdt_rate')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // ยิง DB + Binance พร้อมกัน (เดิม sequential เสียเวลา ~300-800ms ทุกธุรกรรม)
+  const [{ data }, live] = await Promise.all([
+    supabaseAdmin
+      .from('rates')
+      .select('sell_rate, market_usdt_rate')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    fetchBinanceThUsdtRate(),
+  ]);
 
   const sellRate = Number(data?.sell_rate) || Number(process.env.DEFAULT_SELL_RATE) || 35.5;
-
-  const live = await fetchBinanceThUsdtRate();
   let marketUsdtRate: number;
   let marketSource: MarketSource;
   if (live) {
