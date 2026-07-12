@@ -8,30 +8,46 @@ const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
 const APP = APP_RAW.startsWith('https://') && !APP_RAW.includes('localhost') ? APP_RAW : '';
 const FEE_WARN = Number(process.env.FEE_WARNING_THRESHOLD || 3);
 
-// ═══════════════ Design tokens ═══════════════
+// ═══════════════ Design tokens (Fintech: โทนเข้ม, accent เดียว, ตัวเลข monospace) ═══════════════
 const MARK = '⬢';
 const BRAND = `${MARK} <b>CE VAULT</b>`;
-// เส้นคั่นเดิม
-const RULE = '━━━━━━━━━━━━━━━━';
 const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
-// เส้นคั่น "gradient" ด้วยบล็อกสี (ล้ำสมัย)
-const GRAD_INDIGO = '🟪🟪🟦🟦🟦🟦🟪🟪';
-const GRAD_GOLD   = '🟨🟨🟧🟧🟧🟧🟨🟨';
-const GRAD_GREEN  = '🟩🟩🟢🟢🟢🟢🟩🟩';
-const GRAD_RED    = '🟥🟥🔴🔴🔴🔴🟥🟥';
+// accent เส้นเดียว + จุดสีบอกสถานะ (แทนบล็อกเขียวรัวๆ ให้อ่านง่ายขึ้น)
+const GRAD_INDIGO = '🔷 ━━━━━━━━━━━━━';
+const GRAD_GOLD   = '🟡 ━━━━━━━━━━━━━';
+const GRAD_GREEN  = '🟢 ━━━━━━━━━━━━━';
+const GRAD_RED    = '🔴 ━━━━━━━━━━━━━';
 const SIG = `<i>${MARK} CE VAULT · secure ledger</i>`;
 
 const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 const money = (n: number) => nf.format(Number(n) || 0);
 const pct = (n: number) => `${(Number(n) || 0).toFixed(2)}%`;
 
-// สร้างแถบ progress ด้วยบล็อกสี (0..1) — ให้ความรู้สึก "measure"
-function bar(value01: number, kind: 'good' | 'bad' = 'good'): string {
-  const v = Math.max(0, Math.min(1, value01));
-  const filled = Math.round(v * 8);
-  const on = kind === 'good' ? '🟩' : '🟥';
-  const off = '⬜';
-  return on.repeat(filled) + off.repeat(8 - filled);
+// ตาราง monospace จัดคอลัมน์ตัวเลขให้ตรงกัน (label ASCII, value ชิดขวา)
+function table(rows: [string, string][], width = 15): string {
+  const body = rows.map(([k, v]) => k.padEnd(6) + v.padStart(width - 6)).join('\n');
+  return `<pre>${body}</pre>`;
+}
+
+// Ledger ID: #CE-YYYYMMDD-XXXX (XXXX = 4 ตัวแรกของ uuid) — ค้นย้อนหลังง่าย
+function refCode(txId: string): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const tail = (txId || '').replace(/-/g, '').slice(0, 4).toUpperCase() || '----';
+  return `CE-${ymd}-${tail}`;
+}
+
+// แถบ progress 5 ขั้น: รับสลิป → OCR → รอ USDT → ส่งเหรียญ → เสร็จ
+type Step = 1 | 2 | 3 | 4 | 5;
+function progress(current: Step): string {
+  const steps = ['รับสลิป', 'OCR', 'รอ USDT', 'ส่งเหรียญ', 'เสร็จ'];
+  return steps
+    .map((label, i) => {
+      const n = (i + 1) as Step;
+      const icon = n < current ? '✅' : n === current ? '🟡' : '▫️';
+      return `${icon} ${label}`;
+    })
+    .join('  ');
 }
 
 // tier badge ตามกำไร %
@@ -128,52 +144,114 @@ export interface SlipReadyData {
   time?: string | null;
   last4?: string | null;
   bank?: string | null;
+  receiverName?: string | null;
+  confidence?: number | null;    // ความมั่นใจ OCR 0-100
   chatRate?: number | null;      // เรตต่อกลุ่มที่ตั้งไว้
+}
+
+// แสดงความมั่นใจ OCR + สัญญาณเตือน
+function confidenceLine(c?: number | null): string {
+  if (c == null) return '';
+  const dot = c >= 90 ? '🟢' : c >= 75 ? '🟡' : '🔴';
+  return `${dot} ความมั่นใจ  <b>${c.toFixed(1)}%</b>`;
 }
 
 export function slipReady(d: SlipReadyData): OutgoingMessage {
   if (d.type === 'USDT_SEND') {
     return {
       text:
-        `${GRAD_GOLD}\n${MARK} <b>CE VAULT</b>  ✅ <i>อัปโหลดสลิปสำเร็จ</i>\n${THIN}\n` +
-        `🚀 <i>โหมด: ส่ง USDT</i>\nพิมพ์จำนวนที่ส่ง เช่น <code>11</code>`,
+        `${GRAD_GOLD}\n${MARK} <b>CE VAULT</b>  <i>· ส่ง USDT</i>\n` +
+        `${progress(3)}\n${THIN}\n` +
+        `🚀 พิมพ์จำนวน USDT ที่ส่ง เช่น <code>11</code>`,
     };
   }
 
-  // THB_DEPOSIT — แสดงข้อมูลที่อ่านได้จากสลิปครบชุด
-  const rows: string[] = [];
-  if (d.date) rows.push(`📅 วันที่ <b>${d.date}</b>` + (d.time ? `  ⏰ <b>${d.time}</b>` : ''));
-  else if (d.time) rows.push(`⏰ <b>${d.time}</b>`);
-  if (d.thb) rows.push(`💵 ยอดโอน  <b>${money(d.thb)} ฿</b>`);
-  if (d.last4) rows.push(`🏦 ปลายทาง  <b>>>${d.last4}</b>` + (d.bank ? `  <i>${d.bank}</i>` : ''));
+  // THB_DEPOSIT — การ์ด "OCR สำเร็จ" แบบมืออาชีพ
+  const conf = d.confidence ?? null;
+  const lowConf = conf != null && conf < 90;
+  const header = conf != null && conf < 90 ? '⚠️ <b>ตรวจสอบสลิปอีกครั้ง</b>' : '✅ <b>OCR สำเร็จ</b>';
 
-  const info = rows.length ? rows.join('\n') + `\n${THIN}\n` : '';
-  const rateHint = d.chatRate
-    ? `<i>เรตห้องนี้ ${money(d.chatRate)} ฿/U → </i><b>ระบบคำนวณให้อัตโนมัติ</b>\n` +
-      `กด <code>ยืนยัน</code> หรือพิมพ์ USDT จริงถ้าไม่ตรง`
-    : `พิมพ์ <b>USDT ที่ได้จริง</b> เช่น <code>11</code>\n` +
-      `<i>หรือ </i><code>THB USDT</code><i> เพื่อระบุเอง</i>`;
+  const detail: string[] = [];
+  if (d.thb != null) detail.push(`💵 ยอดเงิน   <b>${money(d.thb)} บาท</b>`);
+  if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
+  if (d.last4 || d.bank)
+    detail.push(`🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>>>${d.last4}</code>` : ''}`);
+  if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
+  const cLine = confidenceLine(conf);
+  if (cLine) detail.push(cLine);
 
-  const suggested =
-    d.chatRate && d.thb
-      ? `\n${THIN}\n🧮 คำนวณ:  <code>${money(d.thb)} ÷ ${money(d.chatRate)} = ${money(d.thb / d.chatRate)} USDT</code>\n`
-      : '';
+  const canAuto = d.chatRate && d.thb;
+  const usdtAuto = canAuto ? d.thb! / d.chatRate! : 0;
+
+  const ask = canAuto
+    ? `🧮 <code>${money(d.thb!)} ÷ ${money(d.chatRate!)} = ${money(usdtAuto)} USDT</code>\n` +
+      `กดปุ่ม <b>ยืนยัน</b> ด้านล่าง หรือพิมพ์เรตใหม่`
+    : `พิมพ์ <b>เรตแลก</b> เช่น <code>36.65</code> → ระบบคำนวณ USDT ให้\n` +
+      `<i>(หรือ </i><code>THB เรต</code><i> เพื่อระบุยอดเอง)</i>`;
 
   return {
     text:
-      `${GRAD_GREEN}\n` +
-      `${MARK} <b>CE VAULT</b>  ✅ <i>วิเคราะห์สลิปเสร็จ</i>  <tg-spoiler>Grok</tg-spoiler>\n` +
-      `${GRAD_GREEN}\n` +
-      info +
-      `💱 <i>โหมด: ฝาก THB → USDT</i>\n${rateHint}${suggested}`,
-    reply_markup:
-      d.chatRate && d.thb
-        ? {
-            inline_keyboard: [
-              [{ text: `✅ ยืนยัน (${money(d.thb / d.chatRate)} USDT)`, callback_data: `confirm:${(d.thb / d.chatRate).toFixed(2)}` }],
-            ],
-          }
-        : undefined,
+      `${lowConf ? GRAD_RED : GRAD_GREEN}\n` +
+      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
+      `${progress(2)}\n${THIN}\n` +
+      (detail.length ? detail.join('\n') + `\n${THIN}\n` : '') +
+      (lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n` : '') +
+      ask,
+    reply_markup: canAuto
+      ? {
+          inline_keyboard: [
+            [{ text: `✅ ยืนยัน (${money(usdtAuto)} USDT)`, callback_data: `confirm:${usdtAuto.toFixed(2)}` }],
+          ],
+        }
+      : undefined,
+  };
+}
+
+// ═══════════════ Confirm before commit (ลดส่งผิด) ═══════════════
+export function confirmDeposit(thb: number, usdt: number, rate: number): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก</i>\n` +
+      `${progress(3)}\n${THIN}\n` +
+      `กำลังจะบันทึกฝาก:\n` +
+      table([
+        ['THB', money(thb)],
+        ['USDT', money(usdt)],
+        ['Rate', money(rate)],
+      ]) +
+      `\n<i>กด</i> <b>ยืนยัน</b> <i>เพื่อบันทึก · หรือพิมพ์เรตใหม่</i>`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ ยืนยัน', callback_data: `confirm:${usdt.toFixed(2)}` },
+          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
+        ],
+      ],
+    },
+  };
+}
+
+export function confirmSend(usdt: number, holding: number): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนส่ง</i>\n` +
+      `${progress(4)}\n${THIN}\n` +
+      `กำลังจะส่งออก:\n` +
+      table([
+        ['USDT', money(usdt)],
+        ['คงเหลือ', money(holding - usdt)],
+      ], 17) +
+      `\n<i>กด</i> <b>ยืนยัน</b> <i>เพื่อส่ง</i>`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ ยืนยันส่ง', callback_data: `confirmsend:${usdt.toFixed(2)}` },
+          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
+        ],
+      ],
+    },
   };
 }
 
@@ -237,25 +315,24 @@ export function thbSuccess(d: ThbSuccessData): OutgoingMessage {
   const feeHot = d.feePercent > FEE_WARN;
   const grad = up ? GRAD_GREEN : GRAD_RED;
   const tier = profitTier(d.profitPercent);
-  // แถบวัดสัดส่วน fee (0..10% เต็มแถบ)
-  const feeBar = bar(Math.min(1, d.feePercent / 10), feeHot ? 'bad' : 'good');
+  const rate = d.usdt > 0 ? d.thb / d.usdt : 0;
 
   return {
     text:
       `${grad}\n` +
-      `${BRAND}  <i>· THB → USDT</i>\n` +
-      `${grad}\n` +
+      `${BRAND}  <i>· ฝากสำเร็จ</i>\n` +
+      `${progress(5)}\n${THIN}\n` +
+      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
       `👤 <b>${d.adminName}</b>   ${tier}\n` +
-      `${THIN}\n` +
-      `💵 THB    <code>${money(d.thb)}</code>\n` +
-      `🪙 USDT   <code>${money(d.usdt)}</code>\n` +
-      `${THIN}\n` +
+      table([
+        ['THB', money(d.thb)],
+        ['USDT', money(d.usdt)],
+        ['Rate', money(rate)],
+      ]) +
       `${up ? '📈' : '📉'} กำไรสุทธิ   <b>${up ? '+' : ''}${money(d.netProfitThb)} ฿</b>  <i>(${pct(d.profitPercent)})</i>\n` +
-      `${feeHot ? '🔴' : '🟢'} ค่าธรรมเนียม   <b>${money(d.feeUsdt)} USDT</b>  <i>(${pct(d.feePercent)})</i>\n` +
-      `   ${feeBar}\n` +
+      `${feeHot ? '🔴' : '🟢'} ค่าธรรมเนียม  <b>${money(d.feeUsdt)} USDT</b>  <i>(${pct(d.feePercent)})</i>\n` +
       `${THIN}\n` +
-      `💼 <i>เหรียญตกค้าง · ${d.adminName}</i>\n` +
-      `      <b>${money(d.holdingUsdt)} USDT</b>  🔒\n` +
+      `💼 เหรียญตกค้าง · ${d.adminName}  <b>${money(d.holdingUsdt)} USDT</b> 🔒\n` +
       `${SIG}`,
     reply_markup: buttons(d.transactionId),
   };
@@ -272,12 +349,13 @@ export function usdtSendSuccess(d: UsdtSendData): OutgoingMessage {
     text:
       `${GRAD_GOLD}\n` +
       `${BRAND}  <i>· ส่งออกทุนจีน</i>\n` +
-      `${GRAD_GOLD}\n` +
+      `${progress(5)}\n${THIN}\n` +
+      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
       `👤 <b>${d.adminName}</b>\n` +
-      `🚀 ส่งออก   <b>${money(d.usdt)} USDT</b>\n` +
-      `${THIN}\n` +
-      `💼 <i>เหรียญตกค้างคงเหลือ</i>\n` +
-      `      <b>${money(d.holdingUsdt)} USDT</b>  🔒\n` +
+      table([
+        ['ส่ง', money(d.usdt)],
+        ['คงเหลือ', money(d.holdingUsdt)],
+      ], 17) +
       `${SIG}`,
     reply_markup: buttons(d.transactionId),
   };
@@ -326,7 +404,8 @@ export function editSuccess(d: EditSuccessData): OutgoingMessage {
     text:
       `${grad}\n` +
       `✏️ <b>แก้ไขสำเร็จ</b>  <i>· ${isDep ? 'THB → USDT' : 'ส่ง USDT'}</i>\n` +
-      `${grad}\n` +
+      `${THIN}\n` +
+      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
       `👤 <b>${d.adminName}</b>\n` +
       body +
       `${THIN}\n` +

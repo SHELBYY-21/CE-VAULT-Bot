@@ -9,7 +9,9 @@ export interface SlipExtract {
   date: string | null;        // "DD/MM/YY"
   receiverLast4: string | null; // เลข 4 ตัวท้ายเลขบัญชีปลายทาง
   bank: string | null;        // ธนาคารปลายทาง เช่น "KBANK"
+  receiverName: string | null; // ชื่อผู้รับเงิน
   senderName: string | null;  // ชื่อผู้โอน (best-effort)
+  confidence: number | null;  // ความมั่นใจในการอ่าน 0-100
   raw?: string;               // ข้อความดิบ (debug)
 }
 
@@ -20,9 +22,11 @@ const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and rep
   "date": "DD/MM/YY",            // transfer date, Buddhist year → subtract 543 to Gregorian, output as YY (2-digit Gregorian)
   "receiverLast4": "XXXX",       // last 4 digits of RECEIVER (payee) account number
   "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|KEB|CITI|other-uppercase",
-  "senderName": "name or null"   // sender full name if visible
+  "receiverName": "name or null",// RECEIVER (payee) full name — Thai or English as shown
+  "senderName": "name or null",  // sender full name if visible
+  "confidence": number           // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
 }
-If unable to read any field, use null. Do not invent values. Output raw JSON only.`;
+If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
 
 export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract | null> {
   const key = process.env.GROK_API_KEY;
@@ -64,7 +68,7 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       .trim();
     const first = cleaned.indexOf('{');
     const last = cleaned.lastIndexOf('}');
-    if (first < 0 || last < 0) return { raw: text, thbAmount: null, time: null, date: null, receiverLast4: null, bank: null, senderName: null };
+    if (first < 0 || last < 0) return { raw: text, thbAmount: null, time: null, date: null, receiverLast4: null, bank: null, receiverName: null, senderName: null, confidence: null };
     const jsonStr = cleaned.slice(first, last + 1);
     const data = JSON.parse(jsonStr);
 
@@ -77,7 +81,9 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       date: str(data.date),
       receiverLast4: str(data.receiverLast4)?.replace(/\D/g, '').slice(-4) || null,
       bank: str(data.bank)?.toUpperCase() ?? null,
+      receiverName: str(data.receiverName),
       senderName: str(data.senderName),
+      confidence: num(data.confidence),
       raw: text,
     };
   } catch (e: any) {

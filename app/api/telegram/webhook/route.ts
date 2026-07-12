@@ -228,6 +228,8 @@ async function handleUpdate(update: any): Promise<void> {
           time: slip?.time ?? null,
           last4: slip?.receiverLast4 ?? null,
           bank: slip?.bank ?? null,
+          receiverName: slip?.receiverName ?? null,
+          confidence: slip?.confidence ?? null,
           chatRate,
         }),
       );
@@ -291,34 +293,19 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // (ข) รอจำนวน → บันทึกธุรกรรม
+  // (ข) รอจำนวน → คำนวณ แล้วโชว์การ์ด "ยืนยันก่อนบันทึก" (ยังไม่ commit)
   if (session?.state === 'AWAITING_AMOUNT') {
     const nums = parseNums(text);
     if (nums.length === 0) return; // ไม่ใช่ตัวเลข ปล่อยผ่าน
-    await clearSession(chatId, userId);
     await sendChatAction(chatId, 'typing');
-    const note = session.caption || (session.pending_type === 'USDT_SEND' ? 'ส่ง USDT' : 'ฝาก THB');
 
     try {
       if (session.pending_type === 'USDT_SEND') {
-        const r = await recordUsdtSend({
-          adminTelegramId: userId,
-          usdtAmount: nums[0],
-          note,
-          slipImageUrl: session.slip_url || '',
-        });
-        await sendMessage(
-          chatId,
-          UI.usdtSendSuccess({
-            transactionId: r.transactionId,
-            adminName: r.admin.name,
-            usdt: nums[0],
-            holdingUsdt: r.admin.holdingUsdt,
-          }),
-        );
+        const usdt = nums[0];
+        const holding = admin?.holding_usdt ?? 0;
+        await sendMessage(chatId, UI.confirmSend(usdt, Number(holding)));
       } else {
-        // THB_DEPOSIT: ถ้ารู้ยอดจากสลิปแล้ว → เลขที่พิมพ์ = "เรตแลก" (usdt = thb / rate)
-        //              ถ้าไม่รู้ยอด → เลข = USDT โดยตรง (หรือ "THB RATE")
+        // THB_DEPOSIT: รู้ยอดจากสลิป → เลขที่พิมพ์ = "เรตแลก" (usdt = thb / rate)
         let thbAmount: number;
         let usdtAmount: number;
         let sellRate: number;
@@ -329,16 +316,28 @@ async function handleUpdate(update: any): Promise<void> {
           usdtAmount = rate > 0 ? thbAmount / rate : 0;
         } else if (nums.length >= 2) {
           thbAmount = nums[0];
-          const rate = nums[1];
-          sellRate = rate;
-          usdtAmount = rate > 0 ? thbAmount / rate : 0;
+          sellRate = nums[1];
+          usdtAmount = sellRate > 0 ? thbAmount / sellRate : 0;
         } else {
-          // ไม่มียอดสลิป + เลขเดียว → เดิม: ถือเป็นเรต, thb = default
           thbAmount = DEFAULT_THB;
           sellRate = nums[0];
           usdtAmount = nums[0] > 0 ? thbAmount / nums[0] : 0;
         }
-        await finalizeDeposit(chatId, userId, session, thbAmount, usdtAmount, sellRate, note);
+        // เก็บ thb ที่ final ไว้ใน session (ocr_thb) เพื่อให้ callback confirm ใช้ค่าถูกต้อง
+        await setSession(chatId, userId, {
+          state: 'AWAITING_AMOUNT',
+          pending_type: 'THB_DEPOSIT',
+          slip_url: session.slip_url,
+          caption: session.caption,
+          ocr_thb: thbAmount,
+          slip_date: session.slip_date,
+          slip_time: session.slip_time,
+          slip_last4: session.slip_last4,
+          slip_bank: session.slip_bank,
+          admin_id: admin?.id,
+          admin_name: admin?.name,
+        });
+        await sendMessage(chatId, UI.confirmDeposit(thbAmount, usdtAmount, sellRate));
       }
     } catch (e: any) {
       await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
@@ -445,6 +444,45 @@ async function handleCallback(cb: any): Promise<void> {
     } catch (e: any) {
       await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
     }
+    return;
+  }
+
+  // ----- confirmsend:<usdt> : ยืนยันส่ง USDT -----
+  if (action === 'confirmsend') {
+    const session = await getSession(chatId, userId);
+    if (!session || session.state !== 'AWAITING_AMOUNT' || session.pending_type !== 'USDT_SEND') {
+      return await answerCallback(id, 'รายการหมดอายุ ส่งสลิปใหม่อีกครั้ง');
+    }
+    await answerCallback(id, '✅ กำลังส่ง...');
+    await clearSession(chatId, userId);
+    const usdt = Number(arg);
+    try {
+      const r = await recordUsdtSend({
+        adminTelegramId: userId,
+        usdtAmount: usdt,
+        note: session.caption || 'ส่ง USDT',
+        slipImageUrl: session.slip_url || '',
+      });
+      await sendMessage(
+        chatId,
+        UI.usdtSendSuccess({
+          transactionId: r.transactionId,
+          adminName: r.admin.name,
+          usdt,
+          holdingUsdt: r.admin.holdingUsdt,
+        }),
+      );
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'send failed'));
+    }
+    return;
+  }
+
+  // ----- cancelop : ยกเลิกก่อนยืนยัน -----
+  if (action === 'cancelop') {
+    await clearSession(chatId, userId);
+    await answerCallback(id, 'ยกเลิกแล้ว');
+    await sendMessage(chatId, UI.cancelled());
     return;
   }
 
