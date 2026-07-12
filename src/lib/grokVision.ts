@@ -29,9 +29,11 @@ const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and rep
 If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
 
 export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract | null> {
-  const key = process.env.GROK_API_KEY;
+  const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
   if (!key || !imageUrl) return null;
-  const model = process.env.GROK_MODEL || 'grok-2-vision-1212';
+  // default = grok-4.5 (รองรับ vision). self-heal: ถ้า env ยังเป็น grok-2-vision-* (รุ่นที่ถูกถอด) ให้ override
+  const envModel = process.env.GROK_MODEL;
+  const model = !envModel || /grok-2-vision/i.test(envModel) ? 'grok-4.5' : envModel;
 
   try {
     const res = await fetch('https://api.x.ai/v1/chat/completions', {

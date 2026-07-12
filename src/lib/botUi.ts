@@ -167,13 +167,20 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
     };
   }
 
-  // THB_DEPOSIT — การ์ด "OCR สำเร็จ" แบบมืออาชีพ
+  // THB_DEPOSIT
   const conf = d.confidence ?? null;
+  const gotAmount = d.thb != null && d.thb > 0;
   const lowConf = conf != null && conf < 90;
-  const header = conf != null && conf < 90 ? '⚠️ <b>ตรวจสอบสลิปอีกครั้ง</b>' : '✅ <b>OCR สำเร็จ</b>';
+
+  // header สะท้อนความจริง: อ่านยอดไม่ได้ / ความมั่นใจต่ำ / สำเร็จ
+  const header = !gotAmount
+    ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>'
+    : lowConf
+      ? '⚠️ <b>ตรวจสอบสลิปอีกครั้ง</b>'
+      : '✅ <b>OCR สำเร็จ</b>';
 
   const detail: string[] = [];
-  if (d.thb != null) detail.push(`💵 ยอดเงิน   <b>${money(d.thb)} บาท</b>`);
+  if (gotAmount) detail.push(`💵 ยอดเงิน   <b>${money(d.thb!)} บาท</b>`);
   if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
   if (d.last4 || d.bank)
     detail.push(`🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>>>${d.last4}</code>` : ''}`);
@@ -181,22 +188,28 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
 
-  const canAuto = d.chatRate && d.thb;
+  const canAuto = !!(d.chatRate && gotAmount);
   const usdtAuto = canAuto ? d.thb! / d.chatRate! : 0;
 
-  const ask = canAuto
-    ? `🧮 <code>${money(d.thb!)} ÷ ${money(d.chatRate!)} = ${money(usdtAuto)} USDT</code>\n` +
-      `กดปุ่ม <b>ยืนยัน</b> ด้านล่าง หรือพิมพ์เรตใหม่`
-    : `พิมพ์ <b>เรตแลก</b> เช่น <code>36.65</code> → ระบบคำนวณ USDT ให้\n` +
-      `<i>(หรือ </i><code>THB เรต</code><i> เพื่อระบุยอดเอง)</i>`;
+  let ask: string;
+  if (!gotAmount) {
+    // OCR อ่านยอดไม่ได้ → ต้องให้พิมพ์ยอด+เรตเอง (ห้าม fallback 5000)
+    ask = `พิมพ์ <b>ยอดบาท เรต</b> เช่น <code>500 36.65</code>\n<i>ระบบจะคำนวณ USDT ให้</i>`;
+  } else if (canAuto) {
+    ask =
+      `🧮 <code>${money(d.thb!)} ÷ ${money(d.chatRate!)} = ${money(usdtAuto)} USDT</code>\n` +
+      `กดปุ่ม <b>ยืนยัน</b> ด้านล่าง หรือพิมพ์เรตใหม่`;
+  } else {
+    ask = `พิมพ์ <b>เรตแลก</b> เช่น <code>36.65</code> → ระบบคำนวณ USDT ให้`;
+  }
 
   return {
     text:
-      `${lowConf ? GRAD_RED : GRAD_GREEN}\n` +
+      `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
       `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
       `${progress(2)}\n${THIN}\n` +
       (detail.length ? detail.join('\n') + `\n${THIN}\n` : '') +
-      (lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n` : '') +
+      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n` : '') +
       ask +
       (d.historyLine ? `\n${d.historyLine}` : ''),
     reply_markup: canAuto

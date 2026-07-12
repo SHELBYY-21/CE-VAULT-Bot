@@ -365,9 +365,14 @@ async function handleUpdate(update: any): Promise<void> {
           sellRate = nums[1];
           usdtAmount = sellRate > 0 ? thbAmount / sellRate : 0;
         } else {
-          thbAmount = DEFAULT_THB;
-          sellRate = nums[0];
-          usdtAmount = nums[0] > 0 ? thbAmount / nums[0] : 0;
+          // OCR อ่านยอดไม่ได้ + พิมพ์เลขเดียว → ไม่เดายอด (กันบันทึกผิดแบบ 5000)
+          await sendMessage(chatId, {
+            text:
+              `⚠️ <b>ยังไม่รู้ยอดเงิน</b>\n` +
+              `อ่านยอดจากสลิปไม่ได้ กรุณาพิมพ์ <b>ยอดบาท เรต</b>\n` +
+              `เช่น <code>500 ${nums[0]}</code>`,
+          });
+          return;
         }
         // เก็บ thb ที่ final ไว้ใน session (ocr_thb) เพื่อให้ callback confirm ใช้ค่าถูกต้อง
         await setSession(chatId, userId, {
