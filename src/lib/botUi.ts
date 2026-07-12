@@ -207,7 +207,7 @@ export function rateShow(
   };
 }
 
-export function rateSet(name: string, sell: number, market: number): OutgoingMessage {
+export function rateSet(name: string | null | undefined, sell: number, market: number): OutgoingMessage {
   return {
     text:
       `${GRAD_GREEN}\n` +
@@ -216,7 +216,7 @@ export function rateSet(name: string, sell: number, market: number): OutgoingMes
       `💱 เรตขาย   <b>${money(sell)} ฿</b>\n` +
       `🌐 เรตตลาด  <b>${money(market)} ฿</b>\n` +
       `${THIN}\n` +
-      `<i>โดย ${name} · ${MARK} CE VAULT</i>`,
+      `<i>โดย ${name || 'แอดมิน'} · ${MARK} CE VAULT</i>`,
   };
 }
 
