@@ -164,12 +164,7 @@ async function handleUpdate(update: any): Promise<void> {
   }
 
   const session = await getSession(chatId, userId);
-  // ใช้ admin จาก session ก่อน ถ้าไม่มี ค่อย query
-  let admin = session?.admin_id ? { id: session.admin_id, name: session.admin_name } : null;
-  if (!admin) {
-    const fetched = await getAdminByTelegramId(userId);
-    admin = fetched;
-  }
+  const admin = await getAdminByTelegramId(userId);
 
   // ----- /rate : ดูเรต (ตลาด=Binance TH สด) / ตั้งเรตขาย -----
   if (text && text.startsWith('/rate')) {
