@@ -164,11 +164,16 @@ async function handleUpdate(update: any): Promise<void> {
   }
 
   const session = await getSession(chatId, userId);
-  // ใช้ admin จาก session ก่อน ถ้าไม่มี ค่อย query
-  let admin = session?.admin_id ? { id: session.admin_id, name: session.admin_name } : null;
+  // ใช้ admin จาก session เฉพาะเมื่อ cache ครบ เพื่อลด query; ถ้าชื่อหายให้ query ใหม่
+  const sessionAdminName = session?.admin_name?.trim();
+  let admin: { id: string; name: string } | null =
+    session?.admin_id && sessionAdminName
+      ? { id: session.admin_id, name: sessionAdminName }
+      : null;
   if (!admin) {
     const fetched = await getAdminByTelegramId(userId);
-    admin = fetched;
+    const fetchedAdminName = fetched?.name?.trim();
+    admin = fetched && fetchedAdminName ? { id: fetched.id, name: fetchedAdminName } : null;
   }
 
   // ----- /rate : ดูเรต (ตลาด=Binance TH สด) / ตั้งเรตขาย -----
