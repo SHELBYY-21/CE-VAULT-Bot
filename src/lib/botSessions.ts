@@ -3,7 +3,7 @@
 // ============================================================
 import { supabaseAdmin } from './supabaseAdmin';
 
-export type SessionState = 'AWAITING_NAME' | 'AWAITING_AMOUNT' | 'EDITING';
+export type SessionState = 'AWAITING_NAME' | 'AWAITING_AMOUNT' | 'EDITING' | 'WAITING_USDT';
 
 export interface BotSession {
   chat_id: number;
@@ -18,6 +18,13 @@ export interface BotSession {
   slip_last4?: string | null;
   slip_bank?: string | null;
   slip_receiver_name?: string | null;
+  ocr_conf?: number | null;          // ความมั่นใจ OCR สลิป THB
+  ledger_ref?: string | null;        // Ledger ID ของดีลที่กำลังทำ
+  // ── pending USDT (ระหว่างรอ/ยืนยัน) ──
+  pending_usdt?: number | null;
+  usdt_network?: string | null;
+  usdt_txid?: string | null;
+  usdt_image_url?: string | null;
   admin_id?: string | null; // cache admin id เพื่อไม่ต้อง re-query
   admin_name?: string | null; // cache admin name
 }
@@ -54,6 +61,12 @@ export async function setSession(
     slip_last4: patch.slip_last4 ?? null,
     slip_bank: patch.slip_bank ?? null,
     slip_receiver_name: patch.slip_receiver_name ?? null,
+    ocr_conf: patch.ocr_conf ?? null,
+    ledger_ref: patch.ledger_ref ?? null,
+    pending_usdt: patch.pending_usdt ?? null,
+    usdt_network: patch.usdt_network ?? null,
+    usdt_txid: patch.usdt_txid ?? null,
+    usdt_image_url: patch.usdt_image_url ?? null,
   };
   const { error } = await supabaseAdmin
     .from('bot_sessions')
@@ -95,9 +108,26 @@ export async function getChatRate(chatId: number): Promise<number | null> {
   }
 }
 
-export async function setChatRate(chatId: number, rate: number): Promise<void> {
+export async function setChatRate(chatId: number, rate: number, roomName?: string | null): Promise<void> {
+  const row: any = { chat_id: chatId, fixed_rate: rate, updated_at: new Date().toISOString() };
+  if (roomName) row.room_name = roomName;
   await supabaseAdmin
     .from('chat_settings')
-    .upsert({ chat_id: chatId, fixed_rate: rate, updated_at: new Date().toISOString() })
+    .upsert(row)
     .then(undefined, () => undefined);
+}
+
+/** ดึงเรต + ชื่อห้อง (Sell Rate มาจาก fixed_rate) */
+export async function getRoom(chatId: number): Promise<{ rate: number | null; name: string | null }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('chat_settings')
+      .select('fixed_rate, room_name')
+      .eq('chat_id', chatId)
+      .maybeSingle();
+    if (error || !data) return { rate: null, name: null };
+    return { rate: data.fixed_rate ? Number(data.fixed_rate) : null, name: (data as any).room_name ?? null };
+  } catch {
+    return { rate: null, name: null };
+  }
 }

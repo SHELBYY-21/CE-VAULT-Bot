@@ -2,6 +2,7 @@
 // CE VAULT — Bot message theme v2 (colorful, animated, distinctive)
 // ใช้ HTML + emoji + spoiler + gradient-blocks ให้ดูล้ำสมัยที่สุดในขีดจำกัด Telegram
 // ============================================================
+import { randomBytes } from 'crypto';
 import type { OutgoingMessage } from './telegram';
 
 const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
@@ -37,10 +38,18 @@ export function refCode(txId: string): string {
   return `CE-${ymd}-${tail}`;
 }
 
+// Ledger ID ใหม่สำหรับดีล (สร้างตอนรับสลิป ก่อนมี txId) — คงที่ตลอดดีล
+export function newLedgerRef(): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const rand = randomBytes(2).toString('hex').toUpperCase();
+  return `CE-${ymd}-${rand}`;
+}
+
 // แถบ progress 5 ขั้น: รับสลิป → OCR → รอ USDT → ส่งเหรียญ → เสร็จ
 type Step = 1 | 2 | 3 | 4 | 5;
 function progress(current: Step): string {
-  const steps = ['รับสลิป', 'OCR', 'รอ USDT', 'ส่งเหรียญ', 'เสร็จ'];
+  const steps = ['รับสลิป', 'OCR', 'รอ USDT', 'คำนวณ', 'เสร็จ'];
   return steps
     .map((label, i) => {
       const n = (i + 1) as Step;
@@ -219,6 +228,155 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
           ],
         }
       : undefined,
+  };
+}
+
+// ═══════════════ Deal flow v5: THB slip → wait USDT → confirm ═══════════════
+export interface WaitUsdtData {
+  thb?: number | null;
+  bank?: string | null;
+  last4?: string | null;
+  receiverName?: string | null;
+  date?: string | null;
+  time?: string | null;
+  confidence?: number | null;
+  ledgerRef: string;
+  historyLine?: string | null;
+  roomRate?: number | null;
+  roomName?: string | null;
+}
+
+/** การ์ดหลัง OCR สลิป THB → รอ USDT (step ③) */
+export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
+  const conf = d.confidence ?? null;
+  const gotAmount = d.thb != null && d.thb > 0;
+  const lowConf = conf != null && conf < 90;
+  const header = !gotAmount ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>' : lowConf ? '⚠️ <b>ตรวจสอบสลิป</b>' : '✅ <b>OCR สำเร็จ</b>';
+
+  const detail: string[] = [];
+  if (gotAmount) detail.push(`💵 THB       <b>${money(d.thb!)}</b>`);
+  if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
+  if (d.bank || d.last4) detail.push(`🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`);
+  if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
+  const cLine = confidenceLine(conf);
+  if (cLine) detail.push(cLine);
+
+  return {
+    text:
+      `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
+      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
+      `${progress(3)}\n${THIN}\n` +
+      `🧾 <code>#${d.ledgerRef}</code>\n` +
+      (detail.length ? detail.join('\n') + `\n` : '') +
+      (d.roomRate ? `🏷 Sell Rate ${d.roomName ? `(${d.roomName})` : ''}  <b>${money(d.roomRate)}</b>\n` : '') +
+      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด</i>\n` : '') +
+      (d.historyLine ? `${d.historyLine}\n` : '') +
+      `${THIN}\n` +
+      `⏳ <b>รอยืนยัน USDT</b>\n` +
+      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์ <b>จำนวน USDT</b> เช่น <code>13.6</code>`,
+  };
+}
+
+export interface DealConfirmData {
+  ledgerRef: string;
+  thb: number;
+  usdt: number;
+  buyRate: number;
+  sellRate: number;
+  profitThb: number;
+  receiverName?: string | null;
+  bank?: string | null;
+  last4?: string | null;
+  network?: string | null;
+}
+
+/** การ์ดยืนยันดีล (step ④) — Confirm / Edit / Cancel */
+export function dealConfirm(d: DealConfirmData): OutgoingMessage {
+  const up = d.profitThb >= 0;
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก</i>\n` +
+      `${progress(4)}\n${THIN}\n` +
+      `🧾 <code>#${d.ledgerRef}</code>\n` +
+      table([
+        ['THB', money(d.thb)],
+        ['USDT', money(d.usdt)],
+        ['Buy', money(d.buyRate)],
+        ['Sell', money(d.sellRate)],
+      ]) +
+      `${up ? '📈' : '📉'} กำไรประเมิน  <b>${up ? '+' : ''}${money(d.profitThb)} ฿</b>\n` +
+      (d.receiverName || d.last4
+        ? `👤 ผู้รับ  <b>${d.receiverName ?? '-'}</b>${d.last4 ? ` <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
+        : '') +
+      (d.network ? `🔗 Network  <b>${d.network}</b>\n` : '') +
+      `${THIN}\n<i>ตรวจแล้วกด</i> <b>ยืนยัน</b>`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ ยืนยัน', callback_data: `dealok:${d.ledgerRef}` },
+          { text: '✏️ แก้ USDT', callback_data: 'dealedit:1' },
+          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
+        ],
+      ],
+    },
+  };
+}
+
+export interface DealSuccessData {
+  transactionId: string;
+  ledgerRef: string;
+  adminName: string;
+  thb: number;
+  usdt: number;
+  buyRate: number;
+  sellRate: number;
+  profitThb: number;
+  receiverName?: string | null;
+  bank?: string | null;
+  last4?: string | null;
+}
+
+/** การ์ดบันทึกสำเร็จ (step ⑤) */
+export function dealSuccess(d: DealSuccessData): OutgoingMessage {
+  const up = d.profitThb >= 0;
+  return {
+    text:
+      `${up ? GRAD_GREEN : GRAD_RED}\n` +
+      `${BRAND}  <i>· บันทึกสำเร็จ</i>\n` +
+      `${progress(5)}\n${THIN}\n` +
+      `🧾 <code>#${d.ledgerRef}</code>\n` +
+      `👤 <b>${d.adminName}</b>\n` +
+      table([
+        ['THB', money(d.thb)],
+        ['USDT', money(d.usdt)],
+        ['Buy', money(d.buyRate)],
+        ['Sell', money(d.sellRate)],
+      ]) +
+      `${up ? '📈' : '📉'} กำไร  <b>${up ? '+' : ''}${money(d.profitThb)} ฿</b>\n` +
+      (d.receiverName || d.last4
+        ? `👤 ${d.receiverName ?? '-'}${d.last4 ? `  <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
+        : '') +
+      `${SIG}`,
+    reply_markup: buttons(d.transactionId),
+  };
+}
+
+/** req13: OCR USDT ไม่ตรงกับที่พิมพ์เอง → บล็อกการยืนยัน ต้องตรวจสอบเอง */
+export function usdtMismatch(ocrVal: number, manualVal: number): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_RED}\n` +
+      `🛑 <b>USDT ไม่ตรงกัน — ต้องตรวจสอบ</b>\n` +
+      `${THIN}\n` +
+      table([
+        ['OCR', money(ocrVal)],
+        ['พิมพ์', money(manualVal)],
+        ['ต่าง', money(Math.abs(ocrVal - manualVal))],
+      ]) +
+      `<i>ระบบระงับการยืนยันไว้ก่อน</i>\n` +
+      `ส่ง <b>สกรีนช็อต USDT</b> ที่ถูกต้องอีกครั้ง หรือพิมพ์จำนวนที่ถูก\n` +
+      `<i>พิมพ์</i> <code>/cancel</code> <i>เพื่อยกเลิก</i>`,
   };
 }
 

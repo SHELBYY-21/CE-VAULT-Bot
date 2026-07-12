@@ -343,6 +343,80 @@ export async function deleteTransaction(txId: string): Promise<{ name: string; h
   return { name: old.admins?.name ?? '-', holdingUsdt: newHolding };
 }
 
+// ============================================================
+// Unified Deal (v5): THB slip + USDT confirm ในธุรกรรมเดียว
+//   BuyRate = THB / USDT (คำนวณ) · SellRate = เรตห้อง (snapshot)
+//   Profit  = USDT × SellRate − THB
+// เก็บ type = 'THB_DEPOSIT' เพื่อ backward-compat กับ dashboard เดิม
+// ไม่แตะ holding (ดีลนี้ THB เข้า + USDT ออก ในตัวเดียว → net 0)
+// ============================================================
+export interface RecordDealInput {
+  adminTelegramId: number;
+  thb: number;
+  usdt: number;
+  sellRate: number;               // เรตห้อง (snapshot)
+  roomName?: string | null;
+  ocrConfidence?: number | null;
+  ledgerRef: string;
+  slipImageUrl?: string | null;   // สลิป THB
+  usdtImageUrl?: string | null;   // สกรีนช็อต USDT
+  usdtNetwork?: string | null;
+  usdtTxid?: string | null;
+  receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
+  bankAccountId?: string | null;
+}
+export interface DealResult {
+  transactionId: string;
+  adminName: string;
+  buyRate: number;
+  sellRate: number;
+  profitThb: number;
+}
+
+export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const buyRate = input.usdt > 0 ? input.thb / input.usdt : 0;
+  const profitThb = input.usdt * input.sellRate - input.thb; // = (sell − buy) × usdt
+
+  const { data: tx, error } = await supabaseAdmin
+    .from('transactions')
+    .insert({
+      admin_id: admin.id,
+      bank_account_id: input.bankAccountId ?? null,
+      type: 'THB_DEPOSIT',
+      thb_amount: input.thb,
+      usdt_amount: input.usdt,
+      sell_rate: input.sellRate,
+      buy_rate: buyRate,
+      cost_per_unit: buyRate,
+      sell_value_thb: input.usdt * input.sellRate,
+      net_profit_thb: profitThb,
+      profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
+      room_name: input.roomName ?? null,
+      ocr_confidence: input.ocrConfidence ?? null,
+      usdt_network: input.usdtNetwork ?? null,
+      usdt_txid: input.usdtTxid ?? null,
+      usdt_image_url: input.usdtImageUrl ?? null,
+      receiver_name: input.receiver?.name ?? null,
+      receiver_bank: input.receiver?.bank ?? null,
+      receiver_last4: input.receiver?.last4 ?? null,
+      ledger_ref: input.ledgerRef,
+      slip_image_url: input.slipImageUrl ?? '',
+      note: input.ledgerRef,
+    })
+    .select('id')
+    .single();
+  if (error || !tx) throw error ?? new Error('INSERT_FAILED');
+
+  if (input.bankAccountId) await addBankBalance(input.bankAccountId, input.thb);
+
+  notifyIncome({ adminName: admin.name, usdt: input.usdt, thb: input.thb }).catch(() => undefined);
+
+  return { transactionId: tx.id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
+}
+
 export interface RecordSendInput {
   adminTelegramId: number;
   usdtAmount: number;

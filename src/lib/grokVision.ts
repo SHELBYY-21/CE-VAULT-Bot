@@ -28,6 +28,66 @@ const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and rep
 }
 If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
 
+// ─── USDT transfer screenshot (Binance/OKX/TronScan ฯลฯ) ───
+export interface UsdtExtract {
+  amount: number | null;   // จำนวน USDT ที่โอน
+  network: string | null;  // TRC20 | ERC20 | BEP20 | SOL | ...
+  txid: string | null;     // transaction hash
+  time: string | null;     // "HH:MM"
+  confidence: number | null;
+  raw?: string;
+}
+
+const USDT_PROMPT = `You are a crypto (USDT) transfer screenshot parser. Reply with ONLY a JSON object (no prose, no markdown fence):
+{
+  "amount": number,              // USDT amount transferred (the main figure)
+  "network": "TRC20|ERC20|BEP20|SOL|POLYGON|null",  // blockchain network if shown
+  "txid": "transaction hash or null",
+  "time": "HH:MM or null",       // 24-hour transfer time
+  "confidence": number           // 0-100 how confident this is a real USDT transfer screenshot with a legible amount
+}
+If a field is unreadable use null (except confidence — always a number). Do not invent values. Output raw JSON only.`;
+
+export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract | null> {
+  const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+  if (!key || !imageUrl) return null;
+  const envModel = process.env.GROK_MODEL;
+  const model = !envModel || /grok-2-vision/i.test(envModel) ? 'grok-4.5' : envModel;
+  try {
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model, temperature: 0,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: USDT_PROMPT },
+          { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+        ] }],
+      }),
+    });
+    if (!res.ok) { console.error('Grok USDT error:', res.status); return null; }
+    const json: any = await res.json();
+    const text: string = json?.choices?.[0]?.message?.content ?? '';
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const first = cleaned.indexOf('{'), last = cleaned.lastIndexOf('}');
+    if (first < 0 || last < 0) return { amount: null, network: null, txid: null, time: null, confidence: null, raw: text };
+    const data = JSON.parse(cleaned.slice(first, last + 1));
+    const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : Number.isFinite(parseFloat(v)) ? parseFloat(v) : null);
+    const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    return {
+      amount: num(data.amount),
+      network: str(data.network)?.toUpperCase() ?? null,
+      txid: str(data.txid),
+      time: str(data.time),
+      confidence: num(data.confidence),
+      raw: text,
+    };
+  } catch (e: any) {
+    console.error('analyzeUsdtWithGrok error:', e?.message);
+    return null;
+  }
+}
+
 export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract | null> {
   const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
   if (!key || !imageUrl) return null;

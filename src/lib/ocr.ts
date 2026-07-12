@@ -3,7 +3,20 @@
 //   1) Grok Vision (ถ้ามี GROK_API_KEY) — คืนข้อมูล structured ทั้งชุด
 //   2) OCR.space (fallback) — คืนแค่ยอด THB
 // ============================================================
-import { analyzeSlipWithGrok, SlipExtract } from './grokVision';
+import { analyzeSlipWithGrok, analyzeUsdtWithGrok, SlipExtract, UsdtExtract } from './grokVision';
+
+/** อ่านสกรีนช็อตโอน USDT (Grok, 12s timeout) — null ถ้าอ่านไม่ได้/ไม่มี key */
+export async function analyzeUsdtScreenshot(imageUrl: string): Promise<UsdtExtract | null> {
+  try {
+    return await Promise.race([
+      analyzeUsdtWithGrok(imageUrl),
+      new Promise<UsdtExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
+    ]);
+  } catch (e) {
+    console.warn('USDT OCR error:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
 
 function pickAmount(text: string): number | null {
   const withDecimals = (text.match(/\d[\d,]*\.\d{2}/g) || []).map((m) => parseFloat(m.replace(/,/g, '')));
