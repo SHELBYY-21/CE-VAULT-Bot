@@ -41,3 +41,7 @@ Thumbs.db
 
 # Session-continuity notes from the "remember" skill (tooling state, not code)
 .remember/
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
