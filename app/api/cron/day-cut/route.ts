@@ -1,4 +1,4 @@
-// GET /api/cron/day-cut — Vercel Cron ยิงตอน 04:00 เวลาไทย (21:00 UTC)
+// GET /api/cron/day-cut — Vercel Cron ยิงตอน 22:00 เวลาไทย/4 ทุ่ม (15:00 UTC)
 // ทุกห้อง: โพสต์สรุปวันเก่าเข้าห้อง → ตั้ง day_cut_at = ตอนนี้ (เริ่มวันใหม่อัตโนมัติ)
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       const { ledger, staff } = await getRoomDaySummary(chatId, (room as any).day_cut_at);
       // โพสต์สรุปเฉพาะห้องที่มีรายการ (กันสแปมห้องว่าง)
       if (ledger.incomingList.length > 0) {
-        await sendMessage(chatId, { text: '🌙 <b>สรุปปิดวัน (อัตโนมัติ 04:00)</b>' });
+        await sendMessage(chatId, { text: '🌙 <b>สรุปปิดวัน (อัตโนมัติ 22:00)</b>' });
         await sendMessage(chatId, UI.ledgerCard({
           incomingList: ledger.incomingList,
           outgoingList: ledger.outgoingList,
