@@ -117,17 +117,32 @@ export async function setChatRate(chatId: number, rate: number, roomName?: strin
     .then(undefined, () => undefined);
 }
 
-/** ดึงเรต + ชื่อห้อง (Sell Rate มาจาก fixed_rate) */
-export async function getRoom(chatId: number): Promise<{ rate: number | null; name: string | null }> {
+/** ดึงเรต + ชื่อห้อง + จุดตัดวัน (Sell Rate มาจาก fixed_rate) */
+export async function getRoom(
+  chatId: number,
+): Promise<{ rate: number | null; name: string | null; dayCutAt: string | null }> {
   try {
     const { data, error } = await supabaseAdmin
       .from('chat_settings')
-      .select('fixed_rate, room_name')
+      .select('fixed_rate, room_name, day_cut_at')
       .eq('chat_id', chatId)
       .maybeSingle();
-    if (error || !data) return { rate: null, name: null };
-    return { rate: data.fixed_rate ? Number(data.fixed_rate) : null, name: (data as any).room_name ?? null };
+    if (error || !data) return { rate: null, name: null, dayCutAt: null };
+    return {
+      rate: data.fixed_rate ? Number(data.fixed_rate) : null,
+      name: (data as any).room_name ?? null,
+      dayCutAt: (data as any).day_cut_at ?? null,
+    };
   } catch {
-    return { rate: null, name: null };
+    return { rate: null, name: null, dayCutAt: null };
   }
+}
+
+/** เริ่มวันใหม่ — ตั้งจุดตัดวันของห้องนี้ = ตอนนี้ (ยอดวันนี้เริ่มนับใหม่จากตรงนี้) */
+export async function startNewDay(chatId: number): Promise<void> {
+  const now = new Date().toISOString();
+  await supabaseAdmin
+    .from('chat_settings')
+    .upsert({ chat_id: chatId, day_cut_at: now, updated_at: now })
+    .then(undefined, () => undefined);
 }

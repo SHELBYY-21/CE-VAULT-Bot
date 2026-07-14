@@ -23,7 +23,7 @@ import {
   getTodayLedger,
   recordDeal,
 } from '@/lib/transactions';
-import { getChatRate, setChatRate, getRoom } from '@/lib/botSessions';
+import { getChatRate, setChatRate, getRoom, startNewDay } from '@/lib/botSessions';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
@@ -147,13 +147,8 @@ async function handleUpdate(update: any): Promise<void> {
 
   // ----- /ยอด , /ledger : สรุปยอดวันนี้ (การ์ดเต็ม) -----
   if (text && (text.startsWith('/ยอด') || text.startsWith('/ledger') || text.startsWith('/สรุป'))) {
-    const [led, rates, chatRate] = await Promise.all([
-      getTodayLedger(),
-      getLatestRates(),
-      getChatRate(chatId),
-    ]);
-    const feePercent =
-      led.totalThb > 0 ? ((led.totalThb - led.totalIncomingUsdt * rates.marketUsdtRate) / led.totalThb) * 100 : 0;
+    const room = await getRoom(chatId);
+    const led = await getTodayLedger(room.dayCutAt);
     await sendMessage(
       chatId,
       UI.ledgerCard({
@@ -162,8 +157,8 @@ async function handleUpdate(update: any): Promise<void> {
         totalThb: led.totalThb,
         totalIncomingUsdt: led.totalIncomingUsdt,
         totalOutgoingUsdt: led.totalOutgoingUsdt,
-        fixedRate: chatRate,
-        feePercent,
+        fixedRate: room.rate,
+        feePercent: 0,
         netProfitThb: led.netProfitThb,
         lastAdminName: led.lastAdminName,
       }),
@@ -184,8 +179,10 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  const session = await getSession(chatId, userId);
-  const admin = await getAdminByTelegramId(userId);
+  const [session, admin] = await Promise.all([
+    getSession(chatId, userId),
+    getAdminByTelegramId(userId),
+  ]);
 
   // ----- /rate : ดูเรต (ตลาด=Binance TH สด) / ตั้งเรตขาย -----
   if (text && text.startsWith('/rate')) {
@@ -239,12 +236,10 @@ async function handleUpdate(update: any): Promise<void> {
     }
 
     // ── (B) เริ่มดีลใหม่ → รูปนี้คือ "สลิปธนาคาร THB" ──
-    const placeholderId = await sendMessage(chatId, UI.uploading(0));
+    const placeholderId = await sendMessage(chatId, UI.uploading(1));
     try {
       const slipUrl = await uploadSlipFromTelegram(fileId);
-      await editMessage(chatId, placeholderId, UI.uploading(1));
       const slip = await analyzeSlip(slipUrl);
-      await editMessage(chatId, placeholderId, UI.uploading(2));
 
       const [room, hist] = await Promise.all([
         getRoom(chatId),
@@ -485,7 +480,8 @@ async function finalizeDeal(
   sellRate: number,
   roomName: string | null,
 ): Promise<void> {
-  const [bankAccountId, led] = await Promise.all([getDefaultBankAccountId(), getTodayLedger()]);
+  const [bankAccountId, room] = await Promise.all([getDefaultBankAccountId(), getRoom(chatId)]);
+  const led = await getTodayLedger(room.dayCutAt);
   const ledgerRef = session.ledger_ref || UI.newLedgerRef();
 
   const r = await recordDeal({
@@ -602,6 +598,18 @@ async function handleCallback(cb: any): Promise<void> {
     await clearSession(chatId, userId);
     await answerCallback(id, 'ยกเลิกแล้ว');
     await sendMessage(chatId, UI.cancelled());
+    return;
+  }
+
+  // ----- newday : เริ่มวันใหม่ (day-cut) → รีเซ็ตยอดสรุปของห้อง -----
+  if (action === 'newday') {
+    await answerCallback(id, '🔄 เริ่มวันใหม่');
+    await startNewDay(chatId);
+    const label = new Date().toLocaleString('th-TH', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: 'Asia/Bangkok',
+    });
+    await sendMessage(chatId, UI.newDayStarted(label));
     return;
   }
 

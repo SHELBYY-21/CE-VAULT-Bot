@@ -672,9 +672,25 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       `💰 กำไรสุทธิ           <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} ฿</b>\n` +
       (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด  <b>${d.lastAdminName}</b>\n` : '') +
       `${SIG}`,
-    reply_markup: APP
-      ? { inline_keyboard: [[{ text: '📊 เปิดแดชบอร์ด CE Vault', url: `${APP}/dashboard` }]] }
-      : undefined,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' }],
+        ...(APP ? [[{ text: '📊 เปิดแดชบอร์ด CE Vault', url: `${APP}/dashboard` }]] : []),
+      ],
+    },
+  };
+}
+
+/** ยืนยันเริ่มวันใหม่ (day-cut) */
+export function newDayStarted(atLabel: string): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_INDIGO}\n` +
+      `🔄 <b>เริ่มวันใหม่แล้ว</b>\n` +
+      `${THIN}\n` +
+      `<i>ยอดสรุปเริ่มนับใหม่ตั้งแต่</i>  <b>${atLabel}</b>\n` +
+      `<i>ยอดก่อนหน้ายังอยู่ในแดชบอร์ด/ประวัติครบ</i>\n` +
+      `${SIG}`,
   };
 }
 

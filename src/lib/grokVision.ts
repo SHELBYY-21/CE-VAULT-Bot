@@ -48,11 +48,19 @@ const USDT_PROMPT = `You are a crypto (USDT) transfer screenshot parser. Reply w
 }
 If a field is unreadable use null (except confidence — always a number). Do not invent values. Output raw JSON only.`;
 
+// เลือก model: default = grok-4.20-non-reasoning (เร็วสุดสำหรับ OCR ~1.2s)
+// self-heal: รุ่นที่ถูกถอด (grok-2-vision) หรือรุ่น reasoning ที่ช้า (4.3/4.5) → ใช้รุ่นเร็วแทน
+const FAST_MODEL = 'grok-4.20-non-reasoning';
+function pickModel(): string {
+  const m = process.env.GROK_MODEL;
+  if (!m || /grok-2-vision|grok-4\.5|grok-4\.3|reasoning$/i.test(m)) return FAST_MODEL;
+  return m;
+}
+
 export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract | null> {
   const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
   if (!key || !imageUrl) return null;
-  const envModel = process.env.GROK_MODEL;
-  const model = !envModel || /grok-2-vision/i.test(envModel) ? 'grok-4.5' : envModel;
+  const model = pickModel();
   try {
     const res = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
@@ -91,9 +99,7 @@ export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract
 export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract | null> {
   const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
   if (!key || !imageUrl) return null;
-  // default = grok-4.5 (รองรับ vision). self-heal: ถ้า env ยังเป็น grok-2-vision-* (รุ่นที่ถูกถอด) ให้ override
-  const envModel = process.env.GROK_MODEL;
-  const model = !envModel || /grok-2-vision/i.test(envModel) ? 'grok-4.5' : envModel;
+  const model = pickModel();
 
   try {
     const res = await fetch('https://api.x.ai/v1/chat/completions', {

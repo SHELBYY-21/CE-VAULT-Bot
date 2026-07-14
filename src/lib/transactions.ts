@@ -92,7 +92,7 @@ export async function getLatestRates(): Promise<{
 }
 
 /** ดึง ledger รายวัน (ทั้งระบบ) — ใช้กับคำสั่ง /ยอด และ /summary */
-export async function getTodayLedger(): Promise<{
+export async function getTodayLedger(sinceIso?: string | null): Promise<{
   incomingList: { time: string; thb: number; usdt: number }[];
   outgoingList: { time: string; usdt: number }[];
   totalThb: number;
@@ -101,12 +101,14 @@ export async function getTodayLedger(): Promise<{
   netProfitThb: number;
   lastAdminName: string | null;
 }> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  // นับจากจุดที่ช้ากว่า: เที่ยงคืน หรือ จุดตัดวันที่ตั้งเอง (เริ่มวันใหม่)
+  const cut = sinceIso && new Date(sinceIso) > midnight ? sinceIso : midnight.toISOString();
   const { data } = await supabaseAdmin
     .from('transactions')
     .select('created_at, type, thb_amount, usdt_amount, net_profit_thb, admins(name)')
-    .gte('created_at', start.toISOString())
+    .gte('created_at', cut)
     .order('created_at', { ascending: true });
 
   const rows = (data ?? []) as any[];
