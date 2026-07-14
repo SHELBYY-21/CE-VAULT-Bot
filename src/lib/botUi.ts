@@ -635,6 +635,7 @@ export interface LedgerData {
   netProfitThb: number;
   lastAdminName: string | null;
   roomName?: string | null;   // ชื่อห้อง (กลุ่ม)
+  staff?: { name: string; count: number; profitThb: number }[]; // Top Staff
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
@@ -672,6 +673,13 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       `\n${THIN}\n` +
       `💰 กำไรสุทธิ           <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} ฿</b>\n` +
       (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด  <b>${d.lastAdminName}</b>\n` : '') +
+      (d.staff && d.staff.length
+        ? `${THIN}\n👷 <b>Top Staff</b>\n` +
+          d.staff
+            .slice(0, 5)
+            .map((s, i) => `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} ฿</b>`)
+            .join('\n') + '\n'
+        : '') +
       `${SIG}`,
     reply_markup: {
       inline_keyboard: [
@@ -743,6 +751,18 @@ export function resetDone(count: number): OutgoingMessage {
       `${THIN}\n` +
       `ลบไป <b>${count} รายการ</b> · ยอดเริ่มนับใหม่จาก 0\n` +
       `${SIG}`,
+  };
+}
+
+/** ยืนยันตั้งชื่อห้อง */
+export function roomNameSet(name: string): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GREEN}\n` +
+      `✅ <b>ตั้งชื่อห้องแล้ว</b>\n` +
+      `${THIN}\n` +
+      `🏠 ห้องนี้คือ  <b>${name}</b>\n` +
+      `<i>แสดงในแดชบอร์ด/สรุปแทนเลขห้อง</i>`,
   };
 }
 

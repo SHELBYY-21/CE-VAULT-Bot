@@ -107,6 +107,26 @@ export default function DashboardPage() {
 
   const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 
+  // Export CSV จากข้อมูลที่โหลดแล้ว (client-side — ไม่แตะ secret/endpoint)
+  function exportCsv() {
+    const cols = ['ledger_ref', 'created_at', 'room_name', 'thb_amount', 'usdt_amount', 'buy_rate', 'sell_rate', 'net_profit_thb', 'receiver_name', 'receiver_bank', 'receiver_last4'];
+    const cell = (v: any) => {
+      if (v == null) return '';
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = transactions
+      .filter((t) => t.type === 'THB_DEPOSIT')
+      .map((t) => [cell((t as any).admins?.name), ...cols.map((c) => cell((t as any)[c]))].join(','));
+    const csv = '﻿' + [['staff', ...cols].join(','), ...rows].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ce-vault-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <header className="reveal flex flex-wrap items-center justify-between gap-3">
@@ -121,9 +141,17 @@ export default function DashboardPage() {
             Secure USDT Ledger · อัปเดตแบบเรียลไทม์
           </p>
         </div>
-        <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-white/5 px-3.5 py-1.5 text-xs font-medium text-[color:var(--text)] backdrop-blur">
-          <span className="live-dot" /> LIVE
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCsv}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-white/5 px-3.5 py-1.5 text-xs font-medium text-[color:var(--text)] backdrop-blur transition hover:bg-white/10"
+          >
+            ⬇ Export CSV
+          </button>
+          <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-white/5 px-3.5 py-1.5 text-xs font-medium text-[color:var(--text)] backdrop-blur">
+            <span className="live-dot" /> LIVE
+          </span>
+        </div>
       </header>
 
       <div className="mt-6">

@@ -4,8 +4,8 @@
   "regions": ["sin1"],
   "crons": [
     {
-      "path": "/api/cron/daily-summary?secret=$API_SECRET",
-      "schedule": "59 16 * * *"
+      "path": "/api/cron/day-cut",
+      "schedule": "0 21 * * *"
     }
   ]
 }

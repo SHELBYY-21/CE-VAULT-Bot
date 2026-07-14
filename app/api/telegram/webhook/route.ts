@@ -23,9 +23,12 @@ import {
   getTodayLedger,
   recordDeal,
   resetRoom,
+  getStaffLeaderboard,
+  exportRoomCsv,
 } from '@/lib/transactions';
-import { getChatRate, setChatRate, getRoom, startNewDay } from '@/lib/botSessions';
+import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
@@ -158,13 +161,9 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- /newday : เริ่มวันใหม่ (day-cut) -----
+  // ----- /newday : เริ่มวันใหม่ (day-cut) — โพสต์สรุปวันเก่าก่อน -----
   if (text && text.startsWith('/newday')) {
-    await startNewDay(chatId);
-    const label = new Date().toLocaleString('th-TH', {
-      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
-    });
-    await sendMessage(chatId, UI.newDayStarted(label));
+    await doNewDay(chatId);
     return;
   }
 
@@ -172,6 +171,38 @@ async function handleUpdate(update: any): Promise<void> {
   if (text && text.startsWith('/reset')) {
     const room = await getRoom(chatId);
     await sendMessage(chatId, UI.resetAsk(room.name));
+    return;
+  }
+
+  // ----- /setroom <ชื่อ> : ตั้งชื่อห้อง -----
+  if (text && (text.startsWith('/setroom') || text.startsWith('/ห้อง'))) {
+    const name = text.replace('/setroom', '').replace('/ห้อง', '').trim().slice(0, 40);
+    if (!name) {
+      await sendMessage(chatId, { text: 'พิมพ์ <code>/setroom ห้อง A</code> เพื่อตั้งชื่อห้องนี้' });
+      return;
+    }
+    await setRoomName(chatId, name);
+    await sendMessage(chatId, UI.roomNameSet(name));
+    return;
+  }
+
+  // ----- /export : ดาวน์โหลด CSV ยอดห้องนี้ (ส่งเป็นไฟล์ในแชต) -----
+  if (text && text.startsWith('/export')) {
+    const room = await getRoom(chatId);
+    // /export all = ทั้งหมด, ไม่งั้นเฉพาะช่วงวันนี้ (จาก day-cut)
+    const wantAll = /all|ทั้งหมด/.test(text);
+    const { csv, rows } = await exportRoomCsv(chatId, wantAll ? null : room.dayCutAt);
+    if (rows === 0) {
+      await sendMessage(chatId, { text: 'ยังไม่มีธุรกรรมให้ export' });
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    await sendDocument(
+      chatId,
+      `ce-vault-${room.name || chatId}-${stamp}.csv`,
+      csv,
+      `📄 <b>${rows} รายการ</b> · ${room.name || 'ห้องนี้'}${wantAll ? ' (ทั้งหมด)' : ' (วันนี้)'}`,
+    );
     return;
   }
 
@@ -397,10 +428,24 @@ async function handleUpdate(update: any): Promise<void> {
   }
 }
 
-/** ส่งการ์ดสรุปยอด "ห้องนี้" (แยกตาม chat_id + day-cut) */
+/** เริ่มวันใหม่: โพสต์สรุปวันเก่าก่อน → ตั้ง day-cut → ยืนยัน */
+async function doNewDay(chatId: number): Promise<void> {
+  await sendMessage(chatId, { text: '🗓 <b>สรุปยอดก่อนเริ่มวันใหม่</b>' });
+  await sendLedger(chatId); // สรุปวันเก่า (ก่อนตัด)
+  await startNewDay(chatId);
+  const label = new Date().toLocaleString('th-TH', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+  });
+  await sendMessage(chatId, UI.newDayStarted(label));
+}
+
+/** ส่งการ์ดสรุปยอด "ห้องนี้" (แยกตาม chat_id + day-cut) + Top Staff */
 async function sendLedger(chatId: number): Promise<void> {
   const room = await getRoom(chatId);
-  const led = await getTodayLedger(room.dayCutAt, chatId);
+  const [led, staff] = await Promise.all([
+    getTodayLedger(room.dayCutAt, chatId),
+    getStaffLeaderboard(room.dayCutAt, chatId),
+  ]);
   await sendMessage(
     chatId,
     UI.ledgerCard({
@@ -414,6 +459,7 @@ async function sendLedger(chatId: number): Promise<void> {
       netProfitThb: led.netProfitThb,
       lastAdminName: led.lastAdminName,
       roomName: room.name,
+      staff,
     }),
   );
 }
@@ -633,15 +679,10 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- newday : เริ่มวันใหม่ (day-cut) → รีเซ็ตยอดสรุปของห้อง -----
+  // ----- newday : เริ่มวันใหม่ (day-cut) → โพสต์สรุปวันเก่าก่อน -----
   if (action === 'newday') {
     await answerCallback(id, '🔄 เริ่มวันใหม่');
-    await startNewDay(chatId);
-    const label = new Date().toLocaleString('th-TH', {
-      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-      hour12: false, timeZone: 'Asia/Bangkok',
-    });
-    await sendMessage(chatId, UI.newDayStarted(label));
+    await doNewDay(chatId);
     return;
   }
 
@@ -660,10 +701,12 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) -----
+  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) — โพสต์สรุปเก็บไว้ก่อนลบ -----
   if (action === 'resetgo') {
     await answerCallback(id, '🗑 กำลังล้าง...');
     try {
+      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
+      await sendLedger(chatId);
       const n = await resetRoom(chatId);
       await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
       await sendMessage(chatId, UI.resetDone(n));

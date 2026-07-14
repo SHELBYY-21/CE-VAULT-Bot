@@ -146,3 +146,12 @@ export async function startNewDay(chatId: number): Promise<void> {
     .upsert({ chat_id: chatId, day_cut_at: now, updated_at: now })
     .then(undefined, () => undefined);
 }
+
+/** ตั้งชื่อห้อง (แสดงใน dashboard / ledger แทนเลข chat) */
+export async function setRoomName(chatId: number, name: string): Promise<void> {
+  const now = new Date().toISOString();
+  await supabaseAdmin
+    .from('chat_settings')
+    .upsert({ chat_id: chatId, room_name: name, updated_at: now })
+    .then(undefined, () => undefined);
+}

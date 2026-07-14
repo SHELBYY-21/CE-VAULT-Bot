@@ -35,6 +35,23 @@ export async function sendMessage(chatId: number, m: OutgoingMessage): Promise<n
   return r.message_id;
 }
 
+/** ส่งไฟล์ (เช่น CSV) เป็น document ในแชต */
+export async function sendDocument(
+  chatId: number,
+  filename: string,
+  content: string,
+  caption?: string,
+): Promise<void> {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) {
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+  }
+  form.append('document', new Blob(['﻿' + content], { type: 'text/csv' }), filename);
+  await fetch(`${API}/sendDocument`, { method: 'POST', body: form }).catch(() => undefined);
+}
+
 /** แก้ไขข้อความในที่เดิม (เอฟเฟกต์ progress) */
 export async function editMessage(chatId: number, messageId: number, m: OutgoingMessage): Promise<void> {
   try {

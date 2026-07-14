@@ -438,6 +438,30 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
   return { transactionId: tx.id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
 }
 
+/** สร้าง CSV ธุรกรรมของห้อง (สำหรับ /export → ส่งเป็นไฟล์ในแชต) */
+export async function exportRoomCsv(chatId: number, sinceIso?: string | null): Promise<{ csv: string; rows: number }> {
+  let q = supabaseAdmin
+    .from('transactions')
+    .select('ledger_ref, created_at, room_name, thb_amount, usdt_amount, buy_rate, sell_rate, net_profit_thb, receiver_name, receiver_bank, receiver_last4, usdt_network, usdt_txid, ocr_confidence, admins(name)')
+    .eq('type', 'THB_DEPOSIT')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(5000);
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  const { data } = await q;
+  const rows = (data ?? []) as any[];
+  const cols = ['ledger_ref', 'created_at', 'staff', 'room_name', 'thb_amount', 'usdt_amount', 'buy_rate', 'sell_rate', 'net_profit_thb', 'receiver_name', 'receiver_bank', 'receiver_last4', 'usdt_network', 'usdt_txid', 'ocr_confidence'];
+  const cell = (v: any) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = rows.map((r) =>
+    cols.map((c) => (c === 'staff' ? cell(r.admins?.name) : cell(r[c]))).join(','),
+  );
+  return { csv: [cols.join(','), ...lines].join('\n'), rows: rows.length };
+}
+
 /** ล้างธุรกรรมทั้งหมดของห้องนี้ (hard reset) — คืนจำนวนที่ลบ */
 export async function resetRoom(chatId: number): Promise<number> {
   const { data } = await supabaseAdmin
@@ -479,6 +503,49 @@ export async function getRoomLeaderboard(sinceIso?: string | null): Promise<Room
     byRoom.set(key, cur);
   }
   return [...byRoom.values()].sort((a, b) => b.profitThb - a.profitThb);
+}
+
+/** Top Staff — จัดอันดับพนักงานตามกำไร/จำนวนดีล (ต่อห้อง + ช่วงเวลา) */
+export interface StaffStat {
+  name: string;
+  count: number;
+  totalThb: number;
+  profitThb: number;
+}
+export async function getStaffLeaderboard(
+  sinceIso?: string | null,
+  chatId?: number | null,
+): Promise<StaffStat[]> {
+  let q = supabaseAdmin
+    .from('transactions')
+    .select('thb_amount, net_profit_thb, admins(name)')
+    .eq('type', 'THB_DEPOSIT');
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  if (chatId != null) q = q.eq('chat_id', chatId);
+  const { data } = await q;
+  const rows = (data ?? []) as any[];
+  const map = new Map<string, StaffStat>();
+  for (const r of rows) {
+    const name = r.admins?.name ?? '-';
+    const cur = map.get(name) ?? { name, count: 0, totalThb: 0, profitThb: 0 };
+    cur.count += 1;
+    cur.totalThb += Number(r.thb_amount || 0);
+    cur.profitThb += Number(r.net_profit_thb || 0);
+    map.set(name, cur);
+  }
+  return [...map.values()].sort((a, b) => b.profitThb - a.profitThb);
+}
+
+/** ดึงข้อมูลสรุปวันเก่าของห้อง (ใช้โพสต์ก่อนเริ่มวันใหม่) — รวม staff */
+export async function getRoomDaySummary(
+  chatId: number,
+  sinceIso?: string | null,
+): Promise<{ ledger: Awaited<ReturnType<typeof getTodayLedger>>; staff: StaffStat[] }> {
+  const [ledger, staff] = await Promise.all([
+    getTodayLedger(sinceIso, chatId),
+    getStaffLeaderboard(sinceIso, chatId),
+  ]);
+  return { ledger, staff };
 }
 
 export interface RecordSendInput {
