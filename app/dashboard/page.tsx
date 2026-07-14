@@ -86,6 +86,27 @@ export default function DashboardPage() {
     return { totalNetProfitThb, totalFeeUsdt, averageFeePercent, txCount: transactions.length };
   }, [transactions]);
 
+  // กำไรแยกห้อง (group by chat_id) — เรียงกำไรมากสุดก่อน
+  const rooms = useMemo(() => {
+    const map = new Map<string, { name: string; count: number; thb: number; usdt: number; profit: number }>();
+    for (const t of transactions) {
+      if (t.type !== 'THB_DEPOSIT') continue;
+      const cid = (t as any).chat_id;
+      const key = String(cid ?? 'legacy');
+      const name = (t as any).room_name || (cid ? `ห้อง ${String(cid).slice(-5)}` : 'ไม่ระบุห้อง (เก่า)');
+      const cur = map.get(key) ?? { name, count: 0, thb: 0, usdt: 0, profit: 0 };
+      cur.count += 1;
+      cur.thb += Number(t.thb_amount || 0);
+      cur.usdt += Number(t.usdt_amount || 0);
+      cur.profit += Number(t.net_profit_thb || 0);
+      if (!cur.name && name) cur.name = name;
+      map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.profit - a.profit);
+  }, [transactions]);
+
+  const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <header className="reveal flex flex-wrap items-center justify-between gap-3">
@@ -117,6 +138,46 @@ export default function DashboardPage() {
           marketIsLive={liveMarket != null}
         />
       </div>
+
+      {/* กำไรแยกห้อง (Top Rooms) */}
+      {rooms.length > 0 && (
+        <div className="glass reveal mt-6 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold tracking-wide text-[color:var(--text)]">
+              🏠 กำไรแยกห้อง <span className="text-[color:var(--muted)]">({rooms.length})</span>
+            </h2>
+            <span className="text-xs text-[color:var(--muted)]">เรียงกำไรมากสุด</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[440px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-[color:var(--muted)]">
+                  <th className="pb-2 font-medium">#</th>
+                  <th className="pb-2 font-medium">ห้อง</th>
+                  <th className="pb-2 text-right font-medium">รายการ</th>
+                  <th className="pb-2 text-right font-medium">THB</th>
+                  <th className="pb-2 text-right font-medium">USDT</th>
+                  <th className="pb-2 text-right font-medium">กำไร ฿</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rooms.map((r, i) => (
+                  <tr key={r.name + i} className="border-t border-[color:var(--border)]">
+                    <td className="py-2 text-[color:var(--muted)]">{i + 1}</td>
+                    <td className="py-2 font-medium">{r.name}</td>
+                    <td className="py-2 text-right tabular-nums">{r.count}</td>
+                    <td className="py-2 text-right tabular-nums">{nf.format(r.thb)}</td>
+                    <td className="py-2 text-right tabular-nums">{nf.format(r.usdt)}</td>
+                    <td className={`py-2 text-right font-semibold tabular-nums ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {r.profit >= 0 ? '+' : ''}{nf.format(r.profit)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">

@@ -22,6 +22,7 @@ import {
   deleteTransaction,
   getTodayLedger,
   recordDeal,
+  resetRoom,
 } from '@/lib/transactions';
 import { getChatRate, setChatRate, getRoom, startNewDay } from '@/lib/botSessions';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
@@ -145,24 +146,32 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- /ยอด , /ledger : สรุปยอดวันนี้ (การ์ดเต็ม) -----
-  if (text && (text.startsWith('/ยอด') || text.startsWith('/ledger') || text.startsWith('/สรุป'))) {
+  // ----- /menu : เมนูคำสั่งทั้งหมด -----
+  if (text && text.startsWith('/menu')) {
+    await sendMessage(chatId, UI.menuCard());
+    return;
+  }
+
+  // ----- /ยอด , /today , /ledger : สรุปยอดห้องนี้วันนี้ (แยกห้อง) -----
+  if (text && (text.startsWith('/ยอด') || text.startsWith('/today') || text.startsWith('/ledger') || text.startsWith('/สรุป'))) {
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- /newday : เริ่มวันใหม่ (day-cut) -----
+  if (text && text.startsWith('/newday')) {
+    await startNewDay(chatId);
+    const label = new Date().toLocaleString('th-TH', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+    });
+    await sendMessage(chatId, UI.newDayStarted(label));
+    return;
+  }
+
+  // ----- /reset : ล้างยอดห้องนี้ (ถามยืนยันก่อน) -----
+  if (text && text.startsWith('/reset')) {
     const room = await getRoom(chatId);
-    const led = await getTodayLedger(room.dayCutAt);
-    await sendMessage(
-      chatId,
-      UI.ledgerCard({
-        incomingList: led.incomingList,
-        outgoingList: led.outgoingList,
-        totalThb: led.totalThb,
-        totalIncomingUsdt: led.totalIncomingUsdt,
-        totalOutgoingUsdt: led.totalOutgoingUsdt,
-        fixedRate: room.rate,
-        feePercent: 0,
-        netProfitThb: led.netProfitThb,
-        lastAdminName: led.lastAdminName,
-      }),
-    );
+    await sendMessage(chatId, UI.resetAsk(room.name));
     return;
   }
 
@@ -388,6 +397,27 @@ async function handleUpdate(update: any): Promise<void> {
   }
 }
 
+/** ส่งการ์ดสรุปยอด "ห้องนี้" (แยกตาม chat_id + day-cut) */
+async function sendLedger(chatId: number): Promise<void> {
+  const room = await getRoom(chatId);
+  const led = await getTodayLedger(room.dayCutAt, chatId);
+  await sendMessage(
+    chatId,
+    UI.ledgerCard({
+      incomingList: led.incomingList,
+      outgoingList: led.outgoingList,
+      totalThb: led.totalThb,
+      totalIncomingUsdt: led.totalIncomingUsdt,
+      totalOutgoingUsdt: led.totalOutgoingUsdt,
+      fixedRate: room.rate,
+      feePercent: 0,
+      netProfitThb: led.netProfitThb,
+      lastAdminName: led.lastAdminName,
+      roomName: room.name,
+    }),
+  );
+}
+
 // รวมฟิลด์ deal ของ session เดิม (setSession เขียนทับทุกคอลัมน์ ต้องส่งครบกันหาย)
 function dealSessionFields(session: any): any {
   return {
@@ -481,12 +511,13 @@ async function finalizeDeal(
   roomName: string | null,
 ): Promise<void> {
   const [bankAccountId, room] = await Promise.all([getDefaultBankAccountId(), getRoom(chatId)]);
-  const led = await getTodayLedger(room.dayCutAt);
+  const led = await getTodayLedger(room.dayCutAt, chatId);
   const ledgerRef = session.ledger_ref || UI.newLedgerRef();
 
   const r = await recordDeal({
     adminTelegramId: userId,
-    thb, usdt, sellRate, roomName,
+    chatId,
+    thb, usdt, sellRate, roomName: roomName ?? room.name,
     ocrConfidence: session.ocr_conf ?? null,
     ledgerRef,
     slipImageUrl: session.slip_url ?? null,
@@ -541,6 +572,7 @@ async function finalizeDeal(
       feePercent: 0,
       netProfitThb: led.netProfitThb,
       lastAdminName: led.lastAdminName,
+      roomName: room.name,
     }),
   );
 }
@@ -610,6 +642,34 @@ async function handleCallback(cb: any): Promise<void> {
       hour12: false, timeZone: 'Asia/Bangkok',
     });
     await sendMessage(chatId, UI.newDayStarted(label));
+    return;
+  }
+
+  // ----- menu_today : ปุ่มดูยอดจากเมนู -----
+  if (action === 'menu_today') {
+    await answerCallback(id);
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- resetask : ถามยืนยันล้างยอดห้อง -----
+  if (action === 'resetask') {
+    await answerCallback(id);
+    const room = await getRoom(chatId);
+    await sendMessage(chatId, UI.resetAsk(room.name));
+    return;
+  }
+
+  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) -----
+  if (action === 'resetgo') {
+    await answerCallback(id, '🗑 กำลังล้าง...');
+    try {
+      const n = await resetRoom(chatId);
+      await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
+      await sendMessage(chatId, UI.resetDone(n));
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
+    }
     return;
   }
 

@@ -92,7 +92,10 @@ export async function getLatestRates(): Promise<{
 }
 
 /** ดึง ledger รายวัน (ทั้งระบบ) — ใช้กับคำสั่ง /ยอด และ /summary */
-export async function getTodayLedger(sinceIso?: string | null): Promise<{
+export async function getTodayLedger(
+  sinceIso?: string | null,
+  chatId?: number | null,
+): Promise<{
   incomingList: { time: string; thb: number; usdt: number }[];
   outgoingList: { time: string; usdt: number }[];
   totalThb: number;
@@ -105,11 +108,13 @@ export async function getTodayLedger(sinceIso?: string | null): Promise<{
   midnight.setHours(0, 0, 0, 0);
   // นับจากจุดที่ช้ากว่า: เที่ยงคืน หรือ จุดตัดวันที่ตั้งเอง (เริ่มวันใหม่)
   const cut = sinceIso && new Date(sinceIso) > midnight ? sinceIso : midnight.toISOString();
-  const { data } = await supabaseAdmin
+  let q = supabaseAdmin
     .from('transactions')
     .select('created_at, type, thb_amount, usdt_amount, net_profit_thb, admins(name)')
     .gte('created_at', cut)
     .order('created_at', { ascending: true });
+  if (chatId != null) q = q.eq('chat_id', chatId); // แยกห้อง
+  const { data } = await q;
 
   const rows = (data ?? []) as any[];
   const fmt = (iso: string) =>
@@ -354,6 +359,7 @@ export async function deleteTransaction(txId: string): Promise<{ name: string; h
 // ============================================================
 export interface RecordDealInput {
   adminTelegramId: number;
+  chatId?: number | null;         // ห้อง (กลุ่มเทเลแกรม) ที่ทำรายการ
   thb: number;
   usdt: number;
   sellRate: number;               // เรตห้อง (snapshot)
@@ -382,41 +388,97 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
   const buyRate = input.usdt > 0 ? input.thb / input.usdt : 0;
   const profitThb = input.usdt * input.sellRate - input.thb; // = (sell − buy) × usdt
 
-  const { data: tx, error } = await supabaseAdmin
-    .from('transactions')
-    .insert({
-      admin_id: admin.id,
-      bank_account_id: input.bankAccountId ?? null,
-      type: 'THB_DEPOSIT',
-      thb_amount: input.thb,
-      usdt_amount: input.usdt,
-      sell_rate: input.sellRate,
-      buy_rate: buyRate,
-      cost_per_unit: buyRate,
-      sell_value_thb: input.usdt * input.sellRate,
-      net_profit_thb: profitThb,
-      profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
-      room_name: input.roomName ?? null,
-      ocr_confidence: input.ocrConfidence ?? null,
-      usdt_network: input.usdtNetwork ?? null,
-      usdt_txid: input.usdtTxid ?? null,
-      usdt_image_url: input.usdtImageUrl ?? null,
-      receiver_name: input.receiver?.name ?? null,
-      receiver_bank: input.receiver?.bank ?? null,
-      receiver_last4: input.receiver?.last4 ?? null,
-      ledger_ref: input.ledgerRef,
-      slip_image_url: input.slipImageUrl ?? '',
-      note: input.ledgerRef,
-    })
-    .select('id')
-    .single();
-  if (error || !tx) throw error ?? new Error('INSERT_FAILED');
+  // คอลัมน์เสริม (patch-v5/v7) — ถ้ายังไม่ได้รัน migration จะ strip ออกแล้ว retry
+  const extra: Record<string, any> = {
+    chat_id: input.chatId ?? null,
+    buy_rate: buyRate,
+    room_name: input.roomName ?? null,
+    ocr_confidence: input.ocrConfidence ?? null,
+    usdt_network: input.usdtNetwork ?? null,
+    usdt_txid: input.usdtTxid ?? null,
+    usdt_image_url: input.usdtImageUrl ?? null,
+    receiver_name: input.receiver?.name ?? null,
+    receiver_bank: input.receiver?.bank ?? null,
+    receiver_last4: input.receiver?.last4 ?? null,
+    ledger_ref: input.ledgerRef,
+  };
+  const core = {
+    admin_id: admin.id,
+    bank_account_id: input.bankAccountId ?? null,
+    type: 'THB_DEPOSIT',
+    thb_amount: input.thb,
+    usdt_amount: input.usdt,
+    sell_rate: input.sellRate,
+    cost_per_unit: buyRate,
+    sell_value_thb: input.usdt * input.sellRate,
+    net_profit_thb: profitThb,
+    profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+  };
+
+  let tx: { id: string } | null = null;
+  {
+    const res = await supabaseAdmin.from('transactions').insert({ ...core, ...extra }).select('id').single();
+    if (res.error) {
+      // migration ยังไม่ครบ → บันทึกเฉพาะคอลัมน์หลัก (ไม่ให้ดีลหาย)
+      const res2 = await supabaseAdmin.from('transactions').insert(core).select('id').single();
+      if (res2.error || !res2.data) throw res2.error ?? new Error('INSERT_FAILED');
+      tx = res2.data;
+    } else {
+      tx = res.data;
+    }
+  }
+  if (!tx) throw new Error('INSERT_FAILED');
 
   if (input.bankAccountId) await addBankBalance(input.bankAccountId, input.thb);
 
   notifyIncome({ adminName: admin.name, usdt: input.usdt, thb: input.thb }).catch(() => undefined);
 
   return { transactionId: tx.id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
+}
+
+/** ล้างธุรกรรมทั้งหมดของห้องนี้ (hard reset) — คืนจำนวนที่ลบ */
+export async function resetRoom(chatId: number): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('transactions')
+    .delete()
+    .eq('chat_id', chatId)
+    .select('id');
+  return (data ?? []).length;
+}
+
+/** สรุปกำไรแยกห้อง (วันนี้ + ทั้งหมด) — ใช้กับ dashboard/leaderboard */
+export interface RoomStat {
+  chatId: number | null;
+  roomName: string | null;
+  txCount: number;
+  totalThb: number;
+  totalUsdt: number;
+  profitThb: number;
+}
+export async function getRoomLeaderboard(sinceIso?: string | null): Promise<RoomStat[]> {
+  let q = supabaseAdmin
+    .from('transactions')
+    .select('chat_id, room_name, thb_amount, usdt_amount, net_profit_thb')
+    .eq('type', 'THB_DEPOSIT');
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  const { data } = await q;
+  const rows = (data ?? []) as any[];
+  const byRoom = new Map<string, RoomStat>();
+  for (const r of rows) {
+    const key = String(r.chat_id ?? 'unknown');
+    const cur =
+      byRoom.get(key) ??
+      { chatId: r.chat_id ?? null, roomName: r.room_name ?? null, txCount: 0, totalThb: 0, totalUsdt: 0, profitThb: 0 };
+    cur.txCount += 1;
+    cur.totalThb += Number(r.thb_amount || 0);
+    cur.totalUsdt += Number(r.usdt_amount || 0);
+    cur.profitThb += Number(r.net_profit_thb || 0);
+    if (!cur.roomName && r.room_name) cur.roomName = r.room_name;
+    byRoom.set(key, cur);
+  }
+  return [...byRoom.values()].sort((a, b) => b.profitThb - a.profitThb);
 }
 
 export interface RecordSendInput {

@@ -634,6 +634,7 @@ export interface LedgerData {
   feePercent: number;         // ค่าธรรมเนียมรวม (%) — คิดจากเฉลี่ย tx
   netProfitThb: number;
   lastAdminName: string | null;
+  roomName?: string | null;   // ชื่อห้อง (กลุ่ม)
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
@@ -653,7 +654,7 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
   return {
     text:
       `${GRAD_INDIGO}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้</i>\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
       `${GRAD_INDIGO}\n` +
       `🟢 <b>เข้าบัญชี</b> (${d.incomingList.length} รายการ)\n` +
       (incoming || '<i>— ยังไม่มี —</i>') +
@@ -674,10 +675,74 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       `${SIG}`,
     reply_markup: {
       inline_keyboard: [
-        [{ text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' }],
+        [
+          { text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' },
+          { text: '🗑 ล้างยอดห้องนี้', callback_data: 'resetask:1' },
+        ],
         ...(APP ? [[{ text: '📊 เปิดแดชบอร์ด CE Vault', url: `${APP}/dashboard` }]] : []),
       ],
     },
+  };
+}
+
+// ═══════════════ เมนูคำสั่ง ═══════════════
+export function menuCard(): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_INDIGO}\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· เมนูคำสั่ง</i>\n` +
+      `${THIN}\n` +
+      `<b>ทำรายการ</b>\n` +
+      `📸 ส่ง<b>สลิป THB</b> → รอ USDT → ยืนยัน\n` +
+      `${THIN}\n` +
+      `<b>คำสั่ง</b>\n` +
+      `📊 <code>/today</code>  ยอดห้องนี้วันนี้\n` +
+      `🔄 <code>/newday</code>  เริ่มวันใหม่\n` +
+      `🗑 <code>/reset</code>  ล้างยอดห้องนี้\n` +
+      `🏷 <code>/setrate 40</code>  ตั้งเรตขายห้องนี้\n` +
+      `💱 <code>/rate</code>  เรตตลาด Binance\n` +
+      `🏦 <code>/receiver 6578</code>  ประวัติผู้รับ\n` +
+      `✖️ <code>/cancel</code>  ยกเลิกรายการค้าง\n` +
+      `${SIG}`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '📊 ยอดวันนี้', callback_data: 'menu_today:1' },
+          { text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' },
+        ],
+        ...(APP ? [[{ text: '📊 แดชบอร์ด', url: `${APP}/dashboard` }]] : []),
+      ],
+    },
+  };
+}
+
+// ═══════════════ Reset (hard) ═══════════════
+export function resetAsk(roomName?: string | null): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_RED}\n` +
+      `🗑 <b>ล้างยอดห้องนี้${roomName ? ` · ${roomName}` : ''}?</b>\n` +
+      `${THIN}\n` +
+      `<b>ลบธุรกรรมทั้งหมดของห้องนี้ถาวร</b> (ย้อนกลับไม่ได้)\n` +
+      `<i>ห้องอื่นไม่กระทบ · ประวัติผู้รับยังอยู่</i>`,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '⚠️ ยืนยันล้าง', callback_data: 'resetgo:1' },
+          { text: '✖️ ไม่ล้าง', callback_data: 'cancelop:1' },
+        ],
+      ],
+    },
+  };
+}
+export function resetDone(count: number): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GREEN}\n` +
+      `✅ <b>ล้างยอดห้องนี้แล้ว</b>\n` +
+      `${THIN}\n` +
+      `ลบไป <b>${count} รายการ</b> · ยอดเริ่มนับใหม่จาก 0\n` +
+      `${SIG}`,
   };
 }
 
