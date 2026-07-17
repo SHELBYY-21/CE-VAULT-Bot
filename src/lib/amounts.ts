@@ -15,15 +15,16 @@ export interface AmountToken {
   raw: string;
 }
 
-// ([+-]) (ตัวเลข) (สกุล)
+// ([+-]) (ตัวเลข) (สกุล — ไม่ใส่ก็ได้)
+// ค่าปริยายเมื่อไม่ระบุสกุล:  + = THB (เงินเข้า)  ·  − = USDT (เหรียญออก)
 const TOKEN_RE =
-  /([+-])\s*(\d[\d,]*(?:\.\d+)?)\s*(THB|USDT|บาท|[BUบ])/gi;
+  /([+-])\s*(\d[\d,]*(?:\.\d+)?)\s*(THB|USDT|บาท|[BUบ])?/gi;
 
-function toCurrency(unit: string): Currency | null {
-  const u = unit.toUpperCase();
+function toCurrency(unit: string | undefined, sign: 1 | -1): Currency {
+  const u = (unit || '').toUpperCase();
   if (u === 'B' || u === 'THB' || u === 'บาท' || u === 'บ') return 'THB';
   if (u === 'U' || u === 'USDT') return 'USDT';
-  return null;
+  return sign > 0 ? 'THB' : 'USDT'; // ไม่ระบุ → เดาจากเครื่องหมาย
 }
 
 /** อ่าน token ทั้งหมดในข้อความ เช่น "+500B -13.6U" → 2 tokens */
@@ -33,11 +34,10 @@ export function parseAmountTokens(text: string): AmountToken[] {
   TOKEN_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE.exec(s)) !== null) {
-    const currency = toCurrency(m[3]);
-    if (!currency) continue;
+    const sign: 1 | -1 = m[1] === '-' ? -1 : 1;
     const value = parseFloat(m[2].replace(/,/g, ''));
     if (!Number.isFinite(value) || value <= 0) continue;
-    out.push({ sign: m[1] === '-' ? -1 : 1, value, currency, raw: m[0] });
+    out.push({ sign, value, currency: toCurrency(m[3], sign), raw: m[0] });
   }
   return out;
 }

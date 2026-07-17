@@ -282,6 +282,54 @@ export function needThb(): OutgoingMessage {
   };
 }
 
+// ═══════════════ v8: บันทึกทันที (การ์ดสั้น ไม่รกแชท) ═══════════════
+export function incomingRecorded(d: {
+  transactionId: string;
+  ledgerRef: string;
+  thb: number;
+  usdtOwed: number;
+  sellRate: number;
+  adminName: string;
+  bank?: string | null;
+  last4?: string | null;
+  confidence?: number | null;
+}): OutgoingMessage {
+  const conf = d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '';
+  return {
+    text:
+      `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
+      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
+      (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
+      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
+    reply_markup: buttons(d.transactionId),
+  };
+}
+
+export function outgoingRecorded(d: {
+  transactionId: string;
+  ledgerRef: string;
+  usdt: number;
+  adminName: string;
+  remainingUsdt: number;
+}): OutgoingMessage {
+  const done = d.remainingUsdt <= 0.009;
+  return {
+    text:
+      `🔴 <b>ออก (OUT)</b>  <b>${money(d.usdt)} USDT</b>\n` +
+      `${done ? '✅ ส่งครบแล้ว <i>(Settled)</i>' : `⏳ คงเหลือ <i>(Remaining)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
+      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
+    reply_markup: buttons(d.transactionId),
+  };
+}
+
+/** สลิปอ่านยอดไม่ชัด → ขอให้พิมพ์ +ยอด (สั้นที่สุด ไม่รก) */
+export function slipUnclear(guess?: number | null): OutgoingMessage {
+  return {
+    text:
+      `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
+  };
+}
+
 // ═══════════════ Deal flow v5: THB slip → wait USDT → confirm ═══════════════
 export interface WaitUsdtData {
   thb?: number | null;
@@ -687,6 +735,7 @@ export interface LedgerData {
   lastAdminName: string | null;
   roomName?: string | null;   // ชื่อห้อง (กลุ่ม)
   staff?: { name: string; count: number; profitThb: number }[]; // Top Staff
+  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[]; // 5 รายการล่าสุด
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
@@ -728,8 +777,17 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
         ? `${THIN}\n👷 <b>Top Staff</b>\n` +
           d.staff
             .slice(0, 5)
-            .map((s, i) => `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} ฿</b>`)
+            .map((s, i) => `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} THB</b>`)
             .join('\n') + '\n'
+        : '') +
+      (d.recent && d.recent.length
+        ? `${THIN}\n🕒 <b>5 รายการล่าสุด</b> <i>(Recent)</i>\n` +
+          `<pre>${d.recent
+            .map((r) => {
+              const gap = r.gapMin == null ? 'รอส่ง' : `${r.gapMin} นาที`;
+              return `${r.time} » ${money(r.thb).padStart(9)} » ${money(r.usdt).padStart(8)}  (${gap})`;
+            })
+            .join('\n')}</pre>`
         : '') +
       `${SIG}`,
     reply_markup: {

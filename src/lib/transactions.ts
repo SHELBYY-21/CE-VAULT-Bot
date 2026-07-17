@@ -438,6 +438,161 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
   return { transactionId: tx.id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
 }
 
+// ============================================================
+// v8: บันทึกทันที แยกขาเข้า/ขาออก (ไม่ต้องจับคู่ deal, ไม่ถามกลับ)
+//   ขาเข้า  = รับ THB → usdt_amount = ยอดที่ต้องส่ง (thb / sellRate)
+//   ขาออก   = ส่ง USDT จริง
+// ============================================================
+export async function recordIncoming(input: {
+  adminTelegramId: number;
+  chatId: number;
+  thb: number;
+  sellRate: number;
+  marketRate: number;
+  roomName?: string | null;
+  ledgerRef: string;
+  ocrConfidence?: number | null;
+  slipImageUrl?: string | null;
+  receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
+}): Promise<{ transactionId: string; adminName: string; usdtOwed: number; profitThb: number }> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const usdtOwed = input.sellRate > 0 ? input.thb / input.sellRate : 0;
+  // กำไร = THB ที่รับ − ต้นทุนซื้อ USDT ที่ต้องส่ง (ที่เรตตลาด)
+  const profitThb = input.thb - usdtOwed * input.marketRate;
+
+  const core = {
+    admin_id: admin.id,
+    type: 'THB_DEPOSIT',
+    thb_amount: input.thb,
+    usdt_amount: usdtOwed,
+    sell_rate: input.sellRate,
+    cost_per_unit: input.marketRate,
+    sell_value_thb: input.thb,
+    net_profit_thb: profitThb,
+    profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+  };
+  const extra: Record<string, any> = {
+    chat_id: input.chatId,
+    buy_rate: input.sellRate,
+    room_name: input.roomName ?? null,
+    ocr_confidence: input.ocrConfidence ?? null,
+    receiver_name: input.receiver?.name ?? null,
+    receiver_bank: input.receiver?.bank ?? null,
+    receiver_last4: input.receiver?.last4 ?? null,
+    ledger_ref: input.ledgerRef,
+  };
+
+  let tx: { id: string } | null = null;
+  const res = await supabaseAdmin.from('transactions').insert({ ...core, ...extra }).select('id').single();
+  if (res.error) {
+    const res2 = await supabaseAdmin.from('transactions').insert(core).select('id').single();
+    if (res2.error || !res2.data) throw res2.error ?? new Error('INSERT_FAILED');
+    tx = res2.data;
+  } else tx = res.data;
+
+  notifyIncome({ adminName: admin.name, usdt: usdtOwed, thb: input.thb }).catch(() => undefined);
+  return { transactionId: tx!.id, adminName: admin.name, usdtOwed, profitThb };
+}
+
+export async function recordOutgoing(input: {
+  adminTelegramId: number;
+  chatId: number;
+  usdt: number;
+  ledgerRef: string;
+  slipImageUrl?: string | null;
+  usdtNetwork?: string | null;
+  usdtTxid?: string | null;
+}): Promise<{ transactionId: string; adminName: string }> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const core = {
+    admin_id: admin.id,
+    type: 'USDT_SEND',
+    usdt_amount: input.usdt,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+  };
+  const extra: Record<string, any> = {
+    chat_id: input.chatId,
+    ledger_ref: input.ledgerRef,
+    usdt_network: input.usdtNetwork ?? null,
+    usdt_txid: input.usdtTxid ?? null,
+    usdt_image_url: input.slipImageUrl ?? null,
+  };
+
+  let tx: { id: string } | null = null;
+  const res = await supabaseAdmin.from('transactions').insert({ ...core, ...extra }).select('id').single();
+  if (res.error) {
+    const res2 = await supabaseAdmin.from('transactions').insert(core).select('id').single();
+    if (res2.error || !res2.data) throw res2.error ?? new Error('INSERT_FAILED');
+    tx = res2.data;
+  } else tx = res.data;
+
+  notifyOutflow({ adminName: admin.name, usdt: input.usdt }).catch(() => undefined);
+  return { transactionId: tx!.id, adminName: admin.name };
+}
+
+/** 5 รายการล่าสุด: จับคู่ขาเข้า → ขาออกที่ตามมา + ระยะห่างเวลา */
+export interface RecentPair {
+  time: string;      // HH:MM ของขาเข้า
+  thb: number;
+  usdt: number;      // ยอดที่ส่งจริง (ถ้ายังไม่ส่ง = ยอดที่ต้องส่ง)
+  gapMin: number | null; // นาทีระหว่างบันทึกขาเข้า → ส่งออก (null = ยังไม่ส่ง)
+}
+export async function getRecentPairs(
+  chatId: number,
+  sinceIso?: string | null,
+  limit = 5,
+): Promise<RecentPair[]> {
+  let q = supabaseAdmin
+    .from('transactions')
+    .select('created_at, type, thb_amount, usdt_amount')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true });
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  const { data } = await q;
+  const rows = (data ?? []) as any[];
+
+  const sends = rows.filter((r) => r.type === 'USDT_SEND');
+  const usedSend = new Set<number>();
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString('th-TH', {
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+    });
+
+  const pairs: RecentPair[] = [];
+  for (const inRow of rows.filter((r) => r.type === 'THB_DEPOSIT')) {
+    const inTime = new Date(inRow.created_at).getTime();
+    // ขาออกตัวแรกหลังขาเข้านี้ ที่ยังไม่ถูกจับคู่
+    const idx = sends.findIndex(
+      (s, i) => !usedSend.has(i) && new Date(s.created_at).getTime() >= inTime,
+    );
+    if (idx >= 0) {
+      usedSend.add(idx);
+      const sendTime = new Date(sends[idx].created_at).getTime();
+      pairs.push({
+        time: fmt(inRow.created_at),
+        thb: Number(inRow.thb_amount || 0),
+        usdt: Number(sends[idx].usdt_amount || 0),
+        gapMin: Math.max(0, Math.round((sendTime - inTime) / 60000)),
+      });
+    } else {
+      pairs.push({
+        time: fmt(inRow.created_at),
+        thb: Number(inRow.thb_amount || 0),
+        usdt: Number(inRow.usdt_amount || 0),
+        gapMin: null,
+      });
+    }
+  }
+  return pairs.slice(-limit).reverse(); // ล่าสุดอยู่บน
+}
+
 /** สร้าง CSV ธุรกรรมของห้อง (สำหรับ /export → ส่งเป็นไฟล์ในแชต) */
 export async function exportRoomCsv(chatId: number, sinceIso?: string | null): Promise<{ csv: string; rows: number }> {
   let q = supabaseAdmin
