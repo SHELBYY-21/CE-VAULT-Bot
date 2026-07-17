@@ -85,6 +85,15 @@ export async function answerCallback(id: string, text?: string): Promise<void> {
   }
 }
 
+/** ส่ง sticker (ใช้ file_id จาก env vars) — ไม่ throw ถ้า error */
+export async function sendSticker(chatId: number, fileId: string): Promise<void> {
+  try {
+    await tg('sendSticker', { chat_id: chatId, sticker: fileId });
+  } catch (e) {
+    console.warn(`sendSticker failed (chat=${chatId}):`, e instanceof Error ? e.message : e);
+  }
+}
+
 /** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Supabase Storage → คืน public URL */
 export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const file = await tg<{ file_path: string }>('getFile', { file_id: fileId });
