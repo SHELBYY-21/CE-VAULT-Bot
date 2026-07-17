@@ -163,7 +163,7 @@ export interface SlipReadyData {
 function confidenceLine(c?: number | null): string {
   if (c == null) return '';
   const dot = c >= 90 ? '🟢' : c >= 75 ? '🟡' : '🔴';
-  return `${dot} ความมั่นใจ  <b>${c.toFixed(1)}%</b>`;
+  return `${dot} ความมั่นใจ <i>(Confidence)</i>  <b>${c.toFixed(1)}%</b>`;
 }
 
 export function slipReady(d: SlipReadyData): OutgoingMessage {
@@ -233,9 +233,9 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
 
 // ═══════════════ รูปแบบการพิมพ์ยอด (ระบุชัดเจน ไม่ให้บอทเดา) ═══════════════
 const FORMAT_HINT =
-  `<b>+500B</b>   = บาทเข้า 500\n` +
-  `<b>-13.6U</b>  = USDT ออก 13.6\n` +
-  `<i>พิมพ์รวมกันได้:</i> <code>+500B -13.6U</code>`;
+  `<b>+500B</b>   บาทเข้า  <i>(THB in)</i>\n` +
+  `<b>-13.6U</b>  USDT ออก  <i>(USDT out)</i>\n` +
+  `<i>รวมกันได้ · เขียนเต็มก็ได้:</i>  <code>+500B -13.6U</code>  ·  <code>+500THB -13.6USDT</code>`;
 
 /** เลขลอยๆ ไม่ระบุสกุล → บอทไม่เดา ขอรูปแบบที่ชัดเจน */
 export function amountFormatHelp(): OutgoingMessage {
@@ -305,10 +305,10 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   const header = !gotAmount ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>' : lowConf ? '⚠️ <b>ตรวจสอบสลิป</b>' : '✅ <b>OCR สำเร็จ</b>';
 
   const detail: string[] = [];
-  if (gotAmount) detail.push(`💵 THB       <b>${money(d.thb!)}</b>`);
-  if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
-  if (d.bank || d.last4) detail.push(`🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`);
-  if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
+  if (gotAmount) detail.push(`💵 ยอดเงิน <i>(Amount)</i>  <b>${money(d.thb!)} THB</b>`);
+  if (d.receiverName) detail.push(`👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName}</b>`);
+  if (d.bank || d.last4) detail.push(`🏦 ธนาคาร <i>(Bank)</i>  <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`);
+  if (d.date || d.time) detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
 
@@ -317,13 +317,13 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
       `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
       `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
       `${progress(3)}\n${THIN}\n` +
-      `🧾 <code>#${d.ledgerRef}</code>\n` +
+      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
       (detail.length ? detail.join('\n') + `\n` : '') +
-      (d.roomRate ? `🏷 Sell Rate ${d.roomName ? `(${d.roomName})` : ''}  <b>${money(d.roomRate)}</b>\n` : '') +
-      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด</i>\n` : '') +
+      (d.roomRate ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n` : '') +
+      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n` : '') +
       (d.historyLine ? `${d.historyLine}\n` : '') +
       `${THIN}\n` +
-      `⏳ <b>รอยืนยัน USDT</b>\n` +
+      `⏳ <b>รอยืนยัน USDT</b> <i>(Awaiting USDT)</i>\n` +
       `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์:\n` +
       FORMAT_HINT,
   };
@@ -348,21 +348,21 @@ export function dealConfirm(d: DealConfirmData): OutgoingMessage {
   return {
     text:
       `${GRAD_GOLD}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก</i>\n` +
+      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก (Review)</i>\n` +
       `${progress(4)}\n${THIN}\n` +
-      `🧾 <code>#${d.ledgerRef}</code>\n` +
+      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
       table([
         ['THB', money(d.thb)],
         ['USDT', money(d.usdt)],
         ['Buy', money(d.buyRate)],
         ['Sell', money(d.sellRate)],
       ]) +
-      `${up ? '📈' : '📉'} กำไรประเมิน  <b>${up ? '+' : ''}${money(d.profitThb)} ฿</b>\n` +
+      `${up ? '📈' : '📉'} กำไรประเมิน <i>(Est. Profit)</i>  <b>${up ? '+' : ''}${money(d.profitThb)} THB</b>\n` +
       (d.receiverName || d.last4
-        ? `👤 ผู้รับ  <b>${d.receiverName ?? '-'}</b>${d.last4 ? ` <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
+        ? `👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName ?? '-'}</b>${d.last4 ? ` <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
         : '') +
-      (d.network ? `🔗 Network  <b>${d.network}</b>\n` : '') +
-      `${THIN}\n<i>ตรวจแล้วกด</i> <b>ยืนยัน</b>`,
+      (d.network ? `🔗 เครือข่าย <i>(Network)</i>  <b>${d.network}</b>\n` : '') +
+      `${THIN}\n<i>ตรวจแล้วกด</i> <b>ยืนยัน (Confirm)</b>`,
     reply_markup: {
       inline_keyboard: [
         [
@@ -395,17 +395,17 @@ export function dealSuccess(d: DealSuccessData): OutgoingMessage {
   return {
     text:
       `${up ? GRAD_GREEN : GRAD_RED}\n` +
-      `${BRAND}  <i>· บันทึกสำเร็จ</i>\n` +
+      `${BRAND}  <i>· บันทึกสำเร็จ (Recorded)</i>\n` +
       `${progress(5)}\n${THIN}\n` +
-      `🧾 <code>#${d.ledgerRef}</code>\n` +
-      `👤 <b>${d.adminName}</b>\n` +
+      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
+      `👤 <b>${d.adminName}</b>  <i>(Staff)</i>\n` +
       table([
         ['THB', money(d.thb)],
         ['USDT', money(d.usdt)],
         ['Buy', money(d.buyRate)],
         ['Sell', money(d.sellRate)],
       ]) +
-      `${up ? '📈' : '📉'} กำไร  <b>${up ? '+' : ''}${money(d.profitThb)} ฿</b>\n` +
+      `${up ? '📈' : '📉'} กำไร <i>(Profit)</i>  <b>${up ? '+' : ''}${money(d.profitThb)} THB</b>\n` +
       (d.receiverName || d.last4
         ? `👤 ${d.receiverName ?? '-'}${d.last4 ? `  <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
         : '') +
@@ -499,11 +499,11 @@ export function rateShow(
       `${GRAD_INDIGO}\n` +
       `${BRAND}  <i>· เรตปัจจุบัน</i>\n` +
       `${GRAD_INDIGO}\n` +
-      `💱 เรตขายของเรา  <b>${money(sell)} ฿ / USDT</b>\n` +
-      `🌐 เรตตลาด  <b>${money(market)} ฿ / USDT</b>\n` +
+      `💱 เรตขาย <i>(Sell Rate)</i>  <b>${money(sell)} THB / USDT</b>\n` +
+      `🌐 เรตตลาด <i>(Market)</i>  <b>${money(market)} THB / USDT</b>\n` +
       `      ${src}\n` +
       `${THIN}\n` +
-      `📐 ส่วนต่าง (spread)  <b>${money(spread)} ฿</b>  <i>(${pct(spreadPct)})</i>\n` +
+      `📐 ส่วนต่าง <i>(Spread)</i>  <b>${money(spread)} THB</b>  <i>(${pct(spreadPct)})</i>\n` +
       `${THIN}\n` +
       `<i>ตั้งเรตขาย:</i> <code>/rate 35.5</code>\n` +
       `${SIG}`,
@@ -708,22 +708,22 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       `${GRAD_INDIGO}\n` +
       `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
       `${GRAD_INDIGO}\n` +
-      `🟢 <b>เข้าบัญชี</b> (${d.incomingList.length} รายการ)\n` +
+      `🟢 <b>เข้าบัญชี</b> <i>(Incoming)</i> · ${d.incomingList.length} รายการ\n` +
       (incoming || '<i>— ยังไม่มี —</i>') +
       `\n${THIN}\n` +
-      `🔴 <b>ส่งออก</b> (${d.outgoingList.length} รายการ)\n` +
+      `🔴 <b>ส่งออก</b> <i>(Outgoing)</i> · ${d.outgoingList.length} รายการ\n` +
       (outgoing || '<i>— ยังไม่มี —</i>') +
       `\n${THIN}\n` +
-      `📊 ยอดรับรวม        <b>${money(d.totalThb)} ฿</b>\n` +
-      (d.fixedRate ? `💱 เรตห้อง              <b>${money(d.fixedRate)}</b>\n` : '') +
+      `📊 ยอดรับรวม <i>(Total In)</i>  <b>${money(d.totalThb)} THB</b>\n` +
+      (d.fixedRate ? `💱 เรตห้อง <i>(Sell Rate)</i>  <b>${money(d.fixedRate)}</b>\n` : '') +
       `${THIN}\n` +
-      `🎯 ต้องส่ง            <b>${money(shouldSendUsdt)} USDT</b>\n` +
-      `✅ ส่งไปแล้ว          <b>${money(d.totalOutgoingUsdt)} USDT</b>\n` +
-      `${notSent >= 0 ? '⏳' : '⚠️'} คงเหลือต้องส่ง   <b>${money(notSent)} USDT</b>` +
-      (d.fixedRate ? `  <i>(${money(notSentThb)} ฿)</i>` : '') +
+      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(shouldSendUsdt)} USDT</b>\n` +
+      `✅ ส่งไปแล้ว <i>(Sent)</i>  <b>${money(d.totalOutgoingUsdt)} USDT</b>\n` +
+      `${notSent >= 0 ? '⏳' : '⚠️'} คงเหลือ <i>(Remaining)</i>  <b>${money(notSent)} USDT</b>` +
+      (d.fixedRate ? `  <i>(${money(notSentThb)} THB)</i>` : '') +
       `\n${THIN}\n` +
-      `💰 กำไรสุทธิ           <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} ฿</b>\n` +
-      (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด  <b>${d.lastAdminName}</b>\n` : '') +
+      `💰 กำไรสุทธิ <i>(Net Profit)</i>  <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} THB</b>\n` +
+      (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด <i>(Last Staff)</i>  <b>${d.lastAdminName}</b>\n` : '') +
       (d.staff && d.staff.length
         ? `${THIN}\n👷 <b>Top Staff</b>\n` +
           d.staff
@@ -863,7 +863,7 @@ export function receiverBrief(r: ReceiverCardData | null, bank: string | null, l
   if (!r) {
     return (
       `${THIN}\n` +
-      `⚠️ <b>บัญชีใหม่</b>  ${bank ?? '-'} <code>••••${last4}</code>\n` +
+      `⚠️ <b>บัญชีใหม่</b> <i>(New Receiver)</i>  ${bank ?? '-'} <code>••••${last4}</code>\n` +
       `<i>ยังไม่เคยมีประวัติในระบบ</i>`
     );
   }
@@ -871,9 +871,9 @@ export function receiverBrief(r: ReceiverCardData | null, bank: string | null, l
   return (
     `${THIN}\n` +
     `🏦 <b>${r.bank ?? '-'} ••••${r.last4}</b>${r.name ? `  👤 ${r.name}` : ''}${star}\n` +
-    `📊 เคยรับแล้ว <b>${r.totalTx ?? 0} รายการ</b> · รวม <b>฿${money(r.totalThb ?? 0)}</b>\n` +
-    (r.todayCount ? `📅 วันนี้ <b>${r.todayCount} รายการ</b> · <b>฿${money(r.todayThb ?? 0)}</b>\n` : '') +
-    `⏱ ล่าสุด ${fmtDT(r.lastAt)}${r.lastRef ? `  <code>#${r.lastRef}</code>` : ''}`
+    `📊 เคยรับแล้ว <i>(History)</i>  <b>${r.totalTx ?? 0} รายการ</b> · รวม <b>${money(r.totalThb ?? 0)} THB</b>\n` +
+    (r.todayCount ? `📅 วันนี้ <i>(Today)</i>  <b>${r.todayCount} รายการ</b> · <b>${money(r.todayThb ?? 0)} THB</b>\n` : '') +
+    `⏱ ล่าสุด <i>(Last)</i>  ${fmtDT(r.lastAt)}${r.lastRef ? `  <code>#${r.lastRef}</code>` : ''}`
   );
 }
 
@@ -890,16 +890,16 @@ export function receiverCard(r: ReceiverCardData): OutgoingMessage {
       (star ? `${star}\n` : '') +
       table(
         [
-          ['รายการ', String(r.totalTx ?? 0)],
-          ['รวม฿', money(r.totalThb ?? 0)],
-          ['สูงสุด', money(r.maxThb ?? 0)],
-          ['ล่าสุด', money(r.lastThb ?? 0)],
+          ['Deals', String(r.totalTx ?? 0)],
+          ['Total', money(r.totalThb ?? 0)],
+          ['Max', money(r.maxThb ?? 0)],
+          ['Last', money(r.lastThb ?? 0)],
           ['USDT', money(r.totalUsdt ?? 0)],
-          ['เฉลี่ย', money(avg)],
+          ['Avg', money(avg)],
         ],
         17,
       ) +
-      `⏱ ล่าสุด ${fmtDT(r.lastAt)}\n` +
+      `⏱ ล่าสุด <i>(Last)</i>  ${fmtDT(r.lastAt)}\n` +
       (r.lastRef ? `🧾 <code>#${r.lastRef}</code>\n` : '') +
       `${SIG}`,
   };
