@@ -31,6 +31,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
+import { parseAmounts } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 
 // ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
@@ -350,26 +351,25 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // (ข.5) กำลังแก้ไขธุรกรรม → อัปเดต tx เดิม
+  // (ข.5) กำลังแก้ไขธุรกรรม → อัปเดต tx เดิม (ใช้รูปแบบ +500B / -13.6U เหมือนกัน)
   if (session?.state === 'EDITING' && session.caption) {
-    const nums = parseNums(text);
-    if (nums.length === 0) return;
+    const amt = parseAmounts(text);
+    if (!amt.thb && !amt.usdt) {
+      if (amt.hasBareNumber) await sendMessage(chatId, UI.amountFormatHelp());
+      return;
+    }
     const txId = session.caption; // เก็บ tx_id ไว้ในฟิลด์ caption
     await clearSession(chatId, userId);
     try {
       const { data: old } = await supabaseAdmin
         .from('transactions')
-        .select('type')
+        .select('type, usdt_amount')
         .eq('id', txId)
         .single();
       if (!old) throw new Error('ไม่พบธุรกรรมเดิม');
 
-      const patch =
-        old.type === 'USDT_SEND'
-          ? { newUsdt: nums[0] }
-          : nums.length >= 2
-            ? { newThb: nums[0], newUsdt: nums[1] }
-            : { newUsdt: nums[0] };
+      const newUsdt = amt.usdt ? amt.usdt.value : Number(old.usdt_amount);
+      const patch = amt.thb ? { newThb: amt.thb.value, newUsdt } : { newUsdt };
       const r = await editTransaction(txId, patch);
       await sendMessage(
         chatId,
@@ -392,28 +392,39 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // (ข) รอ USDT → พิมพ์จำนวน USDT (fallback แทนสกรีนช็อต) แล้วโชว์การ์ดยืนยัน
+  // (ข) รอ USDT → ต้องพิมพ์แบบระบุชัดเจน: +500B (บาทเข้า) / -13.6U (USDT ออก)
   if (session?.state === 'WAITING_USDT') {
-    const nums = parseNums(text);
-    if (nums.length === 0) return; // ไม่ใช่ตัวเลข ปล่อยผ่าน
+    const amt = parseAmounts(text);
+
+    // ไม่มี token ที่ถูกต้อง → ไม่เดา
+    if (!amt.thb && !amt.usdt) {
+      if (amt.hasBareNumber) await sendMessage(chatId, UI.amountFormatHelp());
+      return; // ข้อความอื่นๆ ปล่อยผ่านเงียบ
+    }
+    // ตรวจทิศทาง: ดีล = บาทเข้า (+B) และ USDT ออก (-U)
+    if (amt.thb && amt.thb.sign < 0) {
+      await sendMessage(chatId, UI.wrongDirection('THB'));
+      return;
+    }
+    if (amt.usdt && amt.usdt.sign > 0) {
+      await sendMessage(chatId, UI.wrongDirection('USDT'));
+      return;
+    }
+
     await sendChatAction(chatId, 'typing');
     try {
-      // ถ้า OCR อ่าน THB ไม่ได้ ให้กู้คืน: พิมพ์ "THB USDT" หรือพิมพ์ THB ก่อน
-      if (!session.ocr_thb) {
-        if (nums.length >= 2) {
-          await presentDealConfirm(chatId, userId, { ...session, ocr_thb: nums[0] }, nums[1], null, nums[0]);
-        } else {
-          // เก็บ THB ที่พิมพ์ แล้วรอ USDT ต่อ
-          await setSession(chatId, userId, { ...dealSessionFields(session), state: 'WAITING_USDT', ocr_thb: nums[0] });
-          await sendMessage(chatId, { text: `✅ ตั้งยอด THB = <b>${nums[0]}</b>\n⏳ ส่งสกรีนช็อต USDT หรือพิมพ์จำนวน USDT` });
-        }
-        return;
-      }
-      // มี THB แล้ว → เลขที่พิมพ์ = จำนวน USDT (2 ตัว = THB USDT override)
-      if (nums.length >= 2) {
-        await presentDealConfirm(chatId, userId, { ...session, ocr_thb: nums[0] }, nums[1], null, nums[0]);
+      const thbVal = amt.thb ? amt.thb.value : session.ocr_thb ? Number(session.ocr_thb) : 0;
+      const usdtVal = amt.usdt ? amt.usdt.value : 0;
+
+      if (thbVal && usdtVal) {
+        await presentDealConfirm(chatId, userId, { ...session, ocr_thb: thbVal }, usdtVal, null, thbVal);
+      } else if (thbVal && !usdtVal) {
+        // ตั้ง/แก้ยอดบาท แล้วรอ USDT
+        await setSession(chatId, userId, { ...dealSessionFields(session), state: 'WAITING_USDT', ocr_thb: thbVal });
+        await sendMessage(chatId, UI.thbSetWaitUsdt(thbVal));
       } else {
-        await presentDealConfirm(chatId, userId, session, nums[0], null);
+        // มี USDT แต่ยังไม่รู้บาท
+        await sendMessage(chatId, UI.needThb());
       }
     } catch (e: any) {
       await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));

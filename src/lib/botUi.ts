@@ -231,6 +231,57 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
   };
 }
 
+// ═══════════════ รูปแบบการพิมพ์ยอด (ระบุชัดเจน ไม่ให้บอทเดา) ═══════════════
+const FORMAT_HINT =
+  `<b>+500B</b>   = บาทเข้า 500\n` +
+  `<b>-13.6U</b>  = USDT ออก 13.6\n` +
+  `<i>พิมพ์รวมกันได้:</i> <code>+500B -13.6U</code>`;
+
+/** เลขลอยๆ ไม่ระบุสกุล → บอทไม่เดา ขอรูปแบบที่ชัดเจน */
+export function amountFormatHelp(): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `✋ <b>ต้องระบุสกุลเงินให้ชัด</b>\n` +
+      `${THIN}\n` +
+      `ระบบไม่เดายอดให้ — ใส่เครื่องหมาย + / − และสกุล B / U\n` +
+      `${THIN}\n` +
+      FORMAT_HINT,
+  };
+}
+
+/** ทิศทางผิด (เช่น -500B หรือ +300U) */
+export function wrongDirection(cur: 'THB' | 'USDT'): OutgoingMessage {
+  const msg =
+    cur === 'THB'
+      ? `ยอด<b>บาท</b>ในดีลนี้คือเงิน<b>เข้า</b> → ใช้ <code>+500B</code>`
+      : `ยอด<b>USDT</b>ในดีลนี้คือเหรียญ<b>ออก</b> → ใช้ <code>-13.6U</code>`;
+  return {
+    text: `${GRAD_RED}\n⚠️ <b>ทิศทางไม่ถูก</b>\n${THIN}\n${msg}`,
+  };
+}
+
+/** ตั้งยอดบาทแล้ว รอ USDT */
+export function thbSetWaitUsdt(thb: number): OutgoingMessage {
+  return {
+    text:
+      `✅ ตั้งยอดบาท  <b>${money(thb)} ฿</b>\n` +
+      `${THIN}\n` +
+      `⏳ ต่อไป: ส่ง<b>สกรีนช็อต USDT</b> หรือพิมพ์ <code>-13.6U</code>`,
+  };
+}
+
+/** มี USDT แต่ยังไม่รู้ยอดบาท */
+export function needThb(): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `⚠️ <b>ยังไม่ทราบยอดบาท</b>\n` +
+      `${THIN}\n` +
+      `อ่านจากสลิปไม่ได้ — พิมพ์ยอดบาทด้วย เช่น <code>+500B -13.6U</code>`,
+  };
+}
+
 // ═══════════════ Deal flow v5: THB slip → wait USDT → confirm ═══════════════
 export interface WaitUsdtData {
   thb?: number | null;
@@ -273,7 +324,8 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
       (d.historyLine ? `${d.historyLine}\n` : '') +
       `${THIN}\n` +
       `⏳ <b>รอยืนยัน USDT</b>\n` +
-      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์ <b>จำนวน USDT</b> เช่น <code>13.6</code>`,
+      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์:\n` +
+      FORMAT_HINT,
   };
 }
 
@@ -535,17 +587,16 @@ export function usdtSendSuccess(d: UsdtSendData): OutgoingMessage {
 }
 
 // ═══════════════ Edit flow ═══════════════
-export function editPrompt(type: 'THB_DEPOSIT' | 'USDT_SEND'): OutgoingMessage {
-  const example =
-    type === 'USDT_SEND'
-      ? 'พิมพ์จำนวน USDT ใหม่ เช่น <code>11</code>'
-      : 'พิมพ์ค่าใหม่ — <code>USDT</code> หรือ <code>THB USDT</code>\nเช่น <code>10</code> หรือ <code>5500 10</code>';
+export function editPrompt(_type?: 'THB_DEPOSIT' | 'USDT_SEND'): OutgoingMessage {
   return {
     text:
       `${GRAD_GOLD}\n` +
       `${MARK} <b>CE VAULT</b>  ⚡ <i>โหมดแก้ไข</i>\n` +
-      `${GRAD_GOLD}\n${example}\n${THIN}\n` +
-      `<i>พิมพ์ </i><code>/cancel</code><i> เพื่อยกเลิก</i>`,
+      `${THIN}\n` +
+      `พิมพ์ค่าใหม่ (ระบุสกุลเสมอ):\n` +
+      FORMAT_HINT + `\n` +
+      `${THIN}\n` +
+      `<i>ใส่เฉพาะตัวที่จะแก้ก็ได้ · พิมพ์ </i><code>/cancel</code><i> เพื่อยกเลิก</i>`,
   };
 }
 
@@ -701,7 +752,10 @@ export function menuCard(): OutgoingMessage {
       `${MARK} <b>CE VAULT</b>  <i>· เมนูคำสั่ง</i>\n` +
       `${THIN}\n` +
       `<b>ทำรายการ</b>\n` +
-      `📸 ส่ง<b>สลิป THB</b> → รอ USDT → ยืนยัน\n` +
+      `📸 ส่ง<b>สลิป THB</b> → ส่งสกรีนช็อต USDT (หรือพิมพ์ยอด) → ยืนยัน\n` +
+      `${THIN}\n` +
+      `<b>พิมพ์ยอด (ต้องระบุสกุลเสมอ)</b>\n` +
+      FORMAT_HINT + `\n` +
       `${THIN}\n` +
       `<b>คำสั่ง</b>\n` +
       `📊 <code>/today</code>  ยอดห้องนี้วันนี้\n` +
