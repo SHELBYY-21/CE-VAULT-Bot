@@ -37,29 +37,24 @@ import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
+import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 
 // ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
 const USDT_TOLERANCE = 0.0001;
 // OCR มั่นใจ >= ค่านี้ → บันทึกขาเข้าทันที ไม่ต้องถาม
 const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 
-// Sticker file IDs (ตั้งใน env vars — ถ้าไม่ตั้งจะข้ามโดยอัตโนมัติ)
-const STICKERS = {
-  welcome:    process.env.STICKER_WELCOME_ID,
-  processing: process.env.STICKER_PROCESSING_ID,
-  ocrDone:    process.env.STICKER_OCR_DONE_ID,
-  waiting:    process.env.STICKER_WAITING_ID,
-  success:    process.env.STICKER_SUCCESS_ID,
-} as const;
-
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
-function sticker(chatId: number, key: keyof typeof STICKERS): void {
-  const id = STICKERS[key];
+function sticker(chatId: number, key: StickerState): void {
+  const id = getSticker(key);
   if (id) sendSticker(chatId, id).catch(() => undefined);
 }
 
 export const runtime = 'nodejs';
 export const maxDuration = 30; // Vercel serverless max 30s
+
+// Validate sticker config at cold-start (logs warning, never crashes the webhook)
+try { validateStickers(); } catch (e: any) { console.warn(`[sticker config] ${e.message}`); }
 
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.API_SECRET;
 
@@ -238,7 +233,7 @@ async function handleUpdate(update: any): Promise<void> {
       await setSession(chatId, userId, { state: 'AWAITING_NAME' });
       await sendMessage(chatId, UI.askName());
     }
-    sticker(chatId, 'welcome');
+    sticker(chatId, 'WELCOME');
     return;
   }
 
@@ -275,7 +270,7 @@ async function handleUpdate(update: any): Promise<void> {
       return;
     }
     const fileId = msg.photo[msg.photo.length - 1].file_id;
-    sticker(chatId, 'processing'); // แสดงมาสคอตกำลังอ่านสลิป (fire-and-forget)
+    sticker(chatId, 'PROCESSING'); // แสดงมาสคอตกำลังอ่านสลิป (fire-and-forget)
     try {
       const imgUrl = await uploadSlipFromTelegram(fileId);
       const slip = await analyzeSlip(imgUrl);
@@ -290,7 +285,7 @@ async function handleUpdate(update: any): Promise<void> {
           receiverName: slip.receiverName ?? null,
           confidence: slip.confidence ?? null,
         });
-        sticker(chatId, 'ocrDone');
+        sticker(chatId, 'OCR_DONE');
         return;
       }
 
@@ -393,7 +388,7 @@ async function handleUpdate(update: any): Promise<void> {
       if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
       try {
         await commitIncoming(chatId, userId, amt.thb.value, meta);
-        sticker(chatId, 'success');
+        sticker(chatId, 'SUCCESS');
       } catch (e: any) {
         await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
       }
@@ -402,7 +397,7 @@ async function handleUpdate(update: any): Promise<void> {
     if (amt.usdt && amt.usdt.sign < 0) {
       try {
         await commitOutgoing(chatId, userId, amt.usdt.value, {});
-        sticker(chatId, 'success');
+        sticker(chatId, 'SUCCESS');
       } catch (e: any) {
         await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
       }
@@ -511,7 +506,7 @@ async function commitOutgoing(
       remainingUsdt: remaining,
     }),
   );
-  sticker(chatId, 'success');
+  sticker(chatId, 'SUCCESS');
 }
 
 /** เริ่มวันใหม่: โพสต์สรุปวันเก่าก่อน → ตั้ง day-cut → ยืนยัน */
@@ -692,7 +687,7 @@ async function finalizeDeal(
       last4: session.slip_last4,
     }),
   );
-  sticker(chatId, 'success');
+  sticker(chatId, 'SUCCESS');
 
   // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
   await sendLedger(chatId);
@@ -743,7 +738,7 @@ async function handleCallback(cb: any): Promise<void> {
       pending_usdt: null, usdt_network: null, usdt_txid: null, usdt_image_url: null,
     });
     await sendMessage(chatId, { text: '⏳ ส่ง <b>สกรีนช็อต USDT</b> ใหม่ หรือพิมพ์ <b>จำนวน USDT</b>' });
-    sticker(chatId, 'waiting');
+    sticker(chatId, 'WAITING');
     return;
   }
 
