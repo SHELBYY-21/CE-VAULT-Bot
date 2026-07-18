@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
@@ -32,7 +31,7 @@ const TEXT = {
   ocr_success: {
     title: '✅ OCR สำเร็จ',
     subtitle: 'สลิปจริง ข้อมูลถูกต้อง',
-    badge: 'กำลังตรวจสอบสลิป...',
+    badge: '🔍 กำลังตรวจสอบสลิป...',
   },
   waiting_admin: {
     title: '⏳ รอแอดมินส่ง USDT',
@@ -141,9 +140,6 @@ export default function StatusPage() {
       <main className="mx-auto flex min-h-screen max-w-xl items-center justify-center px-6 py-10">
         <div className="glass accent-top w-full p-6 text-center">
           <div className="text-sm text-[color:var(--muted)]">ไม่พบรายการนี้</div>
-          <Link href="/dashboard" className="mt-3 inline-block text-sm text-indigo-300 hover:underline">
-            ← กลับหน้าแดชบอร์ด
-          </Link>
         </div>
       </main>
     );
@@ -151,11 +147,9 @@ export default function StatusPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-xl px-6 py-10">
-      <div className="mb-4 flex items-center justify-between">
-        <Link href="/dashboard" className="text-sm text-[color:var(--muted)] hover:text-white">
-          ← กลับหน้าแดชบอร์ด
-        </Link>
-        <span className="text-xs text-[color:var(--muted)]">{row.id}</span>
+      <div className="mb-4 text-center">
+        <div className="text-xs font-semibold uppercase tracking-[0.3em] text-indigo-300">CE Vault</div>
+        <div className="mt-1 text-xs text-[color:var(--muted)]">รายการ {row.id}</div>
       </div>
 
       <div className="glass accent-top overflow-hidden p-5">

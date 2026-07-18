@@ -42,7 +42,7 @@ export interface Transaction {
   slip_image_url?: string | null;
   created_at: string;
   updated_at?: string;
-  status?: TransactionStatus | null;
+  status: TransactionStatus;
   // ความสัมพันธ์ที่ join มาจาก supabase: select('*, admins(name)')
   admins?: { name: string } | null;
 }
