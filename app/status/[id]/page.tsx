@@ -7,6 +7,10 @@ import { supabase } from '@/lib/supabaseClient';
 
 type TxStatus = 'ocr_success' | 'waiting_admin' | 'completed';
 
+type AdminRef = {
+  name: string | null;
+};
+
 type Tx = {
   id: string;
   status: TxStatus | null;
@@ -15,7 +19,11 @@ type Tx = {
   usdt_amount: number;
   slip_image_url: string | null;
   note: string | null;
-  admins?: { name: string | null } | null;
+  admins?: AdminRef | null;
+};
+
+type TxPayload = Omit<Tx, 'admins'> & {
+  admins?: AdminRef | AdminRef[] | null;
 };
 
 const ORDER: TxStatus[] = ['ocr_success', 'waiting_admin', 'completed'];
@@ -44,6 +52,17 @@ function stepClass(active: boolean) {
     : 'border-[color:var(--border)] bg-white/5 text-[color:var(--muted)]';
 }
 
+function normalizeTx(row: TxPayload | null): Tx | null {
+  if (!row) return null;
+
+  const { admins, ...tx } = row;
+
+  return {
+    ...tx,
+    admins: Array.isArray(admins) ? admins[0] ?? null : admins ?? null,
+  };
+}
+
 export default function StatusPage() {
   const params = useParams();
   const id = useMemo(() => {
@@ -66,7 +85,7 @@ export default function StatusPage() {
         .single();
 
       if (!cancelled) {
-        setRow((data as Tx) ?? null);
+        setRow(normalizeTx((data as TxPayload) ?? null));
         setLoading(false);
       }
     }
@@ -85,7 +104,12 @@ export default function StatusPage() {
         },
         (payload) => {
           if (payload.new) {
-            setRow((prev) => ({ ...(prev ?? {}), ...(payload.new as Partial<Tx>) }) as Tx);
+            setRow((prev) =>
+              normalizeTx({
+                ...((prev ?? {}) as Partial<TxPayload>),
+                ...(payload.new as Partial<TxPayload>),
+              } as TxPayload),
+            );
             setLoading(false);
           }
         },
