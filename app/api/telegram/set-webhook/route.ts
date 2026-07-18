@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.API_SECRET;
+  const secret = process.env.API_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
   const provided = req.nextUrl.searchParams.get('secret');
   if (secret && provided !== secret) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

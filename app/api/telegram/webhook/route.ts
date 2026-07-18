@@ -56,7 +56,7 @@ export const maxDuration = 30; // Vercel serverless max 30s
 // Validate sticker config at cold-start (logs warning, never crashes the webhook)
 try { validateStickers(); } catch (e: any) { console.warn(`[sticker config] ${e.message}`); }
 
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.API_SECRET;
+const WEBHOOK_SECRET = process.env.API_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
 
 const log = (msg: string, data?: any) => {
   const ts = new Date().toISOString();
