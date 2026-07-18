@@ -1,6 +1,7 @@
 // หน้า Transaction Detail — dark glass (ธีม CE Vault)
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import MarkCompletedButton from '@/components/MarkCompletedButton';
 import type { Transaction } from '@/types/transactions';
 
 const FEE_WARNING_THRESHOLD = 3;
@@ -35,6 +36,21 @@ export default async function TransactionDetailPage({
 
   const isDanger = Number(t.fee_percent) > FEE_WARNING_THRESHOLD;
   const isDeposit = t.type === 'THB_DEPOSIT';
+  const status = t.status ?? 'waiting_admin';
+
+  const statusLabel =
+    status === 'ocr_success'
+      ? 'OCR สำเร็จ'
+      : status === 'waiting_admin'
+        ? 'รอแอดมิน'
+        : 'ส่ง USDT สำเร็จ';
+
+  const statusClass =
+    status === 'ocr_success'
+      ? 'bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/25'
+      : status === 'waiting_admin'
+        ? 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/25'
+        : 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25';
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -85,6 +101,15 @@ export default async function TransactionDetailPage({
             </span>
           </div>
           <Row label="หมายเหตุ" value={t.note ?? '-'} />
+          <div className="flex items-center justify-between border-t border-[color:var(--border)] pt-3">
+            <span className="text-[color:var(--muted)]">สถานะ</span>
+            <span className={`rounded-lg px-2 py-0.5 text-sm font-semibold ${statusClass}`}>
+              {statusLabel}
+            </span>
+          </div>
+          <div className="pt-2">
+            <MarkCompletedButton id={t.id} currentStatus={t.status} />
+          </div>
         </div>
 
         <div className="glass reveal p-4" style={{ animationDelay: '160ms' }}>
