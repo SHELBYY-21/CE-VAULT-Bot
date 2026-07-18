@@ -6,7 +6,7 @@ import { calculateProfit, calculateDepositProfit, ProfitResult } from './profit'
 import { calculateFee, FeeResult } from './fees';
 import { fetchBinanceThUsdtRate } from './binance';
 import { notifyIncome, notifyOutflow, notifyEdit, notifyDelete } from './notifier';
-import type { Admin } from '@/types/transactions';
+import type { Admin, OrderStatus } from '@/types/transactions';
 
 // ─── RATE CACHE (30s) เพื่อลด Binance API calls ───
 let cachedRates: { sellRate: number; marketUsdtRate: number; marketSource: MarketSource } | null = null;
@@ -235,6 +235,7 @@ export async function recordThbDeposit(input: RecordThbInput): Promise<ThbResult
       fee_percent: fee.feePercent,
       note: input.note ?? '',
       slip_image_url: input.slipImageUrl ?? '',
+      status: 'waiting_admin',
     })
     .select('id')
     .single();
@@ -415,6 +416,7 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
     profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
     slip_image_url: input.slipImageUrl ?? '',
     note: input.ledgerRef,
+    status: 'completed',
   };
 
   let tx: { id: string } | null = null;
@@ -474,6 +476,7 @@ export async function recordIncoming(input: {
     profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
     slip_image_url: input.slipImageUrl ?? '',
     note: input.ledgerRef,
+    status: 'ocr_success' satisfies OrderStatus,
   };
   const extra: Record<string, any> = {
     chat_id: input.chatId,
@@ -516,6 +519,7 @@ export async function recordOutgoing(input: {
     usdt_amount: input.usdt,
     slip_image_url: input.slipImageUrl ?? '',
     note: input.ledgerRef,
+    status: 'completed',
   };
   const extra: Record<string, any> = {
     chat_id: input.chatId,
@@ -726,6 +730,7 @@ export async function recordUsdtSend(input: RecordSendInput): Promise<SendResult
       usdt_amount: input.usdtAmount,
       note: input.note ?? '',
       slip_image_url: input.slipImageUrl ?? '',
+      status: 'completed',
     })
     .select('id')
     .single();
@@ -739,4 +744,14 @@ export async function recordUsdtSend(input: RecordSendInput): Promise<SendResult
     transactionId: tx.id,
     admin: { id: admin.id, name: admin.name, holdingUsdt: newHolding },
   };
+}
+
+
+export async function setTransactionStatus(txId: string, status: OrderStatus): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('transactions')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', txId);
+
+  if (error) throw error;
 }

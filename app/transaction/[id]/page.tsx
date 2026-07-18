@@ -1,6 +1,6 @@
 import TransactionDetail from '@/components/TransactionDetail';
 
-export default async function TransactionDetailPage({
+export default async function TransactionAliasPage({
   params,
 }: {
   params: Promise<{ id: string }>;

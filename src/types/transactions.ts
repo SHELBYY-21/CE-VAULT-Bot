@@ -4,6 +4,8 @@
 // ============================================================
 
 export type TransactionType = 'THB_DEPOSIT' | 'USDT_SEND';
+export type OrderStatus = 'ocr_success' | 'waiting_admin' | 'completed';
+export type TransactionStatus = OrderStatus;
 
 export interface Admin {
   id: string;
@@ -41,6 +43,7 @@ export interface Transaction {
   slip_image_url?: string | null;
   created_at: string;
   updated_at?: string;
+  status: TransactionStatus;
   // ความสัมพันธ์ที่ join มาจาก supabase: select('*, admins(name)')
   admins?: { name: string } | null;
 }

@@ -42,11 +42,32 @@ create table if not exists public.transactions (
   fee_percent     numeric(20,4) not null default 0,
   note            text,
   slip_image_url  text,
+  status          text not null default 'waiting_admin' check (status in ('ocr_success', 'waiting_admin', 'completed')),
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
 create index if not exists idx_tx_created_at on public.transactions (created_at desc);
 create index if not exists idx_tx_admin on public.transactions (admin_id);
+
+-- 3.1) status ธุรกรรม (รองรับ DB เดิมที่สร้างก่อนมีคอลัมน์นี้)
+alter table public.transactions
+  add column if not exists status text not null default 'waiting_admin';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'transactions_status_check'
+  ) then
+    alter table public.transactions
+      add constraint transactions_status_check
+      check (status in ('ocr_success', 'waiting_admin', 'completed'));
+  end if;
+end $$;
+
+create index if not exists idx_tx_status_created
+  on public.transactions (status, created_at desc);
 
 -- 4) rates (เรตขาย/ตลาด ตั้งผ่านบอท /rate)
 create table if not exists public.rates (

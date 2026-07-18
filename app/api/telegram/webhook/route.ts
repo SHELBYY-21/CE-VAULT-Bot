@@ -28,6 +28,7 @@ import {
   exportRoomCsv,
   recordIncoming,
   recordOutgoing,
+  setTransactionStatus,
   getRecentPairs,
 } from '@/lib/transactions';
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
@@ -37,7 +38,7 @@ import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
-import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
+import { getSticker, getStickerFallbackText, validateStickers, type StickerState } from '@/config/stickers';
 
 // ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
 const USDT_TOLERANCE = 0.0001;
@@ -47,7 +48,14 @@ const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
 function sticker(chatId: number, key: StickerState): void {
   const id = getSticker(key);
-  if (id) sendSticker(chatId, id).catch(() => undefined);
+  if (id) {
+    sendSticker(chatId, id).catch(() => undefined);
+    return;
+  }
+
+  if (process.env.BOT_STICKER_TEXT_FALLBACK === '1') {
+    sendMessage(chatId, { text: getStickerFallbackText(key) }).catch(() => undefined);
+  }
 }
 
 export const runtime = 'nodejs';
@@ -56,7 +64,7 @@ export const maxDuration = 30; // Vercel serverless max 30s
 // Validate sticker config at cold-start (logs warning, never crashes the webhook)
 try { validateStickers(); } catch (e: any) { console.warn(`[sticker config] ${e.message}`); }
 
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.API_SECRET;
+const WEBHOOK_SECRET = process.env.API_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
 
 const log = (msg: string, data?: any) => {
   const ts = new Date().toISOString();
@@ -456,20 +464,25 @@ async function commitIncoming(
       .catch(() => undefined);
   }
 
-  await sendMessage(
-    chatId,
-    UI.incomingRecorded({
-      transactionId: r.transactionId,
-      ledgerRef,
-      thb,
-      usdtOwed: r.usdtOwed,
-      sellRate,
-      adminName: r.adminName,
-      bank: meta.bank ?? null,
-      last4: meta.last4 ?? null,
-      confidence: meta.confidence ?? null,
-    }),
-  );
+  try {
+    await sendMessage(
+      chatId,
+      UI.incomingRecorded({
+        transactionId: r.transactionId,
+        ledgerRef,
+        thb,
+        usdtOwed: r.usdtOwed,
+        sellRate,
+        adminName: r.adminName,
+        bank: meta.bank ?? null,
+        last4: meta.last4 ?? null,
+        confidence: meta.confidence ?? null,
+      }),
+    );
+  } finally {
+    // Realtime UI sees OCR success first, then switches to waiting without a page refresh.
+    await setTransactionStatus(r.transactionId, 'waiting_admin').catch(() => undefined);
+  }
 }
 
 /** บันทึกขาออก (ส่ง USDT) ทันที */
