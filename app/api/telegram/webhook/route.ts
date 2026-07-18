@@ -691,6 +691,17 @@ async function finalizeDeal(
 
   // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
   await sendLedger(chatId);
+
+  // Brand Success Card — ส่งต่อท้ายหลังข้อความปกติเสร็จทั้งหมด (fire-and-forget)
+  sendMessage(
+    chatId,
+    UI.brandCard({
+      usdt,
+      txid: session.usdt_txid ?? null,
+      network: session.usdt_network ?? null,
+      ledgerRef,
+    }),
+  ).catch(() => undefined);
 }
 
 /** จัดการปุ่ม inline: edit:<txId> / del:<txId> / confirm:<usdt> */

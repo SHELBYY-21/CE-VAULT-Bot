@@ -462,6 +462,41 @@ export function dealSuccess(d: DealSuccessData): OutgoingMessage {
   };
 }
 
+// ═══════════════ Brand Success Card (ส่งต่อท้ายข้อความปกติหลังดีลสำเร็จ) ═══════════════
+export interface BrandCardData {
+  usdt: number;
+  txid?: string | null;
+  network?: string | null;
+  ledgerRef: string;
+}
+
+/** การ์ดแบรนด์ CE VAULT — trilingual TH/ZH/EN ตาม Brand Cards Kit v1.0 */
+export function brandCard(d: BrandCardData): OutgoingMessage {
+  const t = new Date().toLocaleTimeString('th-TH', { hour12: false, timeZone: 'Asia/Bangkok' });
+  const shortTxid = d.txid
+    ? `${d.txid.slice(0, 6)}…${d.txid.slice(-6)}`
+    : null;
+  return {
+    text:
+      `🟢 ━━━━━━━━━━━━━\n` +
+      `        ✅\n` +
+      `  <b>✔ TRANSACTION COMPLETE</b>\n\n` +
+      `      <b>ทำรายการสำเร็จ</b>\n` +
+      `   <i>交易完成 · USDT Sent</i>\n` +
+      `${THIN}\n` +
+      `  AMOUNT / <i>จำนวน</i>\n` +
+      `  💠 <b>${money(d.usdt)} USDT</b>\n` +
+      `${THIN}\n` +
+      table([
+        ...(shortTxid ? [['TXID', shortTxid] as [string, string]] : []),
+        ['Net', d.network ?? 'TRC-20'],
+        ['Time', t],
+        ['Ref', `#${d.ledgerRef}`],
+      ], 24) +
+      `${SIG}`,
+  };
+}
+
 /** req13: OCR USDT ไม่ตรงกับที่พิมพ์เอง → บล็อกการยืนยัน ต้องตรวจสอบเอง */
 export function usdtMismatch(ocrVal: number, manualVal: number): OutgoingMessage {
   return {
