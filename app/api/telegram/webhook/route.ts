@@ -37,7 +37,7 @@ import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
-import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
+import { getSticker, getStickerFallbackText, validateStickers, type StickerState } from '@/config/stickers';
 
 // ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
 const USDT_TOLERANCE = 0.0001;
@@ -47,7 +47,14 @@ const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
 function sticker(chatId: number, key: StickerState): void {
   const id = getSticker(key);
-  if (id) sendSticker(chatId, id).catch(() => undefined);
+  if (id) {
+    sendSticker(chatId, id).catch(() => undefined);
+    return;
+  }
+
+  if (process.env.BOT_STICKER_TEXT_FALLBACK === '1') {
+    sendMessage(chatId, { text: getStickerFallbackText(key) }).catch(() => undefined);
+  }
 }
 
 export const runtime = 'nodejs';

@@ -1,41 +1,70 @@
 export const STICKER_IDS = {
-  WELCOME:     process.env.STICKER_WELCOME_ID,
-  PROCESSING:  process.env.STICKER_PROCESSING_ID,
-  OCR_DONE:    process.env.STICKER_OCR_DONE_ID,
-  WAITING:     process.env.STICKER_WAITING_ID,
-  SUCCESS:     process.env.STICKER_SUCCESS_ID,
-  ERROR:       process.env.STICKER_ERROR_ID,
-  RETRY:       process.env.STICKER_RETRY_ID,
-  THANK_YOU:   process.env.STICKER_THANKYOU_ID,
-  VIP:         process.env.STICKER_VIP_ID,
-  QUEUE:       process.env.STICKER_QUEUE_ID,
+  WELCOME: process.env.STICKER_WELCOME_ID,
+  PROCESSING: process.env.STICKER_PROCESSING_ID,
+  OCR_DONE: process.env.STICKER_OCR_DONE_ID,
+  WAITING: process.env.STICKER_WAITING_ID,
+  SUCCESS: process.env.STICKER_SUCCESS_ID,
+  ERROR: process.env.STICKER_ERROR_ID,
+  RETRY: process.env.STICKER_RETRY_ID,
+  THANK_YOU: process.env.STICKER_THANKYOU_ID,
+  VIP: process.env.STICKER_VIP_ID,
+  QUEUE: process.env.STICKER_QUEUE_ID,
 } as const;
 
 export type StickerState = keyof typeof STICKER_IDS;
 
-/**
- * Fail fast at startup instead of during a user flow.
- */
-export function validateStickers() {
-  const missing: StickerState[] = [];
+export const STICKER_FALLBACK_TEXT: Record<StickerState, string> = {
+  WELCOME: 'ยินดีต้อนรับ CE Vault',
+  PROCESSING: 'กำลังอ่านสลิป...',
+  OCR_DONE: 'OCR สำเร็จ',
+  WAITING: 'รอข้อมูลเพิ่มเติม',
+  SUCCESS: 'บันทึกสำเร็จ',
+  ERROR: 'เกิดข้อผิดพลาด',
+  RETRY: 'ลองใหม่อีกครั้ง',
+  THANK_YOU: 'ขอบคุณครับ',
+  VIP: 'ลูกค้า VIP',
+  QUEUE: 'อยู่ในคิวดำเนินการ',
+};
 
-  for (const [key, id] of Object.entries(STICKER_IDS)) {
-    if (!id || !id.startsWith("CAACAg")) {
-      missing.push(key as StickerState);
-    }
-  }
+function isValidStickerId(id: string | undefined): id is string {
+  return Boolean(id && id.startsWith('CAACAg'));
+}
 
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing or invalid sticker file_ids:\n` +
-      missing.map(k => `  - ${k}: ${STICKER_IDS[k] || "(empty)"}`).join("\n")
-    );
-  }
+export function getInvalidStickers(): StickerState[] {
+  return Object.entries(STICKER_IDS)
+    .filter(([, id]) => !isValidStickerId(id))
+    .map(([key]) => key as StickerState);
 }
 
 /**
- * Safe getter with optional fallback.
+ * Sticker IDs are optional. Missing IDs should not fail builds or webhook cold starts.
+ * Set STICKER_STRICT=1 only when you intentionally want to fail deployment on missing IDs.
+ * Set STICKER_WARN_MISSING=1 to print a one-time warning for incomplete sticker config.
  */
+export function validateStickers(): StickerState[] {
+  const invalid = getInvalidStickers();
+  if (invalid.length === 0) return invalid;
+
+  const message =
+    `Missing or invalid sticker file_ids:\n` +
+    invalid.map((key) => `  - ${key}: ${STICKER_IDS[key] || '(empty)'}`).join('\n');
+
+  if (process.env.STICKER_STRICT === '1') {
+    throw new Error(message);
+  }
+
+  if (process.env.STICKER_WARN_MISSING === '1') {
+    console.warn(`[sticker config] ${message}`);
+  }
+
+  return invalid;
+}
+
 export function getSticker(state: StickerState): string | undefined {
-  return STICKER_IDS[state];
+  const id = STICKER_IDS[state];
+  return isValidStickerId(id) ? id : undefined;
+}
+
+export function getStickerFallbackText(state: StickerState): string {
+  return STICKER_FALLBACK_TEXT[state];
 }
