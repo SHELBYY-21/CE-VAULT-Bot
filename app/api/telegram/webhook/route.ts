@@ -28,6 +28,7 @@ import {
   exportRoomCsv,
   recordIncoming,
   recordOutgoing,
+  setTransactionStatus,
   getRecentPairs,
 } from '@/lib/transactions';
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
@@ -463,20 +464,25 @@ async function commitIncoming(
       .catch(() => undefined);
   }
 
-  await sendMessage(
-    chatId,
-    UI.incomingRecorded({
-      transactionId: r.transactionId,
-      ledgerRef,
-      thb,
-      usdtOwed: r.usdtOwed,
-      sellRate,
-      adminName: r.adminName,
-      bank: meta.bank ?? null,
-      last4: meta.last4 ?? null,
-      confidence: meta.confidence ?? null,
-    }),
-  );
+  try {
+    await sendMessage(
+      chatId,
+      UI.incomingRecorded({
+        transactionId: r.transactionId,
+        ledgerRef,
+        thb,
+        usdtOwed: r.usdtOwed,
+        sellRate,
+        adminName: r.adminName,
+        bank: meta.bank ?? null,
+        last4: meta.last4 ?? null,
+        confidence: meta.confidence ?? null,
+      }),
+    );
+  } finally {
+    // Realtime UI sees OCR success first, then switches to waiting without a page refresh.
+    await setTransactionStatus(r.transactionId, 'waiting_admin').catch(() => undefined);
+  }
 }
 
 /** บันทึกขาออก (ส่ง USDT) ทันที */

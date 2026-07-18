@@ -4,7 +4,8 @@
 // ============================================================
 
 export type TransactionType = 'THB_DEPOSIT' | 'USDT_SEND';
-export type TransactionStatus = 'ocr_success' | 'waiting_admin' | 'completed';
+export type OrderStatus = 'ocr_success' | 'waiting_admin' | 'completed';
+export type TransactionStatus = OrderStatus;
 
 export interface Admin {
   id: string;

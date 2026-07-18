@@ -1,35 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 interface MarkCompletedButtonProps {
   id: string;
   currentStatus?: string | null;
 }
 
-export default function MarkCompletedButton({
-  id,
-  currentStatus,
-}: MarkCompletedButtonProps) {
-  const router = useRouter();
+export default function MarkCompletedButton({ id, currentStatus }: MarkCompletedButtonProps) {
   const [saving, setSaving] = useState(false);
-
-  const done = currentStatus === 'completed';
+  const [status, setStatus] = useState(currentStatus ?? 'waiting_admin');
+  const done = status === 'completed';
 
   async function handleClick() {
     if (saving || done) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/transactions/${id}/complete`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/transactions/${id}/complete`, { method: 'POST' });
 
       if (!res.ok) {
         throw new Error(await res.text());
       }
 
-      router.refresh();
+      setStatus('completed');
     } finally {
       setSaving(false);
     }

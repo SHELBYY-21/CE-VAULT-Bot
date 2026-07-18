@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { updateTransactionStatus } from '@/lib/updateTransactionStatus';
 
 export const runtime = 'nodejs';
 
@@ -9,17 +9,13 @@ export async function POST(
 ) {
   const { id } = params;
 
-  const { error } = await supabaseAdmin
-    .from('transactions')
-    .update({ status: 'completed', updated_at: new Date().toISOString() })
-    .eq('id', id);
-
-  if (error) {
+  try {
+    await updateTransactionStatus(id, 'completed');
+    return NextResponse.json({ ok: true, id, status: 'completed' });
+  } catch (error: any) {
     return NextResponse.json(
-      { ok: false, error: error.message },
+      { ok: false, error: error?.message ?? 'update failed' },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({ ok: true });
 }
