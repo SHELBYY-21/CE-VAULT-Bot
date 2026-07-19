@@ -1,3 +1,4 @@
+// Next.js loads .env.local automatically — no dotenv import needed.
 export const STICKER_IDS = {
   WELCOME:     process.env.STICKER_WELCOME_ID,
   PROCESSING:  process.env.STICKER_PROCESSING_ID,
