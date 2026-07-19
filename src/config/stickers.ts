@@ -1,6 +1,4 @@
-// dotenv is loaded automatically by Next.js — this import is a no-op in the
-// webhook context but keeps the file usable in standalone scripts too.
-import "dotenv/config";
+// Next.js loads environment variables automatically for app routes.
 
 export const STICKER_IDS = {
   WELCOME:     process.env.STICKER_WELCOME_ID,
