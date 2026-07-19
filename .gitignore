@@ -45,3 +45,7 @@ Thumbs.db
 # TypeScript build cache
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Circle entity-secret recovery files (never commit)
+*-recovery-file.json
+*entity-secret*recovery*
