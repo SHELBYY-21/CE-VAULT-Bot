@@ -132,7 +132,7 @@ export default function DashboardPage() {
       <header className="reveal flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-lg shadow-lg shadow-indigo-500/30">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-lg shadow-lg shadow-emerald-500/30">
               ⬢
             </span>
             <span className="gradient-text">CE Vault</span>

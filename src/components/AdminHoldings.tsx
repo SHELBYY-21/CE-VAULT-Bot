@@ -16,7 +16,7 @@ export default function AdminHoldings({ admins }: AdminHoldingsProps) {
         <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
           <span>💼</span> เหรียญตกค้างต่อแอดมิน
         </h2>
-        <span className="rounded-full border border-[color:var(--border)] bg-white/5 px-3 py-1 text-xs font-bold text-indigo-300">
+        <span className="rounded-full border border-[color:var(--border)] bg-white/5 px-3 py-1 text-xs font-bold text-emerald-300">
           รวม {nf.format(totalHolding)} USDT
         </span>
       </div>
@@ -29,7 +29,7 @@ export default function AdminHoldings({ admins }: AdminHoldingsProps) {
             <li key={a.id} className="reveal" style={{ animationDelay: `${360 + i * 60}ms` }}>
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2.5 text-sm text-[color:var(--text)]">
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-xs font-bold text-white shadow-lg shadow-indigo-500/30">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/30">
                     {a.name?.charAt(0)?.toUpperCase() ?? '?'}
                   </span>
                   {a.name}
@@ -38,7 +38,7 @@ export default function AdminHoldings({ admins }: AdminHoldingsProps) {
               </div>
               <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-cyan-400"
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
                   style={{ width: `${pct}%` }}
                 />
               </div>

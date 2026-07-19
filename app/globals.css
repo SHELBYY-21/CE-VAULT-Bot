@@ -7,20 +7,22 @@
    inspired by Linear / Vercel / Claude / Perplexity
    ============================================================ */
 :root {
-  --bg: #06060d;
-  --bg-2: #0b0b17;
+  /* ── CE VAULT brand palette (NOVA) — ตาม brandkit-test.html ── */
+  --bg: #0b0f14;
+  --bg-2: #111620;
   --surface: rgba(255, 255, 255, 0.045);
   --surface-2: rgba(255, 255, 255, 0.07);
   --border: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --text: #e9ebf7;
-  --muted: #9aa0b8;
-  --brand-1: #6366f1;
-  --brand-2: #a855f7;
-  --accent: #22d3ee;
-  --good: #34d399;
-  --bad: #fb7185;
-  --warn: #fbbf24;
+  --text: #e8f4f8;
+  --muted: #5e7c86;
+  --brand-1: #00e676; /* green */
+  --brand-2: #00d8ff; /* cyan */
+  --accent: #00d8ff;
+  --gold: #f4c542;
+  --good: #00e676;
+  --bad: #ff5a6e;
+  --warn: #f4c542;
 }
 
 html {
@@ -41,9 +43,9 @@ body {
   z-index: -1;
   overflow: hidden;
   background:
-    radial-gradient(60% 50% at 15% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
-    radial-gradient(50% 45% at 100% 10%, rgba(168, 85, 247, 0.16), transparent 60%),
-    radial-gradient(45% 40% at 50% 100%, rgba(34, 211, 238, 0.12), transparent 60%),
+    radial-gradient(60% 50% at 15% 0%, rgba(0, 230, 118, 0.16), transparent 60%),
+    radial-gradient(50% 45% at 100% 10%, rgba(0, 216, 255, 0.15), transparent 60%),
+    radial-gradient(45% 40% at 50% 100%, rgba(244, 197, 66, 0.10), transparent 60%),
     var(--bg);
 }
 .aurora::before,
@@ -58,13 +60,13 @@ body {
   will-change: transform;
 }
 .aurora::before {
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.55), transparent 65%);
+  background: radial-gradient(circle, rgba(0, 230, 118, 0.5), transparent 65%);
   top: -12rem;
   left: -8rem;
   animation: drift1 20s ease-in-out infinite alternate;
 }
 .aurora::after {
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.5), transparent 65%);
+  background: radial-gradient(circle, rgba(0, 216, 255, 0.45), transparent 65%);
   bottom: -14rem;
   right: -8rem;
   animation: drift2 26s ease-in-out infinite alternate;
@@ -101,12 +103,12 @@ body {
   border-color: var(--border-strong);
   box-shadow:
     0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
-    0 26px 50px -22px rgba(99, 102, 241, 0.35);
+    0 26px 50px -22px rgba(0, 230, 118, 0.3);
 }
 
 /* ---- Gradient animated brand text ---- */
 .gradient-text {
-  background: linear-gradient(100deg, #a5b4fc, #d8b4fe 40%, #67e8f9 75%, #a5b4fc);
+  background: linear-gradient(100deg, var(--brand-1), var(--brand-2) 55%, var(--gold) 90%, var(--brand-1));
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -195,7 +197,7 @@ body {
   transition: background 0.25s ease, box-shadow 0.25s ease;
 }
 .row-glow:hover {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), transparent);
+  background: linear-gradient(90deg, rgba(0, 230, 118, 0.08), transparent);
   box-shadow: inset 3px 0 0 0 var(--brand-1);
 }
 

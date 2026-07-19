@@ -26,7 +26,7 @@ export default async function TransactionDetailPage({
       <main className="mx-auto max-w-3xl px-6 py-10">
         <div className="glass p-8 text-center">
           <p className="text-[color:var(--muted)]">ไม่พบธุรกรรมนี้</p>
-          <Link href="/dashboard" className="mt-2 inline-block text-indigo-300 hover:underline">
+          <Link href="/dashboard" className="mt-2 inline-block text-emerald-300 hover:underline">
             ← กลับหน้าแดชบอร์ด
           </Link>
         </div>
@@ -66,7 +66,7 @@ export default async function TransactionDetailPage({
           className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
             isDeposit
               ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25'
-              : 'bg-violet-500/15 text-violet-300 ring-1 ring-violet-400/25'
+              : 'bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/25'
           }`}
         >
           {isDeposit ? '↓ ฝาก THB → USDT' : '↑ ส่งออก USDT'}

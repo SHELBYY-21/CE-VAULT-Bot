@@ -14,7 +14,7 @@ function TypeBadge({ type }: { type: Transaction['type'] }) {
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
         isDeposit
           ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25'
-          : 'bg-violet-500/15 text-violet-300 ring-1 ring-violet-400/25'
+          : 'bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/25'
       }`}
     >
       {isDeposit ? '↓ ฝาก' : '↑ ส่งออก'}
@@ -95,7 +95,7 @@ export default function TransactionsTable({
                   <td className="px-5 py-3 text-right">
                     <Link
                       href={`/dashboard/transactions/${t.id}`}
-                      className="inline-flex items-center rounded-lg border border-[color:var(--border)] bg-white/5 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:border-indigo-400/50 hover:bg-indigo-500/15 hover:text-white"
+                      className="inline-flex items-center rounded-lg border border-[color:var(--border)] bg-white/5 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white"
                     >
                       ดูรายละเอียด →
                     </Link>

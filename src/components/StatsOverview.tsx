@@ -85,7 +85,7 @@ export default function StatsOverview(p: StatsOverviewProps) {
             เรตตลาด {p.marketIsLive ? '(Binance TH)' : ''}
           </span>
         }
-        glow="from-indigo-400 to-violet-500"
+        glow="from-emerald-400 to-cyan-500"
         icon="🌐"
         delay={160}
         shimmer={!!p.marketIsLive}
