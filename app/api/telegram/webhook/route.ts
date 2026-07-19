@@ -700,6 +700,7 @@ async function finalizeDeal(
       txid: session.usdt_txid ?? null,
       network: session.usdt_network ?? null,
       ledgerRef,
+      transactionId: r.transactionId,
     }),
   ).catch(() => undefined);
 }

@@ -468,6 +468,7 @@ export interface BrandCardData {
   txid?: string | null;
   network?: string | null;
   ledgerRef: string;
+  transactionId?: string | null; // สำหรับสร้างลิงก์สถานะให้ลูกค้า /status/<id>
 }
 
 /** การ์ดแบรนด์ CE VAULT — trilingual TH/ZH/EN ตาม Brand Cards Kit v1.0 */
@@ -493,6 +494,9 @@ export function brandCard(d: BrandCardData): OutgoingMessage {
         ['Time', t],
         ['Ref', `#${d.ledgerRef}`],
       ], 24) +
+      (APP && d.transactionId
+        ? `🔎 <a href="${APP}/status/${d.transactionId}">ติดตามสถานะรายการ (Track order)</a>\n`
+        : '') +
       `${SIG}`,
   };
 }

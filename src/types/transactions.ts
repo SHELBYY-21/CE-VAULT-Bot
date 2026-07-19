@@ -5,6 +5,9 @@
 
 export type TransactionType = 'THB_DEPOSIT' | 'USDT_SEND';
 
+// สถานะดีลสำหรับลูกค้า (patch-v8): OCR ผ่าน → รอแอดมิน → ส่งสำเร็จ
+export type TransactionStatus = 'ocr_success' | 'waiting_admin' | 'completed';
+
 export interface Admin {
   id: string;
   name: string;
@@ -39,6 +42,7 @@ export interface Transaction {
   fee_percent: number;
   note?: string | null;
   slip_image_url?: string | null;
+  status?: TransactionStatus | null;
   created_at: string;
   updated_at?: string;
   // ความสัมพันธ์ที่ join มาจาก supabase: select('*, admins(name)')

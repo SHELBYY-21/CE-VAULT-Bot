@@ -1,36 +1,86 @@
-// หน้าสถานะดีลสำหรับลูกค้า (public) — แสดงเฉพาะสถานะ ไม่เปิดเผยข้อมูลภายใน (กำไร/ค่าธรรมเนียม)
-// ที่มา status:
-//   1) transactions.status ถ้ามีค่าใน 3 สถานะ
-//   2) ธุรกรรมมีอยู่ในตาราง = completed (บอทบันทึกตอนจบดีล)
-//   3) ?s=ocr_success|waiting_admin|completed สำหรับพรีวิว UI (เมื่อยังไม่พบธุรกรรม)
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import StatusSwitcher, { type DealStatus } from '@/components/status/StatusSwitcher';
+'use client';
 
-const VALID: DealStatus[] = ['ocr_success', 'waiting_admin', 'completed'];
+// หน้าสถานะดีลสำหรับลูกค้า (public) — realtime ผ่าน Supabase
+// อ่านด้วย anon client (RLS: anon อ่าน transactions ได้) + subscribe การเปลี่ยนแปลง
+// แสดงเฉพาะสถานะ + ยอดของออเดอร์ตัวเอง ไม่เปิดเผยกำไร/ค่าธรรมเนียม
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
+import type { TransactionStatus } from '@/types/transactions';
+import OCRSuccessCard from '@/components/status/OCRSuccessCard';
+import WaitingAdminCard from '@/components/status/WaitingAdminCard';
+import SuccessCard from '@/components/status/SuccessCard';
 
-function asStatus(v: unknown): DealStatus | null {
-  return VALID.includes(v as DealStatus) ? (v as DealStatus) : null;
-}
+type Tx = {
+  id: string;
+  status: TransactionStatus | null;
+  usdt_amount: number;
+};
 
-export default async function StatusPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ s?: string }>;
-}) {
-  const [{ id }, { s }] = await Promise.all([params, searchParams]);
+const ORDER: TransactionStatus[] = ['ocr_success', 'waiting_admin', 'completed'];
+const STEP_LABEL: Record<TransactionStatus, string> = {
+  ocr_success: 'ตรวจสลิป',
+  waiting_admin: 'รอส่ง USDT',
+  completed: 'สำเร็จ',
+};
 
-  const { data: t } = await supabaseAdmin
-    .from('transactions')
-    .select('id, usdt_amount, created_at')
-    .eq('id', id)
-    .maybeSingle();
+export default function StatusPage() {
+  const params = useParams();
+  const id = useMemo(() => {
+    const raw = params?.id;
+    return Array.isArray(raw) ? raw[0] : String(raw ?? '');
+  }, [params]);
 
-  // มีธุรกรรม = ดีลจบแล้ว (แถวถูก insert ตอน finalizeDeal) — เว้นแต่ DB จะมี status ระบุขั้นก่อนหน้า
-  const status: DealStatus | null = t
-    ? (asStatus((t as { status?: string }).status) ?? 'completed')
-    : asStatus(s);
+  const [row, setRow] = useState<Tx | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+
+    (async () => {
+      // select เฉพาะคอลัมน์ที่ลูกค้าเห็นได้ (ไม่มีกำไร/ค่าธรรมเนียม)
+      // ถ้ายังไม่ได้รัน patch-v8 คอลัมน์ status จะไม่มี → fallback ไม่ให้ query พัง
+      let data: Tx | null = null;
+      const withStatus = await supabase
+        .from('transactions')
+        .select('id, status, usdt_amount')
+        .eq('id', id)
+        .maybeSingle();
+      if (withStatus.error) {
+        const safe = await supabase
+          .from('transactions')
+          .select('id, usdt_amount')
+          .eq('id', id)
+          .maybeSingle();
+        data = safe.data ? ({ ...(safe.data as Tx), status: null }) : null;
+      } else {
+        data = (withStatus.data as Tx | null) ?? null;
+      }
+      if (!alive) return;
+      setRow(data);
+      setLoading(false);
+    })();
+
+    const channel = supabase
+      .channel(`tx-status-${id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transactions', filter: `id=eq.${id}` },
+        (payload) => {
+          if (payload.new) setRow((prev) => ({ ...(prev ?? {}), ...(payload.new as Tx) }));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  const status: TransactionStatus = row?.status ?? 'waiting_admin';
+  const current = ORDER.indexOf(status);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10">
@@ -46,14 +96,55 @@ export default async function StatusPage({
         </p>
       </header>
 
-      {status ? (
-        <StatusSwitcher status={status} usdt={t ? Number(t.usdt_amount) : null} />
-      ) : (
+      {loading ? (
+        <div className="glass p-8 text-center text-sm text-[color:var(--muted)]">
+          กำลังโหลดสถานะ...
+        </div>
+      ) : !row ? (
         <div className="glass p-8 text-center">
           <p className="text-[color:var(--muted)]">ไม่พบรายการนี้</p>
           <p className="mt-2 text-xs text-[color:var(--muted)]">
-            หากเพิ่งส่งสลิป กรุณารอสักครู่แล้วรีเฟรชอีกครั้ง
+            หากเพิ่งส่งสลิป กรุณารอสักครู่ หน้านี้จะอัปเดตอัตโนมัติ
           </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* progress 3 ขั้น */}
+          <div className="flex items-center justify-center gap-2">
+            {ORDER.map((s, i) => (
+              <div key={s} className="flex items-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                      i < current
+                        ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/40'
+                        : i === current
+                          ? 'bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/50'
+                          : 'bg-white/5 text-[color:var(--muted)] ring-1 ring-white/10'
+                    }`}
+                  >
+                    {i < current ? '✓' : i + 1}
+                  </span>
+                  <span className="text-[10px] text-[color:var(--muted)]">{STEP_LABEL[s]}</span>
+                </div>
+                {i < ORDER.length - 1 && (
+                  <span
+                    className={`mb-4 h-px w-10 ${i < current ? 'bg-emerald-400/50' : 'bg-white/10'}`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {status === 'ocr_success' && <OCRSuccessCard />}
+          {status === 'waiting_admin' && <WaitingAdminCard />}
+          {status === 'completed' && <SuccessCard usdt={Number(row.usdt_amount)} />}
+
+          {status !== 'completed' && (
+            <p className="text-center text-xs text-[color:var(--muted)]">
+              หน้านี้อัปเดตอัตโนมัติแบบเรียลไทม์
+            </p>
+          )}
         </div>
       )}
 
