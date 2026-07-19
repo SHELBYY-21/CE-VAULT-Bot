@@ -11,11 +11,24 @@ Supabase (Postgres + Realtime + Storage). Setup steps are documented in `README.
 
 ### Standard commands (see `package.json`)
 - Dev server: `npm run dev` (Next.js on port 3000; `/` redirects to `/dashboard`).
-- "Lint"/typecheck: `npm run typecheck` (`tsc --noEmit`). There is NO ESLint config and NO
-  unit/integration test framework in this repo.
-- Bot API smoke test (the only test harness): `cd bot && npm run test:api` — hits
-  `/api/health`, `/api/transactions/thb-deposit`, `/api/transactions/usdt-send`. Requires the
-  dev server running and `bot/.env` with `TEST_TELEGRAM_ID` set to an existing `admins` row.
+- Typecheck: `npm run typecheck` (`tsc --noEmit`).
+- Lint: `npm run lint` (ESLint 9 flat config, `eslint.config.mjs`, typescript-eslint + Next
+  plugin). Currently 0 errors / a few intentional warnings. ESLint 10 is NOT compatible with the
+  Next plugins yet — keep ESLint pinned to v9.
+- Format: `npm run format` / `npm run format:check` (Prettier). Note: legacy files are not yet
+  fully Prettier-formatted, so `format:check` reports diffs across pre-existing files — CI does
+  not gate on it. New/changed files should be formatted.
+- Unit tests: `npm test` (Vitest, `vitest.config.ts`) — covers the pure logic in
+  `src/lib/{profit,fees,amounts}.ts`. Tests live in `src/lib/__tests__/`.
+- CI: `.github/workflows/ci.yml` runs typecheck + lint + test + build (plus a non-blocking
+  `npm audit`) on push/PR.
+- Bot API smoke test: `cd bot && npm run test:api` — hits `/api/health`,
+  `/api/transactions/thb-deposit`, `/api/transactions/usdt-send`. Requires the dev server
+  running and `bot/.env` with `TEST_TELEGRAM_ID` set to an existing `admins` row.
+- Bot webhook logic can be exercised without a real Telegram bot by POSTing simulated Telegram
+  update JSON to `/api/telegram/webhook` (webhook secret check is skipped when `API_SECRET` /
+  `TELEGRAM_WEBHOOK_SECRET` are unset). The DB write happens before the Telegram reply, so core
+  behavior is verifiable even though the reply fails with a placeholder `BOT_TOKEN`.
 
 ### Running end-to-end requires a local Supabase (non-obvious)
 The dashboard and all API routes need Supabase. There is no hosted project wired up, so run

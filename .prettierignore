@@ -1,0 +1,18 @@
+# build output & deps
+.next/
+node_modules/
+bot/node_modules/
+
+# lockfiles & generated
+package-lock.json
+bot/package-lock.json
+*.tsbuildinfo
+next-env.d.ts
+
+# local supabase state
+supabase/.temp/
+supabase/.branches/
+
+# binary / design assets
+assets/
+brandkit-test.html
