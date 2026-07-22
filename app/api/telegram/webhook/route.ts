@@ -10,6 +10,7 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
+  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
