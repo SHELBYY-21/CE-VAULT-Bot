@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { last4OfAccount, normalizeBankCode, matchesPinnedBank, bangkokDate } from '../banks';
+import {
+  last4OfAccount,
+  normalizeBankCode,
+  matchesPinnedBank,
+  findMatchingPinnedBank,
+  bangkokDate,
+  MAX_PINNED_TODAY,
+} from '../banks';
 
 describe('last4OfAccount', () => {
   it('extracts last 4 digits', () => {
@@ -13,10 +20,14 @@ describe('last4OfAccount', () => {
 });
 
 describe('normalizeBankCode', () => {
-  it('maps common aliases', () => {
+  it('maps aliases including TMN / case-insensitive pin codes', () => {
     expect(normalizeBankCode('กสิกรไทย')).toBe('KBANK');
-    expect(normalizeBankCode('Kasikorn')).toBe('KBANK');
-    expect(normalizeBankCode('scb')).toBe('SCB');
+    expect(normalizeBankCode('kbank')).toBe('KBANK');
+    expect(normalizeBankCode('SCB')).toBe('SCB');
+    expect(normalizeBankCode('ktb')).toBe('KTB');
+    expect(normalizeBankCode('bbl')).toBe('BBL');
+    expect(normalizeBankCode('tmn')).toBe('TMN');
+    expect(normalizeBankCode('TrueMoney')).toBe('TMN');
   });
 });
 
@@ -37,6 +48,27 @@ describe('matchesPinnedBank', () => {
 
   it('allows missing slip bank when last4 matches', () => {
     expect(matchesPinnedBank({ bank: null, last4: '7890' }, pin)).toBe(true);
+  });
+});
+
+describe('findMatchingPinnedBank (up to 3)', () => {
+  const pins = [
+    { id: '1', bank_name: 'SCB', account_number: '111122223333', label: 'scb' },
+    { id: '2', bank_name: 'KBANK', account_number: '1234567890', label: 'k' },
+    { id: '3', bank_name: 'TMN', account_number: '0812345678', label: 'tmn' },
+  ];
+
+  it('finds matching pin among several', () => {
+    expect(findMatchingPinnedBank({ bank: 'kbank', last4: '7890' }, pins)?.id).toBe('2');
+    expect(findMatchingPinnedBank({ bank: 'TMN', last4: '5678' }, pins)?.id).toBe('3');
+  });
+
+  it('returns null when none match', () => {
+    expect(findMatchingPinnedBank({ bank: 'BBL', last4: '9999' }, pins)).toBeNull();
+  });
+
+  it('caps documented max at 3', () => {
+    expect(MAX_PINNED_TODAY).toBe(3);
   });
 });
 

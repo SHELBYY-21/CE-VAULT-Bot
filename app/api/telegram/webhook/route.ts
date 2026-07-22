@@ -41,13 +41,16 @@ import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/li
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
   bangkokDate,
-  getPinnedBankForToday,
+  bangkokNowLabel,
+  listPinnedBanksForToday,
   last4OfAccount,
-  matchesPinnedBank,
+  findMatchingPinnedBank,
   pinBankForToday,
-  unpinBank,
+  unpinPinnedByHint,
   upsertAndPinBank,
   listBankAccounts,
+  PinLimitError,
+  MAX_PINNED_TODAY,
 } from '@/lib/banks';
 import { getLiveToolsSnapshot } from '@/lib/botTools';
 
@@ -197,25 +200,19 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- /tools · /info : ดึงข้อมูลสด -----
+  // ----- /tools · /info · /สด : alias ไปยอดวันนี้ (เกณฑ์แสดงผลข้อมูลจริงอยู่ใน ledger) -----
   if (text && (text.startsWith('/tools') || text.startsWith('/info') || text.startsWith('/สด'))) {
-    await sendTools(chatId, userId);
+    await sendLedger(chatId);
     return;
   }
 
-  // ----- /pin · /unpin : ปักหมุดบัญชีรับวันนี้ -----
+  // ----- /pin · /unpin : เซ็ตบัญชีรับวันนี้ (สูงสุด 3) -----
   if (text && (text.startsWith('/pin') || text.startsWith('/ปักหมุด'))) {
     await handlePinCommand(chatId, text);
     return;
   }
   if (text && (text.startsWith('/unpin') || text.startsWith('/เลิกปัก'))) {
-    const pinned = await getPinnedBankForToday();
-    if (!pinned) {
-      await sendMessage(chatId, UI.pinStatusCard({ today: bangkokDate(), bank: null }));
-      return;
-    }
-    await unpinBank(pinned.id);
-    await sendMessage(chatId, { text: `📌 ยกเลิกปักหมุด <b>${pinned.bank_name}</b> แล้ว` });
+    await handleUnpinCommand(chatId, text);
     return;
   }
 
@@ -345,33 +342,35 @@ async function handleUpdate(update: any): Promise<void> {
         (slip.confidence == null || slip.confidence >= OCR_AUTO_MIN);
 
       if (confOk) {
-        const pinned = await getPinnedBankForToday();
+        const pinnedList = await listPinnedBanksForToday();
         const slipHint = {
           bank: slip.bank ?? null,
           last4: slip.receiverLast4 ?? null,
           receiverName: slip.receiverName ?? null,
         };
+        const matched = findMatchingPinnedBank(slipHint, pinnedList);
 
-        // มีปักหมุดวันนี้ + เลขตรง → ตีสำเร็จอัตโนมัติ (ทดแทน slipApi)
-        if (pinned && matchesPinnedBank(slipHint, pinned)) {
+        // ตรงบัญชีที่เซ็ตไว้ → OCR สำเร็จ
+        if (matched) {
           await clearSession(chatId, userId);
           await commitIncoming(chatId, userId, slip.thbAmount!, {
             slipUrl: imgUrl,
-            bank: slip.bank ?? pinned.bank_name,
-            last4: slip.receiverLast4 ?? last4OfAccount(pinned.account_number),
+            bank: slip.bank ?? matched.bank_name,
+            last4: slip.receiverLast4 ?? last4OfAccount(matched.account_number),
             receiverName: slip.receiverName ?? null,
             confidence: slip.confidence ?? null,
             time: slip.time ?? null,
             date: slip.date ?? null,
             pinMatched: true,
-            bankAccountId: pinned.id,
+            bankAccountId: matched.id,
           });
           sticker(chatId, 'OCR_DONE');
           return;
         }
 
-        // มีปักหมุดแต่เลขไม่ตรง → ไม่ auto
-        if (pinned) {
+        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → ไม่ auto
+        if (pinnedList.length > 0) {
+          const first = pinnedList[0]!;
           await setSession(chatId, userId, {
             state: 'WAITING_USDT',
             pending_type: 'THB_DEPOSIT',
@@ -391,15 +390,15 @@ async function handleUpdate(update: any): Promise<void> {
               thb: slip.thbAmount ?? null,
               bank: slip.bank,
               last4: slip.receiverLast4,
-              pinBank: pinned.bank_name,
-              pinLast4: last4OfAccount(pinned.account_number),
+              pinBank: first.bank_name,
+              pinLast4: last4OfAccount(first.account_number),
               confidence: slip.confidence,
             }),
           );
           return;
         }
 
-        // ยังไม่ปักหมุด — เก็บ meta แล้วขอ /pin หรือพิมพ์ +ยอด (ไม่ auto มั่ว)
+        // ยังไม่เซ็ตบัญชี — เก็บ meta แล้วขอ /pin หรือพิมพ์ +ยอด
         await setSession(chatId, userId, {
           state: 'WAITING_USDT',
           pending_type: 'THB_DEPOSIT',
@@ -526,14 +525,15 @@ async function handleUpdate(update: any): Promise<void> {
       if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
       try {
         // ถ้าปักหมุดไว้แล้วและเลขตรง → ติดธง pinMatched
-        const pinned = await getPinnedBankForToday();
-        const pinMatched =
-          !!pinned &&
-          matchesPinnedBank({ bank: meta.bank ?? null, last4: meta.last4 ?? null }, pinned);
+        const pinnedList = await listPinnedBanksForToday();
+        const matched = findMatchingPinnedBank(
+          { bank: meta.bank ?? null, last4: meta.last4 ?? null },
+          pinnedList,
+        );
         await commitIncoming(chatId, userId, amt.thb.value, {
           ...meta,
-          pinMatched,
-          bankAccountId: pinMatched ? pinned!.id : null,
+          pinMatched: !!matched,
+          bankAccountId: matched?.id ?? null,
         });
         sticker(chatId, 'SUCCESS');
       } catch (e: any) {
@@ -687,35 +687,26 @@ async function commitOutgoing(
   sticker(chatId, 'SUCCESS');
 }
 
-async function sendTools(chatId: number, userId?: number): Promise<void> {
-  try {
-    const snap = await getLiveToolsSnapshot({ chatId, adminTelegramId: userId ?? null });
-    await sendMessage(
-      chatId,
-      UI.toolsCard({
-        nowLabel: snap.nowLabel,
-        roomName: snap.roomName,
-        adminName: snap.adminName,
-        adminHoldingUsdt: snap.adminHoldingUsdt,
-        lastCustomer: snap.lastCustomer,
-        bankLabel: snap.bank?.label ?? null,
-        bankName: snap.bank?.bank_name ?? null,
-        bankLast4: snap.bankLast4,
-        bankBalance: snap.bank?.current_balance ?? null,
-        totalThb: snap.totalThb,
-        shouldSendUsdt: snap.shouldSendUsdt,
-        totalOutgoingUsdt: snap.totalOutgoingUsdt,
-        remainingUsdt: snap.remainingUsdt,
-        netProfitThb: snap.netProfitThb,
-        recent: snap.recent,
-      }),
-    );
-  } catch (e: any) {
-    await sendMessage(chatId, UI.error(e?.message ?? 'tools failed'));
-  }
+async function replyPinOk(
+  chatId: number,
+  today: string,
+  bank: { bank_name: string; account_number: string | null; label: string },
+) {
+  const list = await listPinnedBanksForToday(today);
+  await sendMessage(
+    chatId,
+    UI.pinSetOk({
+      today,
+      bank_name: bank.bank_name,
+      last4: last4OfAccount(bank.account_number) || '????',
+      label: bank.label,
+      count: list.length,
+      max: MAX_PINNED_TODAY,
+    }),
+  );
 }
 
-/** /pin [BANK] [account] — ปักหมุดบัญชีรับวันนี้ */
+/** /pin [BANK] [account] — เซ็ตบัญชีรับวันนี้ (สูงสุด 3) */
 async function handlePinCommand(chatId: number, text: string): Promise<void> {
   const today = bangkokDate();
   const raw = text
@@ -724,33 +715,42 @@ async function handlePinCommand(chatId: number, text: string): Promise<void> {
     .trim();
 
   if (!raw || raw === 'status' || raw === 'สถานะ') {
-    const pinned = await getPinnedBankForToday(today);
-    await sendMessage(chatId, UI.pinStatusCard({ today, bank: pinned }));
+    const banks = await listPinnedBanksForToday(today);
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks, max: MAX_PINNED_TODAY }));
     return;
   }
+
+  const pinOrLimit = async (
+    fn: () => Promise<{ bank_name: string; account_number: string | null; label: string }>,
+  ) => {
+    try {
+      const bank = await fn();
+      await replyPinOk(chatId, today, bank);
+    } catch (e: any) {
+      if (e instanceof PinLimitError || e?.name === 'PinLimitError') {
+        await sendMessage(
+          chatId,
+          UI.pinLimitCard({ today, banks: e.pinned ?? [], max: MAX_PINNED_TODAY }),
+        );
+        return;
+      }
+      await sendMessage(chatId, UI.error(e?.message ?? 'pin failed'));
+    }
+  };
 
   if (raw === 'default' || raw === 'หลัก') {
     const id = await getDefaultBankAccountId();
     if (!id) {
       await sendMessage(chatId, {
-        text: 'ยังไม่มีบัญชีในระบบ — พิมพ์ <code>/pin KBANK 1234567890</code>',
+        text: 'ยังไม่มีบัญชีในระบบ — พิมพ์ <code>/pin kbank 1234567890</code>',
       });
       return;
     }
-    const bank = await pinBankForToday(id, today);
-    await sendMessage(
-      chatId,
-      UI.pinSetOk({
-        today,
-        bank_name: bank.bank_name,
-        last4: last4OfAccount(bank.account_number) || '????',
-        label: bank.label,
-      }),
-    );
+    await pinOrLimit(() => pinBankForToday(id, today));
     return;
   }
 
-  // /pin KBANK 1234567890  หรือ  /pin 1234567890  หรือ  /pin 1234 (last4 ของบัญชีที่มีอยู่)
+  // /pin kbank 1234567890 | /pin SCB 1234 | /pin 1234567890 | /pin 1234
   const parts = raw.split(/\s+/);
   let bankCode = 'KBANK';
   let account = '';
@@ -763,50 +763,81 @@ async function handlePinCommand(chatId: number, text: string): Promise<void> {
 
   const digits = account.replace(/\D/g, '');
   if (digits.length === 4) {
-    // last4 อย่างเดียว — หาบัญชีที่มีอยู่แล้วปักหมุด
     const all = await listBankAccounts();
     const hit = all.find((b) => last4OfAccount(b.account_number) === digits);
     if (!hit) {
       await sendMessage(chatId, {
         text:
           `ไม่พบบัญชีท้าย <code>${digits}</code> ในระบบ\n` +
-          `พิมพ์เต็ม เช่น <code>/pin KBANK 1234567890</code>`,
+          `พิมพ์เต็ม เช่น <code>/pin kbank 1234567890</code>`,
       });
       return;
     }
-    const bank = await pinBankForToday(hit.id, today);
-    await sendMessage(
-      chatId,
-      UI.pinSetOk({
-        today,
-        bank_name: bank.bank_name,
-        last4: digits,
-        label: bank.label,
-      }),
-    );
+    await pinOrLimit(() => pinBankForToday(hit.id, today));
     return;
   }
 
   if (digits.length < 4) {
     await sendMessage(chatId, {
-      text: 'รูปแบบ: <code>/pin KBANK 1234567890</code> หรือ <code>/pin 6578</code>',
+      text:
+        `รูปแบบ: <code>/pin kbank 1234567890</code>\n` +
+        `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i> · สูงสุด ${MAX_PINNED_TODAY} บัญชี`,
     });
     return;
   }
 
-  try {
-    const bank = await upsertAndPinBank({ bank: bankCode, accountNumber: digits });
-    await sendMessage(
-      chatId,
-      UI.pinSetOk({
-        today,
-        bank_name: bank.bank_name,
-        last4: last4OfAccount(bank.account_number) || digits.slice(-4),
-        label: bank.label,
-      }),
+  await pinOrLimit(() => upsertAndPinBank({ bank: bankCode, accountNumber: digits }));
+}
+
+/** /unpin [n|last4|bank last4] — ลบบัญชีรับที่เซ็ตไว้ */
+async function handleUnpinCommand(chatId: number, text: string): Promise<void> {
+  const today = bangkokDate();
+  const raw = text
+    .replace(/^\/unpin(@\w+)?/i, '')
+    .replace(/^\/เลิกปัก(@\w+)?/i, '')
+    .trim();
+
+  const banks = await listPinnedBanksForToday(today);
+  if (banks.length === 0) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks: [], max: MAX_PINNED_TODAY }));
+    return;
+  }
+
+  if (!raw) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks, max: MAX_PINNED_TODAY }));
+    return;
+  }
+
+  const parts = raw.split(/\s+/);
+  let removed = null as Awaited<ReturnType<typeof unpinPinnedByHint>>;
+
+  if (/^\d+$/.test(parts[0]!) && parts[0]!.length <= 2) {
+    removed = await unpinPinnedByHint({ index: Number(parts[0]) }, today);
+  } else if (parts.length >= 2) {
+    removed = await unpinPinnedByHint(
+      { bank: parts[0], last4: parts[1]!.replace(/\D/g, '').slice(-4) },
+      today,
     );
-  } catch (e: any) {
-    await sendMessage(chatId, UI.error(e?.message ?? 'pin failed'));
+  } else {
+    const digits = parts[0]!.replace(/\D/g, '');
+    removed = await unpinPinnedByHint({ last4: digits.slice(-4) }, today);
+  }
+
+  if (!removed) {
+    await sendMessage(chatId, {
+      text: `ไม่พบรายการที่ตรง — ดูรายการด้วย <code>/pin</code> แล้วใช้ <code>/unpin 1</code>`,
+    });
+    return;
+  }
+
+  const left = await listPinnedBanksForToday(today);
+  await sendMessage(chatId, {
+    text:
+      `🗑 ลบ <b>${removed.bank_name}</b> <code>••••${last4OfAccount(removed.account_number) || '????'}</code> แล้ว\n` +
+      `เหลือ ${left.length}/${MAX_PINNED_TODAY} บัญชี`,
+  });
+  if (left.length) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks: left, max: MAX_PINNED_TODAY }));
   }
 }
 
@@ -826,14 +857,15 @@ async function doNewDay(chatId: number): Promise<void> {
   await sendMessage(chatId, UI.newDayStarted(label));
 }
 
-/** ส่งการ์ดสรุปยอด "ห้องนี้" (แยกตาม chat_id + day-cut) + Top Staff + 5 รายการล่าสุด */
+/** ส่งการ์ดสรุปยอด "ห้องนี้" + เกณฑ์แสดงผลจริง (เวลา · ลูกค้า · บช · USDT · recent 5) */
 async function sendLedger(chatId: number): Promise<void> {
   try {
     const room = await getRoom(chatId);
-    const [led, staff, recent] = await Promise.all([
+    const [led, staff, recent, tools] = await Promise.all([
       getTodayLedger(room.dayCutAt, chatId),
       getStaffLeaderboard(room.dayCutAt, chatId),
       getRecentPairs(chatId, room.dayCutAt, 5),
+      getLiveToolsSnapshot({ chatId }).catch(() => null),
     ]);
     await sendMessage(
       chatId,
@@ -850,11 +882,28 @@ async function sendLedger(chatId: number): Promise<void> {
         roomName: room.name,
         staff,
         recent,
+        nowLabel: tools?.nowLabel ?? bangkokNowLabel(),
+        pinnedBanks:
+          tools?.pinnedBanks ??
+          (await listPinnedBanksForToday().then((list) =>
+            list.map((b) => ({
+              bank_name: b.bank_name,
+              last4: last4OfAccount(b.account_number) || '????',
+              balance: b.current_balance,
+            })),
+          )),
+        lastCustomer: tools?.lastCustomer
+          ? {
+              name: tools.lastCustomer.name,
+              bank: tools.lastCustomer.bank,
+              last4: tools.lastCustomer.last4,
+              thb: tools.lastCustomer.thb,
+            }
+          : null,
       }),
     );
   } catch (e: any) {
     console.error('[sendLedger]', e?.message || e);
-    // อย่ากลืน error เงียบ — แจ้งสั้น ๆ ว่าสรุปยอดยังโหลดไม่ได้ แต่ดีลหลักอาจสำเร็จแล้ว
     await sendMessage(chatId, {
       text:
         `⚠️ <b>บันทึกแล้ว แต่สรุปยอดยังโหลดไม่ครบ</b>\n` +
@@ -1129,18 +1178,21 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- tools : ดึงข้อมูลสด -----
+  // ----- tools : alias → ยอดวันนี้ -----
   if (action === 'tools') {
     await answerCallback(id);
-    await sendTools(chatId, userId);
+    await sendLedger(chatId);
     return;
   }
 
-  // ----- pin_status : สถานะบัญชีปักหมุด -----
+  // ----- pin_status : สถานะบัญชีรับที่เซ็ตไว้ -----
   if (action === 'pin_status') {
     await answerCallback(id);
-    const pinned = await getPinnedBankForToday();
-    await sendMessage(chatId, UI.pinStatusCard({ today: bangkokDate(), bank: pinned }));
+    const banks = await listPinnedBanksForToday();
+    await sendMessage(
+      chatId,
+      UI.pinStatusCard({ today: bangkokDate(), banks, max: MAX_PINNED_TODAY }),
+    );
     return;
   }
 

@@ -1,11 +1,20 @@
 // ============================================================
-// Tools — ดึงข้อมูลสดสำหรับบอท (/tools · /info)
-// เวลาปัจจุบัน · ข้อมูลลูกค้า · ยอดเงิน · ยอดรวม · ยอด USDT
+// เกณฑ์แสดงผลข้อมูลจริงของบอท (เวลา · ลูกค้า · ยอดบช · ยอดรวม · USDT)
+// ใช้ประกอบการ์ด /today — ไม่ใช่เมนูรีพอร์ตแยก
 // ============================================================
 import { getRoom } from './botSessions';
-import { getTodayLedger, getRecentPairs, getAdminByTelegramId } from './transactions';
-import { bangkokNowLabel, getPinnedBankForToday, last4OfAccount, type BankAccount } from './banks';
-import { getDefaultBankAccountId } from './transactions';
+import {
+  getTodayLedger,
+  getRecentPairs,
+  getAdminByTelegramId,
+  getDefaultBankAccountId,
+} from './transactions';
+import {
+  bangkokNowLabel,
+  listPinnedBanksForToday,
+  last4OfAccount,
+  type BankAccount,
+} from './banks';
 import { adminDb } from './firebaseAdmin';
 
 export type LiveToolsSnapshot = {
@@ -13,7 +22,6 @@ export type LiveToolsSnapshot = {
   roomName: string | null;
   adminName: string | null;
   adminHoldingUsdt: number | null;
-  /** ลูกค้าล่าสุดจากขาเข้าในห้องวันนี้ */
   lastCustomer: {
     name: string | null;
     bank: string | null;
@@ -21,6 +29,9 @@ export type LiveToolsSnapshot = {
     thb: number;
     at: string;
   } | null;
+  /** บัญชีรับที่เซ็ตวันนี้ (สูงสุด 3) */
+  pinnedBanks: { bank_name: string; last4: string; balance: number }[];
+  /** ใบแรก / default — backward compat */
   bank: BankAccount | null;
   bankLast4: string | null;
   totalThb: number;
@@ -32,42 +43,41 @@ export type LiveToolsSnapshot = {
   recent: { time: string; thb: number; usdt: number; gapMin: number | null }[];
 };
 
-async function loadBankBalance(bank: BankAccount | null): Promise<BankAccount | null> {
-  if (!bank) {
-    const id = await getDefaultBankAccountId();
-    if (!id) return null;
-    const doc = await adminDb.collection('bank_accounts').doc(id).get();
-    if (!doc.exists) return null;
-    const d = doc.data()!;
-    return {
-      id: doc.id,
-      label: String(d.label || ''),
-      bank_name: String(d.bank_name || ''),
-      account_number: d.account_number != null ? String(d.account_number) : null,
-      current_balance: Number(d.current_balance || 0),
-      pinned_for_date: d.pinned_for_date != null ? String(d.pinned_for_date) : null,
-    };
-  }
-  return bank;
-}
-
 export async function getLiveToolsSnapshot(opts: {
   chatId: number;
   adminTelegramId?: number | null;
 }): Promise<LiveToolsSnapshot> {
   const room = await getRoom(opts.chatId);
-  const [led, recent, pinned, admin] = await Promise.all([
+  const [led, recent, pinnedList, admin] = await Promise.all([
     getTodayLedger(room.dayCutAt, opts.chatId),
     getRecentPairs(opts.chatId, room.dayCutAt, 5),
-    getPinnedBankForToday(),
+    listPinnedBanksForToday(),
     opts.adminTelegramId ? getAdminByTelegramId(opts.adminTelegramId) : Promise.resolve(null),
   ]);
-  const bank = await loadBankBalance(pinned);
+
+  let bank: BankAccount | null = pinnedList[0] ?? null;
+  if (!bank) {
+    const id = await getDefaultBankAccountId();
+    if (id) {
+      const doc = await adminDb.collection('bank_accounts').doc(id).get();
+      if (doc.exists) {
+        const d = doc.data()!;
+        bank = {
+          id: doc.id,
+          label: String(d.label || ''),
+          bank_name: String(d.bank_name || ''),
+          account_number: d.account_number != null ? String(d.account_number) : null,
+          current_balance: Number(d.current_balance || 0),
+          pinned_for_date: d.pinned_for_date != null ? String(d.pinned_for_date) : null,
+        };
+      }
+    }
+  }
+
   const rate = room.rate;
   const shouldSendUsdt = rate ? led.totalThb / rate : led.totalIncomingUsdt;
   const remainingUsdt = shouldSendUsdt - led.totalOutgoingUsdt;
 
-  // ลูกค้าล่าสุด = ขาเข้าล่าสุดของห้องวันนี้
   let lastCustomer: LiveToolsSnapshot['lastCustomer'] = null;
   try {
     let snap;
@@ -93,7 +103,7 @@ export async function getLiveToolsSnapshot(opts: {
       };
     }
   } catch {
-    /* index อาจยังไม่มี — ข้าม */
+    /* index อาจยังไม่มี */
   }
 
   return {
@@ -102,6 +112,11 @@ export async function getLiveToolsSnapshot(opts: {
     adminName: admin?.name ?? led.lastAdminName,
     adminHoldingUsdt: admin ? Number(admin.holding_usdt || 0) : null,
     lastCustomer,
+    pinnedBanks: pinnedList.map((b) => ({
+      bank_name: b.bank_name,
+      last4: last4OfAccount(b.account_number) || '????',
+      balance: b.current_balance,
+    })),
     bank,
     bankLast4: last4OfAccount(bank?.account_number),
     totalThb: led.totalThb,
