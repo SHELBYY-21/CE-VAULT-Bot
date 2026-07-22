@@ -68,8 +68,9 @@ const now = new Date().toISOString();
     await db.collection('bank_accounts').doc(randomUUID()).set({
       label: 'กสิกร - หลัก',
       bank_name: 'KBANK',
-      account_number: null,
+      account_number: '1234567890',
       current_balance: 0,
+      pinned_for_date: null,
       created_at: now,
       updated_at: now,
     });
