@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import StatsOverview from '@/components/StatsOverview';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
+import NovaMascot from '@/components/brand/NovaMascot';
 import type { Admin, Transaction } from '@/types/transactions';
 
 const FEE_WARNING_THRESHOLD = 3;
@@ -155,16 +156,20 @@ export default function DashboardPage() {
       <header className="reveal flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-lg shadow-lg shadow-emerald-500/30">
-              ⬢
-            </span>
+            <NovaMascot expression="happy" size={40} />
             <span className="gradient-text">CE Vault</span>
           </h1>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
-            Secure USDT Ledger · อัปเดตแบบเรียลไทม์
+            Secure USDT Ledger · อัปเดตแบบเรียลไทม์ · powered by NOVA
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href="/brand"
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-200 backdrop-blur transition hover:bg-emerald-500/15"
+          >
+            Brand Kit
+          </a>
           {/* เลือกดูยอดเฉพาะห้อง (กลุ่มเทเลแกรม) ที่บันทึกไว้ */}
           <label className="relative inline-flex items-center">
             <span className="pointer-events-none absolute left-3 text-xs">🏠</span>

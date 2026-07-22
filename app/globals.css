@@ -201,6 +201,117 @@ body {
   box-shadow: inset 3px 0 0 0 var(--brand-1);
 }
 
+/* ---- NOVA brand / interactive cards ---- */
+.nova-float {
+  animation: novaFloat 3.6s ease-in-out infinite;
+}
+@keyframes novaFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.brand-grid {
+  background-image:
+    linear-gradient(rgba(0, 216, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 216, 255, 0.04) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.brand-grid-error {
+  background-image:
+    linear-gradient(rgba(255, 90, 110, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 90, 110, 0.04) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.nova-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand-1), transparent);
+  animation: novaScan 2.2s ease-in-out infinite;
+  filter: blur(1px);
+  box-shadow: 0 0 8px var(--brand-1);
+}
+@keyframes novaScan {
+  0% {
+    top: 10%;
+  }
+  50% {
+    top: 85%;
+  }
+  100% {
+    top: 10%;
+  }
+}
+.nova-progress {
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.55);
+}
+.nova-check-in {
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: novaCheck 0.8s ease forwards 0.3s;
+}
+@keyframes novaCheck {
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+.nova-circle-in {
+  stroke-dasharray: 300;
+  stroke-dashoffset: 300;
+  animation: novaCircle 0.6s ease forwards;
+}
+@keyframes novaCircle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.nova-shake {
+  animation: novaShake 1.8s ease-in-out infinite;
+}
+@keyframes novaShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+.nova-hand-min {
+  animation: novaSpin 8s linear infinite;
+  transform-origin: 60px 60px;
+}
+.nova-hand-sec {
+  animation: novaSpin 2s linear infinite;
+  transform-origin: 60px 60px;
+}
+.nova-clock-ring {
+  animation: novaSpin 12s linear infinite;
+  transform-origin: 60px 60px;
+}
+@keyframes novaSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---- Prefers reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   *,

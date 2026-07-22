@@ -18,6 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         id: snap.id,
         status: d.status ?? null,
         usdt_amount: Number(d.usdt_amount || 0),
+        tx_hash: d.usdt_txid ?? d.tx_hash ?? null,
       },
     });
   } catch (e: any) {
