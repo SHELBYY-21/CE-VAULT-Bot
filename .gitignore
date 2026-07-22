@@ -49,3 +49,9 @@ tsconfig.tsbuildinfo
 # Circle entity-secret recovery files (never commit)
 *-recovery-file.json
 *entity-secret*recovery*
+# Firebase emulators
+firestore-debug.log
+firebase-debug.log
+storage-debug.log
+ui-debug.log
+*.log

@@ -11,12 +11,16 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "emulators": "npx -y firebase-tools@latest emulators:start --only firestore,storage --project demo-ce-vault",
+    "db:setup": "node scripts/setup-db.mjs",
+    "db:verify": "node scripts/verify-db.mjs"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
     "@circle-fin/smart-contract-platform": "^10.8.0",
-    "@supabase/supabase-js": "^2.45.4",
+    "firebase": "^12.16.0",
+    "firebase-admin": "^13.6.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

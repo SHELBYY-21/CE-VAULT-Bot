@@ -1,11 +1,12 @@
 'use client';
 
-// หน้าสถานะดีลสำหรับลูกค้า (public) — realtime ผ่าน Supabase
+// หน้าสถานะดีลสำหรับลูกค้า (public) — realtime ผ่าน Firestore
 // อ่านด้วย anon client (RLS: anon อ่าน transactions ได้) + subscribe การเปลี่ยนแปลง
 // แสดงเฉพาะสถานะ + ยอดของออเดอร์ตัวเอง ไม่เปิดเผยกำไร/ค่าธรรมเนียม
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { clientDb, connectClientEmulatorsOnce } from '@/lib/firebaseClient';
 import type { TransactionStatus } from '@/types/transactions';
 import OCRSuccessCard from '@/components/status/OCRSuccessCard';
 import WaitingAdminCard from '@/components/status/WaitingAdminCard';
@@ -36,47 +37,21 @@ export default function StatusPage() {
 
   useEffect(() => {
     if (!id) return;
-    let alive = true;
-
-    (async () => {
-      // select เฉพาะคอลัมน์ที่ลูกค้าเห็นได้ (ไม่มีกำไร/ค่าธรรมเนียม)
-      // ถ้ายังไม่ได้รัน patch-v8 คอลัมน์ status จะไม่มี → fallback ไม่ให้ query พัง
-      let data: Tx | null = null;
-      const withStatus = await supabase
-        .from('transactions')
-        .select('id, status, usdt_amount')
-        .eq('id', id)
-        .maybeSingle();
-      if (withStatus.error) {
-        const safe = await supabase
-          .from('transactions')
-          .select('id, usdt_amount')
-          .eq('id', id)
-          .maybeSingle();
-        data = safe.data ? ({ ...(safe.data as Tx), status: null }) : null;
-      } else {
-        data = (withStatus.data as Tx | null) ?? null;
-      }
-      if (!alive) return;
-      setRow(data);
-      setLoading(false);
-    })();
-
-    const channel = supabase
-      .channel(`tx-status-${id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions', filter: `id=eq.${id}` },
-        (payload) => {
-          if (payload.new) setRow((prev) => ({ ...(prev ?? {}), ...(payload.new as Tx) }));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      alive = false;
-      supabase.removeChannel(channel);
-    };
+    connectClientEmulatorsOnce();
+    const unsub = onSnapshot(
+      doc(clientDb, 'transactions', id),
+      (snap) => {
+        if (!snap.exists()) {
+          setRow(null);
+        } else {
+          const d = snap.data() as any;
+          setRow({ id: snap.id, status: d.status ?? null, usdt_amount: Number(d.usdt_amount || 0) });
+        }
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+    return () => unsub();
   }, [id]);
 
   const status: TransactionStatus = row?.status ?? 'waiting_admin';
