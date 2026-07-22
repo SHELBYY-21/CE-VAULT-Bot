@@ -1,0 +1,31 @@
+# ตั้งชื่อ / About / Description / 12 commands ของ @CEboi88bot
+name: Set bot profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      bot_token:
+        description: BOT_TOKEN (ใช้เมื่อยังไม่มี Actions secret)
+        required: false
+        type: string
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply bot profile
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN || inputs.bot_token }}
+        run: |
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "Missing BOT_TOKEN (secret or workflow input)"
+            exit 1
+          fi
+          node scripts/set-bot-profile.mjs
