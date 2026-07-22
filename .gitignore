@@ -55,3 +55,7 @@ firebase-debug.log
 storage-debug.log
 ui-debug.log
 *.log
+
+# Firebase service account (local only)
+.firebase-sa.json
+*-firebase-adminsdk*.json
