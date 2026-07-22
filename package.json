@@ -14,7 +14,11 @@
     "format:check": "prettier --check .",
     "emulators": "npx -y firebase-tools@latest emulators:start --only firestore,storage --project demo-ce-vault",
     "db:setup": "node scripts/setup-db.mjs",
-    "db:verify": "node scripts/verify-db.mjs"
+    "db:verify": "node scripts/verify-db.mjs",
+    "bot:bridge": "npm --prefix bot run start",
+    "prod:24h": "bash scripts/run-24h.sh",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",

@@ -6,6 +6,19 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "apphosting": {
+    "backendId": "ce-vault",
+    "rootDir": "/",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "bot",
+      "supabase",
+      "docs"
+    ]
+  },
   "emulators": {
     "firestore": { "host": "127.0.0.1", "port": 8080 },
     "storage": { "host": "127.0.0.1", "port": 9199 },

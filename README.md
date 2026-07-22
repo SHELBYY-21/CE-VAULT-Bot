@@ -4,6 +4,43 @@
 
 > **Backend:** Cloud Firestore + Firebase Storage (local = Firebase Emulator Suite / `demo-ce-vault`). โฟลเดอร์ `supabase/` เหลือเป็น legacy schema เท่านั้น
 
+---
+
+## บอทรัน 24 ชั่วโมง (แนะนำ)
+
+Cloud Agent / เครื่องที่บล็อก `api.telegram.org` **รันบอทตอบแชทไม่ได้** — ใช้หนึ่งในวิธีนี้:
+
+### A) GitHub Actions (ไม่ต้องมี VPS / ไม่ใช้ Vercel)
+
+1. เปิด https://github.com/SHELBYY-21/CE-VAULT-Bot/settings/secrets/actions  
+2. เพิ่ม Secrets:
+   - `BOT_TOKEN`
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` (ทั้งไฟล์ JSON ของ service account)
+   - `GROK_API_KEY` (ถ้ามี)
+   - `API_SECRET` (แนะนำ)
+3. Merge PR เข้า `main` (schedule ทำงานเฉพาะบน default branch)
+4. ไปที่ **Actions → Bot 24h → Run workflow**
+5. ทักบอทใน Telegram (`/start`) — ควรตอบทันที
+
+Workflow จะ long-poll Telegram แล้ว forward เข้า webhook ในเครื่อง runner (~รอบละ 6 ชม. แล้วสลับรอบอัตโนมัติ)
+
+### B) VPS + Docker (รันจริงตลอด)
+
+```bash
+# บนเซิร์ฟเวอร์ที่มี .env.local ครบ
+docker compose up -d --build
+# หรือ
+npm run prod:24h
+```
+
+ถ้ามีโดเมน HTTPS สาธารณะ: ตั้ง `APP_URL=https://your-domain` แล้วเปิด  
+`https://your-domain/api/telegram/set-webhook?secret=<API_SECRET>`
+
+### C) Firebase App Hosting (ต้องเปิด Blaze)
+
+1. เปิดบิลลิ่ง: https://console.firebase.google.com/project/ce88-95911/overview?purchaseBillingPlan=metered  
+2. ตั้ง secrets ตาม `apphosting.yaml` แล้ว deploy จาก Console / CLI
+
 ## โครงสร้างโปรเจกต์
 
 ```
