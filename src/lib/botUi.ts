@@ -15,9 +15,9 @@ const BRAND = `${MARK} <b>CE VAULT</b>`;
 const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
 // accent เส้นเดียว + จุดสีบอกสถานะ (แทนบล็อกเขียวรัวๆ ให้อ่านง่ายขึ้น)
 const GRAD_INDIGO = '🔷 ━━━━━━━━━━━━━';
-const GRAD_GOLD   = '🟡 ━━━━━━━━━━━━━';
-const GRAD_GREEN  = '🟢 ━━━━━━━━━━━━━';
-const GRAD_RED    = '🔴 ━━━━━━━━━━━━━';
+const GRAD_GOLD = '🟡 ━━━━━━━━━━━━━';
+const GRAD_GREEN = '🟢 ━━━━━━━━━━━━━';
+const GRAD_RED = '🔴 ━━━━━━━━━━━━━';
 const SIG = `<i>${MARK} CE VAULT · secure ledger</i>`;
 
 const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
@@ -79,7 +79,9 @@ function buttons(transactionId?: string): unknown {
   }
   if (APP) {
     if (transactionId)
-      rows.push([{ text: '🔎 เปิดรายละเอียด →', url: `${APP}/dashboard/transactions/${transactionId}` }]);
+      rows.push([
+        { text: '🔎 เปิดรายละเอียด →', url: `${APP}/dashboard/transactions/${transactionId}` },
+      ]);
     rows.push([{ text: '📊 แดชบอร์ด CE Vault', url: `${APP}/dashboard` }]);
   }
   return rows.length ? { inline_keyboard: rows } : undefined;
@@ -154,9 +156,9 @@ export interface SlipReadyData {
   last4?: string | null;
   bank?: string | null;
   receiverName?: string | null;
-  confidence?: number | null;    // ความมั่นใจ OCR 0-100
-  chatRate?: number | null;      // เรตต่อกลุ่มที่ตั้งไว้
-  historyLine?: string | null;   // บรรทัด Receiver History (จาก receiverBrief)
+  confidence?: number | null; // ความมั่นใจ OCR 0-100
+  chatRate?: number | null; // เรตต่อกลุ่มที่ตั้งไว้
+  historyLine?: string | null; // บรรทัด Receiver History (จาก receiverBrief)
 }
 
 // แสดงความมั่นใจ OCR + สัญญาณเตือน
@@ -192,7 +194,9 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
   if (gotAmount) detail.push(`💵 ยอดเงิน   <b>${money(d.thb!)} บาท</b>`);
   if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
   if (d.last4 || d.bank)
-    detail.push(`🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>>>${d.last4}</code>` : ''}`);
+    detail.push(
+      `🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>>>${d.last4}</code>` : ''}`,
+    );
   if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
@@ -218,13 +222,20 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
       `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
       `${progress(2)}\n${THIN}\n` +
       (detail.length ? detail.join('\n') + `\n${THIN}\n` : '') +
-      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n` : '') +
+      (gotAmount && lowConf
+        ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n`
+        : '') +
       ask +
       (d.historyLine ? `\n${d.historyLine}` : ''),
     reply_markup: canAuto
       ? {
           inline_keyboard: [
-            [{ text: `✅ ยืนยัน (${money(usdtAuto)} USDT)`, callback_data: `confirm:${usdtAuto.toFixed(2)}` }],
+            [
+              {
+                text: `✅ ยืนยัน (${money(usdtAuto)} USDT)`,
+                callback_data: `confirm:${usdtAuto.toFixed(2)}`,
+              },
+            ],
           ],
         }
       : undefined,
@@ -283,6 +294,21 @@ export function needThb(): OutgoingMessage {
 }
 
 // ═══════════════ v8: บันทึกทันที (การ์ดสั้น ไม่รกแชท) ═══════════════
+export function formatRecentBlock(
+  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null,
+): string {
+  if (!recent?.length) return '';
+  return (
+    `${THIN}\n🕒 <b>5 รายการล่าสุด</b> <i>(Recent)</i>\n` +
+    `<pre>${recent
+      .map((r) => {
+        const gap = r.gapMin == null ? 'รอส่ง' : `${r.gapMin} นาที`;
+        return `${r.time} » ${money(r.thb).padStart(9)} » ${money(r.usdt).padStart(8)}  (${gap})`;
+      })
+      .join('\n')}</pre>`
+  );
+}
+
 export function incomingRecorded(d: {
   transactionId: string;
   ledgerRef: string;
@@ -293,15 +319,154 @@ export function incomingRecorded(d: {
   bank?: string | null;
   last4?: string | null;
   confidence?: number | null;
+  /** Vision ยืนยันตรงบัญชีปักหมุดวันนี้ */
+  pinMatched?: boolean;
+  time?: string | null;
+  date?: string | null;
+  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
-  const conf = d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '';
+  const conf = d.confidence != null ? `  <i>· Vision ${d.confidence.toFixed(0)}%</i>` : '';
+  const pinLine = d.pinMatched ? `✅ <b>OCR สำเร็จ</b> — ตรงบัญชีที่เซ็ตไว้วันนี้\n` : '';
+  const when = d.date || d.time ? `📅 ${[d.date, d.time].filter(Boolean).join(' ')}\n` : '';
   return {
     text:
       `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
+      pinLine +
       `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
-      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
+      when +
+      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
+      formatRecentBlock(d.recent),
     reply_markup: buttons(d.transactionId),
+  };
+}
+
+/** สลิป Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้ */
+export function slipBankMismatch(d: {
+  thb: number | null;
+  bank?: string | null;
+  last4?: string | null;
+  pinBank?: string | null;
+  pinLast4?: string | null;
+  confidence?: number | null;
+}): OutgoingMessage {
+  return {
+    text:
+      `⚠️ <b>Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้</b>\n` +
+      `${THIN}\n` +
+      (d.thb != null ? `💵 ยอดสลิป  <b>${money(d.thb)} THB</b>\n` : '') +
+      `🧾 จากสลิป  <b>${d.bank ?? '-'}</b> <code>••••${d.last4 ?? '????'}</code>\n` +
+      `📌 ปักหมุดวันนี้  <b>${d.pinBank ?? '-'}</b> <code>••••${d.pinLast4 ?? '????'}</code>\n` +
+      (d.confidence != null ? `<i>ความมั่นใจ ${d.confidence.toFixed(0)}%</i>\n` : '') +
+      `${THIN}\n` +
+      `ถ้าแน่ใจว่าถูกต้อง พิมพ์ <code>+${d.thb != null ? money(d.thb).replace(/,/g, '') : '500'}</code> เพื่อบันทึกเอง\n` +
+      `หรือ <code>/pin ${d.bank ?? 'KBANK'} ${d.last4 ?? '1234'}</code> แล้วส่งสลิปใหม่`,
+  };
+}
+
+/** มี Vision ยอดชัด แต่ยังไม่ได้ปักหมุดบัญชีวันนี้ */
+export function slipAskPin(d: {
+  thb: number;
+  bank?: string | null;
+  last4?: string | null;
+  confidence?: number | null;
+}): OutgoingMessage {
+  return {
+    text:
+      `👁 <b>Vision อ่านสลิปได้</b>  <b>${money(d.thb)} THB</b>` +
+      (d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '') +
+      `\n` +
+      (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
+      `${THIN}\n` +
+      `ยังไม่ได้เซ็ตบัญชีรับวันนี้ — พิมพ์ <code>/pin ${d.bank ?? 'kbank'} ${d.last4 ?? '1234'}</code>\n` +
+      `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
+      `หรือบันทึกเองด้วย <code>+${money(d.thb).replace(/,/g, '')}</code>`,
+  };
+}
+
+export function pinStatusCard(d: {
+  today: string;
+  banks: {
+    label: string;
+    bank_name: string;
+    account_number: string | null;
+    current_balance: number;
+  }[];
+  max?: number;
+}): OutgoingMessage {
+  const max = d.max ?? 3;
+  if (!d.banks.length) {
+    return {
+      text:
+        `📌 <b>ยังไม่ได้เซ็ตบัญชีรับวันนี้</b> <i>(${d.today})</i>\n` +
+        `${THIN}\n` +
+        `พิมพ์ <code>/pin kbank 1234567890</code>\n` +
+        `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
+        `ตั้งได้สูงสุด <b>${max}</b> บัญชีพร้อมกัน\n` +
+        `สลิปตรงบัญชีที่เซ็ต = <b>OCR สำเร็จ</b>`,
+    };
+  }
+  const lines = d.banks
+    .map((b, i) => {
+      const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
+      return (
+        `<b>${i + 1}.</b> 🏦 <b>${b.bank_name}</b>  <code>••••${last4}</code>\n` +
+        `    ${b.label} · คงเหลือ <b>${money(b.current_balance)} THB</b>`
+      );
+    })
+    .join('\n');
+  return {
+    text:
+      `📌 <b>บัญชีรับวันนี้</b> <i>(${d.today})</i> · ${d.banks.length}/${max}\n` +
+      `${THIN}\n` +
+      `${lines}\n` +
+      `${THIN}\n` +
+      `<code>/pin scb 9876543210</code> เพิ่ม` +
+      (d.banks.length >= max ? ` <i>(เต็ม — ต้อง /unpin ก่อน)</i>` : '') +
+      `\n<code>/unpin 1</code> หรือ <code>/unpin 6578</code> ลบตัวเดิม`,
+  };
+}
+
+export function pinSetOk(d: {
+  today: string;
+  bank_name: string;
+  last4: string;
+  label: string;
+  count: number;
+  max?: number;
+}): OutgoingMessage {
+  const max = d.max ?? 3;
+  return {
+    text:
+      `✅ <b>เซ็ตบัญชีรับวันนี้แล้ว</b> <i>(${d.today})</i> · ${d.count}/${max}\n` +
+      `🏦 <b>${d.bank_name}</b>  <code>••••${d.last4}</code> · ${d.label}\n` +
+      `ส่งสลิปได้เลย — ตรงบัญชีที่เซ็ต = OCR สำเร็จ`,
+  };
+}
+
+export function pinLimitCard(d: {
+  today: string;
+  banks: {
+    bank_name: string;
+    account_number: string | null;
+    label: string;
+  }[];
+  max?: number;
+}): OutgoingMessage {
+  const max = d.max ?? 3;
+  const lines = d.banks
+    .map((b, i) => {
+      const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
+      return `<b>${i + 1}.</b> ${b.bank_name} <code>••••${last4}</code> · ${b.label}`;
+    })
+    .join('\n');
+  return {
+    text:
+      `⚠️ <b>ปักหมุดครบ ${max} บัญชีแล้ว</b> <i>(${d.today})</i>\n` +
+      `${THIN}\n` +
+      `${lines}\n` +
+      `${THIN}\n` +
+      `ลบตัวเดิมก่อน: <code>/unpin 1</code> หรือ <code>/unpin kbank 7890</code>`,
   };
 }
 
@@ -311,13 +476,15 @@ export function outgoingRecorded(d: {
   usdt: number;
   adminName: string;
   remainingUsdt: number;
+  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
   const done = d.remainingUsdt <= 0.009;
   return {
     text:
       `🔴 <b>ออก (OUT)</b>  <b>${money(d.usdt)} USDT</b>\n` +
       `${done ? '✅ ส่งครบแล้ว <i>(Settled)</i>' : `⏳ คงเหลือ <i>(Remaining)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
-      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
+      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
+      formatRecentBlock(d.recent),
     reply_markup: buttons(d.transactionId),
   };
 }
@@ -325,8 +492,7 @@ export function outgoingRecorded(d: {
 /** สลิปอ่านยอดไม่ชัด → ขอให้พิมพ์ +ยอด (สั้นที่สุด ไม่รก) */
 export function slipUnclear(guess?: number | null): OutgoingMessage {
   return {
-    text:
-      `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
+    text: `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
   };
 }
 
@@ -350,13 +516,21 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   const conf = d.confidence ?? null;
   const gotAmount = d.thb != null && d.thb > 0;
   const lowConf = conf != null && conf < 90;
-  const header = !gotAmount ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>' : lowConf ? '⚠️ <b>ตรวจสอบสลิป</b>' : '✅ <b>OCR สำเร็จ</b>';
+  const header = !gotAmount
+    ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>'
+    : lowConf
+      ? '⚠️ <b>ตรวจสอบสลิป</b>'
+      : '✅ <b>OCR สำเร็จ</b>';
 
   const detail: string[] = [];
   if (gotAmount) detail.push(`💵 ยอดเงิน <i>(Amount)</i>  <b>${money(d.thb!)} THB</b>`);
   if (d.receiverName) detail.push(`👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName}</b>`);
-  if (d.bank || d.last4) detail.push(`🏦 ธนาคาร <i>(Bank)</i>  <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`);
-  if (d.date || d.time) detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
+  if (d.bank || d.last4)
+    detail.push(
+      `🏦 ธนาคาร <i>(Bank)</i>  <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`,
+    );
+  if (d.date || d.time)
+    detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
 
@@ -367,8 +541,12 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
       `${progress(3)}\n${THIN}\n` +
       `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
       (detail.length ? detail.join('\n') + `\n` : '') +
-      (d.roomRate ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n` : '') +
-      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n` : '') +
+      (d.roomRate
+        ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n`
+        : '') +
+      (gotAmount && lowConf
+        ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n`
+        : '') +
       (d.historyLine ? `${d.historyLine}\n` : '') +
       `${THIN}\n` +
       `⏳ <b>รอยืนยัน USDT</b> <i>(Awaiting USDT)</i>\n` +
@@ -474,9 +652,7 @@ export interface BrandCardData {
 /** การ์ดแบรนด์ CE VAULT — trilingual TH/ZH/EN ตาม Brand Cards Kit v1.0 */
 export function brandCard(d: BrandCardData): OutgoingMessage {
   const t = new Date().toLocaleTimeString('th-TH', { hour12: false, timeZone: 'Asia/Bangkok' });
-  const shortTxid = d.txid
-    ? `${d.txid.slice(0, 6)}…${d.txid.slice(-6)}`
-    : null;
+  const shortTxid = d.txid ? `${d.txid.slice(0, 6)}…${d.txid.slice(-6)}` : null;
   return {
     text:
       `🟢 ━━━━━━━━━━━━━\n` +
@@ -488,12 +664,15 @@ export function brandCard(d: BrandCardData): OutgoingMessage {
       `  AMOUNT / <i>จำนวน</i>\n` +
       `  💠 <b>${money(d.usdt)} USDT</b>\n` +
       `${THIN}\n` +
-      table([
-        ...(shortTxid ? [['TXID', shortTxid] as [string, string]] : []),
-        ['Net', d.network ?? 'TRC-20'],
-        ['Time', t],
-        ['Ref', `#${d.ledgerRef}`],
-      ], 24) +
+      table(
+        [
+          ...(shortTxid ? [['TXID', shortTxid] as [string, string]] : []),
+          ['Net', d.network ?? 'TRC-20'],
+          ['Time', t],
+          ['Ref', `#${d.ledgerRef}`],
+        ],
+        24,
+      ) +
       (APP && d.transactionId
         ? `🔎 <a href="${APP}/status/${d.transactionId}">ติดตามสถานะรายการ (Track order)</a>\n`
         : '') +
@@ -551,10 +730,13 @@ export function confirmSend(usdt: number, holding: number): OutgoingMessage {
       `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนส่ง</i>\n` +
       `${progress(4)}\n${THIN}\n` +
       `กำลังจะส่งออก:\n` +
-      table([
-        ['USDT', money(usdt)],
-        ['คงเหลือ', money(holding - usdt)],
-      ], 17) +
+      table(
+        [
+          ['USDT', money(usdt)],
+          ['คงเหลือ', money(holding - usdt)],
+        ],
+        17,
+      ) +
       `\n<i>กด</i> <b>ยืนยัน</b> <i>เพื่อส่ง</i>`,
     reply_markup: {
       inline_keyboard: [
@@ -597,7 +779,11 @@ export function rateShow(
   };
 }
 
-export function rateSet(name: string | null | undefined, sell: number, market: number): OutgoingMessage {
+export function rateSet(
+  name: string | null | undefined,
+  sell: number,
+  market: number,
+): OutgoingMessage {
   return {
     text:
       `${GRAD_GREEN}\n` +
@@ -664,10 +850,13 @@ export function usdtSendSuccess(d: UsdtSendData): OutgoingMessage {
       `${progress(5)}\n${THIN}\n` +
       `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
       `👤 <b>${d.adminName}</b>\n` +
-      table([
-        ['ส่ง', money(d.usdt)],
-        ['คงเหลือ', money(d.holdingUsdt)],
-      ], 17) +
+      table(
+        [
+          ['ส่ง', money(d.usdt)],
+          ['คงเหลือ', money(d.holdingUsdt)],
+        ],
+        17,
+      ) +
       `${SIG}`,
     reply_markup: buttons(d.transactionId),
   };
@@ -681,7 +870,8 @@ export function editPrompt(_type?: 'THB_DEPOSIT' | 'USDT_SEND'): OutgoingMessage
       `${MARK} <b>CE VAULT</b>  ⚡ <i>โหมดแก้ไข</i>\n` +
       `${THIN}\n` +
       `พิมพ์ค่าใหม่ (ระบุสกุลเสมอ):\n` +
-      FORMAT_HINT + `\n` +
+      FORMAT_HINT +
+      `\n` +
       `${THIN}\n` +
       `<i>ใส่เฉพาะตัวที่จะแก้ก็ได้ · พิมพ์ </i><code>/cancel</code><i> เพื่อยกเลิก</i>`,
   };
@@ -769,18 +959,30 @@ export interface LedgerData {
   totalIncomingUsdt: number;
   totalOutgoingUsdt: number;
   fixedRate: number | null;
-  feePercent: number;         // ค่าธรรมเนียมรวม (%) — คิดจากเฉลี่ย tx
+  feePercent: number; // ค่าธรรมเนียมรวม (%) — คิดจากเฉลี่ย tx
   netProfitThb: number;
   lastAdminName: string | null;
-  roomName?: string | null;   // ชื่อห้อง (กลุ่ม)
+  roomName?: string | null; // ชื่อห้อง (กลุ่ม)
   staff?: { name: string; count: number; profitThb: number }[]; // Top Staff
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[]; // 5 รายการล่าสุด
+  /** เกณฑ์แสดงผลข้อมูลจริงของบอท */
+  nowLabel?: string | null;
+  pinnedBanks?: { bank_name: string; last4: string; balance: number }[] | null;
+  lastCustomer?: {
+    name: string | null;
+    bank: string | null;
+    last4: string | null;
+    thb: number;
+  } | null;
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
   const incoming = d.incomingList
     .slice(0, 10)
-    .map((e) => `<code>${e.time}</code>  ${money(e.thb)}${d.fixedRate ? ` / ${money(d.fixedRate)} = ${money(e.usdt)}` : ` → ${money(e.usdt)}u`}`)
+    .map(
+      (e) =>
+        `<code>${e.time}</code>  ${money(e.thb)}${d.fixedRate ? ` / ${money(d.fixedRate)} = ${money(e.usdt)}` : ` → ${money(e.usdt)}u`}`,
+    )
     .join('\n');
   const outgoing = d.outgoingList
     .slice(0, 10)
@@ -791,11 +993,28 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
   const notSent = shouldSendUsdt - d.totalOutgoingUsdt;
   const notSentThb = notSent * (d.fixedRate ?? 0);
 
+  const pinBlock =
+    d.pinnedBanks && d.pinnedBanks.length
+      ? `📌 บชรับวันนี้  ` +
+        d.pinnedBanks
+          .map((b) => `<b>${b.bank_name}</b> <code>••••${b.last4}</code> (${money(b.balance)})`)
+          .join(' · ') +
+        `\n`
+      : '';
+  const cust = d.lastCustomer;
+  const custBlock = cust
+    ? `👤 ลูกค้าล่าสุด  ${cust.name ?? '-'} · ${cust.bank ?? ''} <code>••••${cust.last4 ?? '????'}</code> · <b>${money(cust.thb)} THB</b>\n`
+    : '';
+
   return {
     text:
       `${GRAD_INDIGO}\n` +
       `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
       `${GRAD_INDIGO}\n` +
+      (d.nowLabel ? `🕐 ${d.nowLabel}\n` : '') +
+      pinBlock +
+      custBlock +
+      (d.nowLabel || pinBlock || custBlock ? `${THIN}\n` : '') +
       `🟢 <b>เข้าบัญชี</b> <i>(Incoming)</i> · ${d.incomingList.length} รายการ\n` +
       (incoming || '<i>— ยังไม่มี —</i>') +
       `\n${THIN}\n` +
@@ -811,23 +1030,21 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       (d.fixedRate ? `  <i>(${money(notSentThb)} THB)</i>` : '') +
       `\n${THIN}\n` +
       `💰 กำไรสุทธิ <i>(Net Profit)</i>  <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} THB</b>\n` +
-      (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด <i>(Last Staff)</i>  <b>${d.lastAdminName}</b>\n` : '') +
+      (d.lastAdminName
+        ? `👤 ผู้รับผิดชอบล่าสุด <i>(Last Staff)</i>  <b>${d.lastAdminName}</b>\n`
+        : '') +
       (d.staff && d.staff.length
         ? `${THIN}\n👷 <b>Top Staff</b>\n` +
           d.staff
             .slice(0, 5)
-            .map((s, i) => `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} THB</b>`)
-            .join('\n') + '\n'
+            .map(
+              (s, i) =>
+                `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} THB</b>`,
+            )
+            .join('\n') +
+          '\n'
         : '') +
-      (d.recent && d.recent.length
-        ? `${THIN}\n🕒 <b>5 รายการล่าสุด</b> <i>(Recent)</i>\n` +
-          `<pre>${d.recent
-            .map((r) => {
-              const gap = r.gapMin == null ? 'รอส่ง' : `${r.gapMin} นาที`;
-              return `${r.time} » ${money(r.thb).padStart(9)} » ${money(r.usdt).padStart(8)}  (${gap})`;
-            })
-            .join('\n')}</pre>`
-        : '') +
+      (d.recent && d.recent.length ? formatRecentBlock(d.recent) + '\n' : '') +
       `${SIG}`,
     reply_markup: {
       inline_keyboard: [
@@ -849,13 +1066,18 @@ export function menuCard(): OutgoingMessage {
       `${MARK} <b>CE VAULT</b>  <i>· เมนูคำสั่ง</i>\n` +
       `${THIN}\n` +
       `<b>ทำรายการ</b>\n` +
-      `📸 ส่ง<b>สลิป THB</b> → ส่งสกรีนช็อต USDT (หรือพิมพ์ยอด) → ยืนยัน\n` +
+      `👁 ส่ง<b>สลิป THB</b> → Vision อ่านยอด/ธนาคาร — ตรงบชที่เซ็ตไว้ = OCR สำเร็จ\n` +
+      `📸 ส่งสกรีนช็อต USDT (หรือพิมพ์ <code>-13.6U</code>)\n` +
       `${THIN}\n` +
       `<b>พิมพ์ยอด (ต้องระบุสกุลเสมอ)</b>\n` +
-      FORMAT_HINT + `\n` +
+      FORMAT_HINT +
+      `\n` +
       `${THIN}\n` +
       `<b>คำสั่ง</b>\n` +
       `📊 <code>/today</code>  ยอดห้องนี้วันนี้\n` +
+      `📌 <code>/pin kbank 1234567890</code>  เซ็ตบชรับวันนี้ (สูงสุด 3)\n` +
+      `   <i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
+      `📌 <code>/unpin 1</code>  ลบบชที่เซ็ตไว้\n` +
       `🔄 <code>/newday</code>  เริ่มวันใหม่\n` +
       `🗑 <code>/reset</code>  ล้างยอดห้องนี้\n` +
       `🏷 <code>/setrate 40</code>  ตั้งเรตขายห้องนี้\n` +
@@ -867,8 +1089,9 @@ export function menuCard(): OutgoingMessage {
       inline_keyboard: [
         [
           { text: '📊 ยอดวันนี้', callback_data: 'menu_today:1' },
-          { text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' },
+          { text: '📌 บัญชีรับ', callback_data: 'pin_status:1' },
         ],
+        [{ text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' }],
         ...(APP ? [[{ text: '📊 แดชบอร์ด', url: `${APP}/dashboard` }]] : []),
       ],
     },
@@ -941,7 +1164,7 @@ export interface ReceiverCardData {
   totalUsdt?: number;
   maxThb?: number;
   lastThb?: number;
-  lastAt?: string | null;   // ISO
+  lastAt?: string | null; // ISO
   lastRef?: string | null;
   todayCount?: number;
   todayThb?: number;
@@ -950,13 +1173,22 @@ export interface ReceiverCardData {
 const fmtDT = (iso?: string | null) =>
   iso
     ? new Date(iso).toLocaleString('th-TH', {
-        day: 'numeric', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Bangkok',
       })
     : '-';
 
 /** บรรทัดสรุปผู้รับ แทรกในการ์ดสลิป: เคยรับแล้ว n รายการ / บัญชีใหม่ */
-export function receiverBrief(r: ReceiverCardData | null, bank: string | null, last4: string): string {
+export function receiverBrief(
+  r: ReceiverCardData | null,
+  bank: string | null,
+  last4: string,
+): string {
   if (!r) {
     return (
       `${THIN}\n` +
@@ -964,19 +1196,27 @@ export function receiverBrief(r: ReceiverCardData | null, bank: string | null, l
       `<i>ยังไม่เคยมีประวัติในระบบ</i>`
     );
   }
-  const star = r.status === 'trusted' ? '  ⭐ <b>Trusted</b>' : r.status === 'blacklist' ? '  🚫 <b>BLACKLIST</b>' : '';
+  const star =
+    r.status === 'trusted'
+      ? '  ⭐ <b>Trusted</b>'
+      : r.status === 'blacklist'
+        ? '  🚫 <b>BLACKLIST</b>'
+        : '';
   return (
     `${THIN}\n` +
     `🏦 <b>${r.bank ?? '-'} ••••${r.last4}</b>${r.name ? `  👤 ${r.name}` : ''}${star}\n` +
     `📊 เคยรับแล้ว <i>(History)</i>  <b>${r.totalTx ?? 0} รายการ</b> · รวม <b>${money(r.totalThb ?? 0)} THB</b>\n` +
-    (r.todayCount ? `📅 วันนี้ <i>(Today)</i>  <b>${r.todayCount} รายการ</b> · <b>${money(r.todayThb ?? 0)} THB</b>\n` : '') +
+    (r.todayCount
+      ? `📅 วันนี้ <i>(Today)</i>  <b>${r.todayCount} รายการ</b> · <b>${money(r.todayThb ?? 0)} THB</b>\n`
+      : '') +
     `⏱ ล่าสุด <i>(Last)</i>  ${fmtDT(r.lastAt)}${r.lastRef ? `  <code>#${r.lastRef}</code>` : ''}`
   );
 }
 
 /** การ์ดเต็มสำหรับ /receiver 6578 */
 export function receiverCard(r: ReceiverCardData): OutgoingMessage {
-  const star = r.status === 'trusted' ? '⭐ Trusted Receiver' : r.status === 'blacklist' ? '🚫 BLACKLIST' : '';
+  const star =
+    r.status === 'trusted' ? '⭐ Trusted Receiver' : r.status === 'blacklist' ? '🚫 BLACKLIST' : '';
   const avg = r.totalTx ? (r.totalThb ?? 0) / r.totalTx : 0;
   return {
     text:

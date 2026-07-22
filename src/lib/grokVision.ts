@@ -4,15 +4,15 @@
 // ถ้าไม่ตั้ง key → fallback ไปที่ OCR.space
 // ============================================================
 export interface SlipExtract {
-  thbAmount: number | null;   // ยอดโอน (บาท)
-  time: string | null;        // "HH:MM"
-  date: string | null;        // "DD/MM/YY"
+  thbAmount: number | null; // ยอดโอน (บาท)
+  time: string | null; // "HH:MM"
+  date: string | null; // "DD/MM/YY"
   receiverLast4: string | null; // เลข 4 ตัวท้ายเลขบัญชีปลายทาง
-  bank: string | null;        // ธนาคารปลายทาง เช่น "KBANK"
+  bank: string | null; // ธนาคารปลายทาง เช่น "KBANK"
   receiverName: string | null; // ชื่อผู้รับเงิน
-  senderName: string | null;  // ชื่อผู้โอน (best-effort)
-  confidence: number | null;  // ความมั่นใจในการอ่าน 0-100
-  raw?: string;               // ข้อความดิบ (debug)
+  senderName: string | null; // ชื่อผู้โอน (best-effort)
+  confidence: number | null; // ความมั่นใจในการอ่าน 0-100
+  raw?: string; // ข้อความดิบ (debug)
 }
 
 const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
@@ -21,7 +21,7 @@ const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and rep
   "time": "HH:MM",               // 24-hour transfer time
   "date": "DD/MM/YY",            // transfer date, Buddhist year → subtract 543 to Gregorian, output as YY (2-digit Gregorian)
   "receiverLast4": "XXXX",       // last 4 digits of RECEIVER (payee) account number
-  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|KEB|CITI|other-uppercase",
+  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|other-uppercase",
   "receiverName": "name or null",// RECEIVER (payee) full name — Thai or English as shown
   "senderName": "name or null",  // sender full name if visible
   "confidence": number           // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
@@ -30,10 +30,10 @@ If unable to read any field, use null (except confidence — always give a numbe
 
 // ─── USDT transfer screenshot (Binance/OKX/TronScan ฯลฯ) ───
 export interface UsdtExtract {
-  amount: number | null;   // จำนวน USDT ที่โอน
-  network: string | null;  // TRC20 | ERC20 | BEP20 | SOL | ...
-  txid: string | null;     // transaction hash
-  time: string | null;     // "HH:MM"
+  amount: number | null; // จำนวน USDT ที่โอน
+  network: string | null; // TRC20 | ERC20 | BEP20 | SOL | ...
+  txid: string | null; // transaction hash
+  time: string | null; // "HH:MM"
   confidence: number | null;
   raw?: string;
 }
@@ -66,21 +66,40 @@ export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({
-        model, temperature: 0,
-        messages: [{ role: 'user', content: [
-          { type: 'text', text: USDT_PROMPT },
-          { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
-        ] }],
+        model,
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: USDT_PROMPT },
+              { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
+            ],
+          },
+        ],
       }),
     });
-    if (!res.ok) { console.error('Grok USDT error:', res.status); return null; }
+    if (!res.ok) {
+      console.error('Grok USDT error:', res.status);
+      return null;
+    }
     const json: any = await res.json();
     const text: string = json?.choices?.[0]?.message?.content ?? '';
-    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    const first = cleaned.indexOf('{'), last = cleaned.lastIndexOf('}');
-    if (first < 0 || last < 0) return { amount: null, network: null, txid: null, time: null, confidence: null, raw: text };
+    const cleaned = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+    const first = cleaned.indexOf('{'),
+      last = cleaned.lastIndexOf('}');
+    if (first < 0 || last < 0)
+      return { amount: null, network: null, txid: null, time: null, confidence: null, raw: text };
     const data = JSON.parse(cleaned.slice(first, last + 1));
-    const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : Number.isFinite(parseFloat(v)) ? parseFloat(v) : null);
+    const num = (v: any) =>
+      typeof v === 'number' && Number.isFinite(v)
+        ? v
+        : Number.isFinite(parseFloat(v))
+          ? parseFloat(v)
+          : null;
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
     return {
       amount: num(data.amount),
@@ -136,11 +155,27 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       .trim();
     const first = cleaned.indexOf('{');
     const last = cleaned.lastIndexOf('}');
-    if (first < 0 || last < 0) return { raw: text, thbAmount: null, time: null, date: null, receiverLast4: null, bank: null, receiverName: null, senderName: null, confidence: null };
+    if (first < 0 || last < 0)
+      return {
+        raw: text,
+        thbAmount: null,
+        time: null,
+        date: null,
+        receiverLast4: null,
+        bank: null,
+        receiverName: null,
+        senderName: null,
+        confidence: null,
+      };
     const jsonStr = cleaned.slice(first, last + 1);
     const data = JSON.parse(jsonStr);
 
-    const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : Number.isFinite(parseFloat(v)) ? parseFloat(v) : null);
+    const num = (v: any) =>
+      typeof v === 'number' && Number.isFinite(v)
+        ? v
+        : Number.isFinite(parseFloat(v))
+          ? parseFloat(v)
+          : null;
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
     return {
