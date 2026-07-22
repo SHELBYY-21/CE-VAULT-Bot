@@ -4,8 +4,8 @@ name: Set bot profile
 on:
   workflow_dispatch:
     inputs:
-      bot_token:
-        description: BOT_TOKEN (ใช้เมื่อยังไม่มี Actions secret)
+      bot_token:8996463931:AAENYk26GhlxXaFdVS7PxXFBYFpYl35YfYk
+        description: 4N-JkCnIbnyeBmlEYMuIYtC7x4XKtS2tmlK8_r6QpQBoRXHH_F_rDQ
         required: false
         type: string
 
