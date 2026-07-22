@@ -12,15 +12,26 @@ Cloud Agent / เครื่องที่บล็อก `api.telegram.org` *
 
 ### A) GitHub Actions (ไม่ต้องมี VPS / ไม่ใช้ Vercel)
 
-1. เปิด https://github.com/SHELBYY-21/CE-VAULT-Bot/settings/secrets/actions  
-2. เพิ่ม Secrets:
-   - `BOT_TOKEN`
-   - `FIREBASE_SERVICE_ACCOUNT_JSON` (ทั้งไฟล์ JSON ของ service account)
-   - `GROK_API_KEY` (ถ้ามี)
-   - `API_SECRET` (แนะนำ)
-3. Merge PR เข้า `main` (schedule ทำงานเฉพาะบน default branch)
-4. ไปที่ **Actions → Bot 24h → Run workflow**
-5. ทักบอทใน Telegram (`/start`) — ควรตอบทันที
+**เร็วสุด (ไม่ต้องตั้ง Secrets):** หลัง merge เข้า `main`
+
+1. เปิด https://github.com/SHELBYY-21/CE-VAULT-Bot/actions/workflows/bot-24h.yml  
+2. **Run workflow** → วาง `bot_token` + `firebase_sa_json` (JSON หนึ่งบรรทัด)  
+3. ทักบอทใน Telegram (`/start`) — ควรตอบทันที  
+
+คัดลอกค่าสำหรับวาง (จากเครื่องที่มี `.env.local` + `.firebase-sa.json`):
+
+```bash
+bash scripts/print-bot-24h-inputs.sh
+```
+
+**ให้ schedule ทุก 5 ชม. รันเอง:** ตั้ง Repository secrets แล้ว merge เข้า `main`
+
+- `BOT_TOKEN`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `GROK_API_KEY` (ถ้ามี)
+- `API_SECRET` (แนะนำ)
+
+หรือรัน `bash scripts/push-bot-secrets.sh` บนเครื่องที่มี `gh` + สิทธิ์ secrets
 
 Workflow จะ long-poll Telegram แล้ว forward เข้า webhook ในเครื่อง runner (~รอบละ 6 ชม. แล้วสลับรอบอัตโนมัติ)
 
