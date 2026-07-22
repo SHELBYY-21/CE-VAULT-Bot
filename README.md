@@ -1,6 +1,8 @@
 # USDT Arbitrage — Telegram Bot + Next.js Dashboard
 
-ระบบบันทึกสลิปโอน THB → แลก USDT ผ่าน Telegram พร้อมแดชบอร์ด Next.js + Supabase (Realtime)
+ระบบบันทึกสลิปโอน THB → แลก USDT ผ่าน Telegram พร้อมแดชบอร์ด Next.js + Firebase (Firestore Realtime)
+
+> **Backend:** Cloud Firestore + Firebase Storage (local = Firebase Emulator Suite / `demo-ce-vault`). โฟลเดอร์ `supabase/` เหลือเป็น legacy schema เท่านั้น
 
 ## โครงสร้างโปรเจกต์
 
@@ -36,7 +38,7 @@ BOT/
 ### Step 2 — Tailwind
 ไฟล์ `tailwind.config.ts`, `postcss.config.js`, `app/globals.css` เตรียมไว้แล้ว (ไม่ต้องตั้งค่าเพิ่ม)
 
-### Step 3 — ตั้งค่า Supabase
+### Step 3 — ตั้งค่า Firebase
 1. สร้างโปรเจกต์ที่ https://supabase.com → New project
 2. เปิด **SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/schema.sql`](supabase/schema.sql) แล้วกด **Run**
    - จะได้ตาราง `admins`, `bank_accounts`, `transactions`, RPC, เปิด Realtime, สร้าง bucket `slips` และ seed แอดมินตัวอย่าง
@@ -45,7 +47,7 @@ BOT/
    update admins set telegram_user_id = 123456789 where name = 'ADMIN A';
    ```
 
-### Step 4 — ENV ของ Next.js
+### Step 4 — ENV ของ Next.js (Firebase)
 คัดลอก `.env.local.example` เป็น `.env.local` แล้วกรอกค่าจาก **Supabase → Project Settings → API**
 ```
 NEXT_PUBLIC_SUPABASE_URL=...

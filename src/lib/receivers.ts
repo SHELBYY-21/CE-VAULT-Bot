@@ -1,11 +1,8 @@
 // ============================================================
-// Receiver History — จำบัญชีผู้รับ (ธนาคาร + เลข 4 ตัวท้าย) พร้อมสถิติสะสม
-// ตัวระบุหลัก account_hash = sha256("<BANK>|<last4>") — ถ้าอนาคต OCR ได้เลขเต็ม
-// เปลี่ยนไป hash เลขเต็มได้โดย schema ไม่ต้องแก้
-// degrade เงียบถ้ายังไม่ได้รัน patch-v3 (ตาราง receivers ไม่มี)
+// Receiver History — Firestore
 // ============================================================
-import { createHash } from 'crypto';
-import { supabaseAdmin } from './supabaseAdmin';
+import { createHash, randomUUID } from 'crypto';
+import { adminDb } from './firebaseAdmin';
 
 export interface ReceiverStats {
   id: string;
@@ -29,30 +26,27 @@ export function receiverHash(bank: string | null | undefined, last4: string): st
   return createHash('sha256').update(`${(bank || 'UNKNOWN').toUpperCase()}|${last4}`).digest('hex');
 }
 
-/** ดึงประวัติผู้รับ (+สถิติวันนี้) — null ถ้าไม่เคยมี/ตารางยังไม่มี */
 export async function getReceiver(
   bank: string | null | undefined,
   last4: string,
 ): Promise<ReceiverStats | null> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('receivers')
-      .select('*')
-      .eq('account_hash', receiverHash(bank, last4))
-      .maybeSingle();
-    if (error || !data) return null;
+    const hash = receiverHash(bank, last4);
+    const snap = await adminDb.collection('receivers').where('account_hash', '==', hash).limit(1).get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0]!;
+    const data = { id: doc.id, ...doc.data() } as ReceiverStats;
 
-    // สถิติวันนี้จาก transactions ที่ผูก receiver_id
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    const { data: today } = await supabaseAdmin
-      .from('transactions')
-      .select('thb_amount')
-      .eq('receiver_id', data.id)
-      .gte('created_at', start.toISOString());
-    const rows = today ?? [];
+    const todaySnap = await adminDb
+      .collection('transactions')
+      .where('receiver_id', '==', data.id)
+      .where('created_at', '>=', start.toISOString())
+      .get();
+    const rows = todaySnap.docs.map((d) => d.data());
     return {
-      ...(data as ReceiverStats),
+      ...data,
       todayCount: rows.length,
       todayThb: rows.reduce((s, r: any) => s + Number(r.thb_amount || 0), 0),
     };
@@ -61,22 +55,19 @@ export async function getReceiver(
   }
 }
 
-/** ค้นด้วยเลข 4 ตัวท้ายอย่างเดียว (สำหรับ /receiver 6578) — คืนหลายแบงก์ถ้าซ้ำ */
 export async function findReceiversByLast4(last4: string): Promise<ReceiverStats[]> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('receivers')
-      .select('*')
-      .eq('account_last4', last4)
-      .order('total_amount_thb', { ascending: false });
-    if (error) return [];
-    return (data ?? []) as ReceiverStats[];
+    const snap = await adminDb
+      .collection('receivers')
+      .where('account_last4', '==', last4)
+      .orderBy('total_amount_thb', 'desc')
+      .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceiverStats);
   } catch {
     return [];
   }
 }
 
-/** บันทึก/สะสมสถิติผู้รับหลังฝากสำเร็จ — คืน receiver id (null ถ้า degrade) */
 export async function upsertReceiverOnDeposit(input: {
   bank: string | null;
   last4: string;
@@ -88,53 +79,44 @@ export async function upsertReceiverOnDeposit(input: {
   try {
     const hash = receiverHash(input.bank, input.last4);
     const now = new Date().toISOString();
-    const { data: old } = await supabaseAdmin
-      .from('receivers')
-      .select('*')
-      .eq('account_hash', hash)
-      .maybeSingle();
+    const snap = await adminDb.collection('receivers').where('account_hash', '==', hash).limit(1).get();
 
-    if (!old) {
-      const { data: created, error } = await supabaseAdmin
-        .from('receivers')
-        .insert({
-          account_hash: hash,
-          bank: input.bank,
-          receiver_name: input.receiverName,
-          account_last4: input.last4,
-          total_transactions: 1,
-          total_amount_thb: input.thb,
-          total_usdt: input.usdt,
-          max_amount_thb: input.thb,
-          last_amount_thb: input.thb,
-          first_transaction_at: now,
-          last_transaction_at: now,
-          last_ledger_ref: input.ledgerRef,
-        })
-        .select('id')
-        .single();
-      if (error) return null;
-      return created?.id ?? null;
-    }
-
-    await supabaseAdmin
-      .from('receivers')
-      .update({
-        // เก็บชื่อล่าสุดถ้า OCR อ่านได้ (ชื่ออาจอ่านไม่ได้บางสลิป)
-        receiver_name: input.receiverName || old.receiver_name,
-        bank: input.bank || old.bank,
-        total_transactions: Number(old.total_transactions) + 1,
-        total_amount_thb: Number(old.total_amount_thb) + input.thb,
-        total_usdt: Number(old.total_usdt) + input.usdt,
-        max_amount_thb: Math.max(Number(old.max_amount_thb), input.thb),
+    if (snap.empty) {
+      const id = randomUUID();
+      await adminDb.collection('receivers').doc(id).set({
+        account_hash: hash,
+        bank: input.bank,
+        receiver_name: input.receiverName,
+        account_last4: input.last4,
+        total_transactions: 1,
+        total_amount_thb: input.thb,
+        total_usdt: input.usdt,
+        max_amount_thb: input.thb,
         last_amount_thb: input.thb,
+        first_transaction_at: now,
         last_transaction_at: now,
         last_ledger_ref: input.ledgerRef,
-        // ≥20 รายการ = Trusted อัตโนมัติ (ยกเว้นถูกตั้ง blacklist ไว้)
-        status: old.status === 'blacklist' ? 'blacklist' : Number(old.total_transactions) + 1 >= 20 ? 'trusted' : old.status,
-      })
-      .eq('id', old.id);
-    return old.id;
+        status: 'normal',
+      });
+      return id;
+    }
+
+    const oldDoc = snap.docs[0]!;
+    const old = oldDoc.data();
+    const nextCount = Number(old.total_transactions) + 1;
+    await oldDoc.ref.update({
+      receiver_name: input.receiverName || old.receiver_name,
+      bank: input.bank || old.bank,
+      total_transactions: nextCount,
+      total_amount_thb: Number(old.total_amount_thb) + input.thb,
+      total_usdt: Number(old.total_usdt) + input.usdt,
+      max_amount_thb: Math.max(Number(old.max_amount_thb), input.thb),
+      last_amount_thb: input.thb,
+      last_transaction_at: now,
+      last_ledger_ref: input.ledgerRef,
+      status: old.status === 'blacklist' ? 'blacklist' : nextCount >= 20 ? 'trusted' : old.status,
+    });
+    return oldDoc.id;
   } catch {
     return null;
   }

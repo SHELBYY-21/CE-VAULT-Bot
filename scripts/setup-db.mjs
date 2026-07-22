@@ -1,44 +1,97 @@
-// เตรียมส่วนที่ไม่ต้องใช้ DDL: storage bucket + seed admin/bank — รัน: node scripts/setup-db.mjs
-import { readFileSync } from 'fs';
-import { createClient } from '@supabase/supabase-js';
+// Seed Firestore + Storage สำหรับ CE VAULT — รัน: node scripts/setup-db.mjs
+// ต้องมี FIRESTORE_EMULATOR_HOST หรือ FIREBASE_SERVICE_ACCOUNT_JSON
+import { readFileSync, existsSync } from 'fs';
+import { randomUUID } from 'crypto';
+import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
-const env = Object.fromEntries(
-  readFileSync('.env.local', 'utf8')
-    .split(/\r?\n/)
-    .filter((l) => l && !l.startsWith('#') && l.includes('='))
-    .map((l) => {
-      const i = l.indexOf('=');
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
-);
-const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
-
-// 1) storage bucket 'slips' (public)
-{
-  const { error } = await sb.storage.createBucket('slips', { public: true });
-  console.log('bucket slips:', error ? error.message : 'created ✓');
+function loadEnv() {
+  if (!existsSync('.env.local')) return {};
+  return Object.fromEntries(
+    readFileSync('.env.local', 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => l && !l.startsWith('#') && l.includes('='))
+      .map((l) => {
+        const i = l.indexOf('=');
+        return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+      }),
+  );
 }
 
-// 2) admin จริง (telegram_user_id 6049267196)
-{
-  const { data } = await sb.from('admins').select('id').eq('telegram_user_id', 6049267196).maybeSingle();
-  if (!data) {
-    const { error } = await sb.from('admins').insert({ telegram_user_id: 6049267196, name: 'Admin (จริง)' });
-    console.log('admin 6049267196:', error ? error.message : 'inserted ✓');
+const env = loadEnv();
+for (const [k, v] of Object.entries(env)) {
+  if (!process.env[k]) process.env[k] = v;
+}
+
+const projectId =
+  process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'demo-ce-vault';
+
+if (!getApps().length) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    initializeApp({ credential: cert(sa), projectId: sa.project_id || projectId });
+  } else if (process.env.FIRESTORE_EMULATOR_HOST) {
+    initializeApp({ projectId });
   } else {
-    console.log('admin 6049267196: exists ✓', data.id);
+    try {
+      initializeApp({ credential: applicationDefault(), projectId });
+    } catch {
+      initializeApp({ projectId });
+    }
   }
 }
 
-// 3) บัญชีธนาคารเริ่มต้น (ถ้ายังไม่มี)
+const db = getFirestore();
+const now = new Date().toISOString();
+
+// admin
 {
-  const { data } = await sb.from('bank_accounts').select('id').limit(1);
-  if (!data || data.length === 0) {
-    const { error } = await sb.from('bank_accounts').insert({ label: 'กสิกร - หลัก', bank_name: 'KBANK' });
-    console.log('bank account:', error ? error.message : 'inserted ✓');
+  const snap = await db.collection('admins').where('telegram_user_id', '==', 6049267196).limit(1).get();
+  if (snap.empty) {
+    await db.collection('admins').doc(randomUUID()).set({
+      telegram_user_id: 6049267196,
+      name: 'Admin (จริง)',
+      holding_usdt: 0,
+      created_at: now,
+      updated_at: now,
+    });
+    console.log('admin 6049267196: inserted ✓');
+  } else {
+    console.log('admin 6049267196: exists ✓', snap.docs[0].id);
+  }
+}
+
+// bank
+{
+  const snap = await db.collection('bank_accounts').limit(1).get();
+  if (snap.empty) {
+    await db.collection('bank_accounts').doc(randomUUID()).set({
+      label: 'กสิกร - หลัก',
+      bank_name: 'KBANK',
+      account_number: null,
+      current_balance: 0,
+      created_at: now,
+      updated_at: now,
+    });
+    console.log('bank account: inserted ✓');
   } else {
     console.log('bank account: exists ✓');
   }
 }
+
+// default rate
+{
+  const snap = await db.collection('rates').limit(1).get();
+  if (snap.empty) {
+    await db.collection('rates').doc(randomUUID()).set({
+      sell_rate: Number(process.env.DEFAULT_SELL_RATE) || 35.5,
+      market_usdt_rate: Number(process.env.DEFAULT_MARKET_RATE) || 34.8,
+      created_at: now,
+    });
+    console.log('rates: seeded ✓');
+  } else {
+    console.log('rates: exists ✓');
+  }
+}
+
+console.log('setup-db done (project=%s, emulator=%s)', projectId, process.env.FIRESTORE_EMULATOR_HOST || 'off');

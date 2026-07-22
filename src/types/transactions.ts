@@ -45,7 +45,7 @@ export interface Transaction {
   status?: TransactionStatus | null;
   created_at: string;
   updated_at?: string;
-  // ความสัมพันธ์ที่ join มาจาก supabase: select('*, admins(name)')
+  // ความสัมพันธ์ denormalized จาก Firestore (admins.name ตอนเขียนธุรกรรม)
   admins?: { name: string } | null;
 }
 

@@ -1,7 +1,7 @@
 // ============================================================
 // จัดการสถานะสนทนาต่อผู้ใช้ + chat-level settings (per-group rate)
 // ============================================================
-import { supabaseAdmin } from './supabaseAdmin';
+import { adminDb } from './firebaseAdmin';
 
 export type SessionState = 'AWAITING_NAME' | 'AWAITING_AMOUNT' | 'EDITING' | 'WAITING_USDT';
 
@@ -18,25 +18,24 @@ export interface BotSession {
   slip_last4?: string | null;
   slip_bank?: string | null;
   slip_receiver_name?: string | null;
-  ocr_conf?: number | null;          // ความมั่นใจ OCR สลิป THB
-  ledger_ref?: string | null;        // Ledger ID ของดีลที่กำลังทำ
-  // ── pending USDT (ระหว่างรอ/ยืนยัน) ──
+  ocr_conf?: number | null;
+  ledger_ref?: string | null;
   pending_usdt?: number | null;
   usdt_network?: string | null;
   usdt_txid?: string | null;
   usdt_image_url?: string | null;
-  admin_id?: string | null; // cache admin id เพื่อไม่ต้อง re-query
-  admin_name?: string | null; // cache admin name
+  admin_id?: string | null;
+  admin_name?: string | null;
+}
+
+function sessionDocId(chatId: number, userId: number) {
+  return `${chatId}_${userId}`;
 }
 
 export async function getSession(chatId: number, userId: number): Promise<BotSession | null> {
-  const { data } = await supabaseAdmin
-    .from('bot_sessions')
-    .select('*')
-    .eq('chat_id', chatId)
-    .eq('telegram_user_id', userId)
-    .maybeSingle();
-  return (data as BotSession) ?? null;
+  const doc = await adminDb.collection('bot_sessions').doc(sessionDocId(chatId, userId)).get();
+  if (!doc.exists) return null;
+  return doc.data() as BotSession;
 }
 
 export async function setSession(
@@ -44,7 +43,7 @@ export async function setSession(
   userId: number,
   patch: Partial<Omit<BotSession, 'chat_id' | 'telegram_user_id'>>,
 ): Promise<void> {
-  const base = {
+  const full = {
     chat_id: chatId,
     telegram_user_id: userId,
     state: patch.state,
@@ -52,10 +51,6 @@ export async function setSession(
     slip_url: patch.slip_url ?? null,
     caption: patch.caption ?? null,
     ocr_thb: patch.ocr_thb ?? null,
-    updated_at: new Date().toISOString(),
-  };
-  const full = {
-    ...base,
     slip_date: patch.slip_date ?? null,
     slip_time: patch.slip_time ?? null,
     slip_last4: patch.slip_last4 ?? null,
@@ -67,91 +62,78 @@ export async function setSession(
     usdt_network: patch.usdt_network ?? null,
     usdt_txid: patch.usdt_txid ?? null,
     usdt_image_url: patch.usdt_image_url ?? null,
+    updated_at: new Date().toISOString(),
   };
-  const { error } = await supabaseAdmin
-    .from('bot_sessions')
-    .upsert(full, { onConflict: 'chat_id,telegram_user_id' });
-  // ถ้ายังไม่ได้รัน patch-v2 (คอลัมน์ slip_* ยังไม่มี) → fallback เขียนเฉพาะคอลัมน์เดิม
-  if (error) {
-    const { error: fallbackError } = await supabaseAdmin
-      .from('bot_sessions')
-      .upsert(base, { onConflict: 'chat_id,telegram_user_id' });
-    // ถ้า fallback ก็ยังล้ม แปลว่าปัญหาระดับ connection/คีย์ ไม่ใช่แค่คอลัมน์ขาด → log ให้เห็น
-    if (fallbackError) {
-      console.error(
-        `[setSession] เขียน session ไม่สำเร็จ (chat=${chatId}, user=${userId}): ${fallbackError.message}`,
-      );
-    }
+  try {
+    await adminDb.collection('bot_sessions').doc(sessionDocId(chatId, userId)).set(full, { merge: true });
+  } catch (e) {
+    console.error(
+      `[setSession] เขียน session ไม่สำเร็จ (chat=${chatId}, user=${userId}):`,
+      e instanceof Error ? e.message : e,
+    );
   }
 }
 
 export async function clearSession(chatId: number, userId: number): Promise<void> {
-  await supabaseAdmin
-    .from('bot_sessions')
-    .delete()
-    .eq('chat_id', chatId)
-    .eq('telegram_user_id', userId);
+  await adminDb.collection('bot_sessions').doc(sessionDocId(chatId, userId)).delete();
 }
 
-// ─── Per-chat fixed rate (เรตของแต่ละกลุ่ม) — degrade เงียบถ้ายังไม่มีตาราง chat_settings ───
 export async function getChatRate(chatId: number): Promise<number | null> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('chat_settings')
-      .select('fixed_rate')
-      .eq('chat_id', chatId)
-      .maybeSingle();
-    if (error) return null;
-    return data?.fixed_rate ? Number(data.fixed_rate) : null;
+    const doc = await adminDb.collection('chat_settings').doc(String(chatId)).get();
+    if (!doc.exists) return null;
+    const rate = doc.data()?.fixed_rate;
+    return rate ? Number(rate) : null;
   } catch {
     return null;
   }
 }
 
 export async function setChatRate(chatId: number, rate: number, roomName?: string | null): Promise<void> {
-  const row: any = { chat_id: chatId, fixed_rate: rate, updated_at: new Date().toISOString() };
+  const row: Record<string, unknown> = {
+    chat_id: chatId,
+    fixed_rate: rate,
+    updated_at: new Date().toISOString(),
+  };
   if (roomName) row.room_name = roomName;
-  await supabaseAdmin
-    .from('chat_settings')
-    .upsert(row)
-    .then(undefined, () => undefined);
+  await adminDb
+    .collection('chat_settings')
+    .doc(String(chatId))
+    .set(row, { merge: true })
+    .catch(() => undefined);
 }
 
-/** ดึงเรต + ชื่อห้อง + จุดตัดวัน (Sell Rate มาจาก fixed_rate) */
 export async function getRoom(
   chatId: number,
 ): Promise<{ rate: number | null; name: string | null; dayCutAt: string | null }> {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('chat_settings')
-      .select('fixed_rate, room_name, day_cut_at')
-      .eq('chat_id', chatId)
-      .maybeSingle();
-    if (error || !data) return { rate: null, name: null, dayCutAt: null };
+    const doc = await adminDb.collection('chat_settings').doc(String(chatId)).get();
+    if (!doc.exists) return { rate: null, name: null, dayCutAt: null };
+    const data = doc.data()!;
     return {
       rate: data.fixed_rate ? Number(data.fixed_rate) : null,
-      name: (data as any).room_name ?? null,
-      dayCutAt: (data as any).day_cut_at ?? null,
+      name: data.room_name ?? null,
+      dayCutAt: data.day_cut_at ?? null,
     };
   } catch {
     return { rate: null, name: null, dayCutAt: null };
   }
 }
 
-/** เริ่มวันใหม่ — ตั้งจุดตัดวันของห้องนี้ = ตอนนี้ (ยอดวันนี้เริ่มนับใหม่จากตรงนี้) */
 export async function startNewDay(chatId: number): Promise<void> {
   const now = new Date().toISOString();
-  await supabaseAdmin
-    .from('chat_settings')
-    .upsert({ chat_id: chatId, day_cut_at: now, updated_at: now })
-    .then(undefined, () => undefined);
+  await adminDb
+    .collection('chat_settings')
+    .doc(String(chatId))
+    .set({ chat_id: chatId, day_cut_at: now, updated_at: now }, { merge: true })
+    .catch(() => undefined);
 }
 
-/** ตั้งชื่อห้อง (แสดงใน dashboard / ledger แทนเลข chat) */
 export async function setRoomName(chatId: number, name: string): Promise<void> {
   const now = new Date().toISOString();
-  await supabaseAdmin
-    .from('chat_settings')
-    .upsert({ chat_id: chatId, room_name: name, updated_at: now })
-    .then(undefined, () => undefined);
+  await adminDb
+    .collection('chat_settings')
+    .doc(String(chatId))
+    .set({ chat_id: chatId, room_name: name, updated_at: now }, { merge: true })
+    .catch(() => undefined);
 }

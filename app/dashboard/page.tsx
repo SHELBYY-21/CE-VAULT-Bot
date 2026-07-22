@@ -4,10 +4,17 @@
 // หน้า Dashboard หลัก (CE Vault)
 // - transactions ล่าสุด + admins (holding) + เรตล่าสุด
 // - การ์ดสรุป: กำไรรวม / avg fee / เรตปัจจุบัน / จำนวนธุรกรรม + holding ต่อแอดมิน
-// - Realtime: transactions + admins
+// - Realtime: Firestore onSnapshot (transactions + admins + rates)
 // ============================================================
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import {
+  collection,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+} from 'firebase/firestore';
+import { clientDb, connectClientEmulatorsOnce } from '@/lib/firebaseClient';
 import StatsOverview from '@/components/StatsOverview';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
@@ -40,27 +47,6 @@ export default function DashboardPage() {
   // ห้องที่เลือกดูยอด: 'all' = ทุกห้อง, หรือ chat_id ที่บันทึกจากเทเลแกรม
   const [selectedRoom, setSelectedRoom] = useState<string>('all');
 
-  async function load() {
-    const [tx, ad, rt] = await Promise.all([
-      supabase
-        .from('transactions')
-        .select('*, admins(name)')
-        .order('created_at', { ascending: false })
-        .limit(100),
-      supabase.from('admins').select('*').order('name', { ascending: true }),
-      supabase
-        .from('rates')
-        .select('sell_rate, market_usdt_rate')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-    setTransactions((tx.data as Transaction[]) ?? []);
-    setAdmins((ad.data as Admin[]) ?? []);
-    setRate((rt.data as RateRow) ?? null);
-    setLoading(false);
-  }
-
   async function loadMarketRate() {
     try {
       const res = await fetch('/api/market-rate', { cache: 'no-store' });
@@ -72,18 +58,35 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    load();
+    connectClientEmulatorsOnce();
     loadMarketRate();
-    const poll = setInterval(loadMarketRate, 30_000); // เรตตลาดสดทุก 30 วิ
+    const poll = setInterval(loadMarketRate, 30_000);
 
-    const channel = supabase
-      .channel('ce-vault-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admins' }, () => load())
-      .subscribe();
+    const unsubTx = onSnapshot(
+      query(collection(clientDb, 'transactions'), orderBy('created_at', 'desc'), limit(100)),
+      (snap) => {
+        setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Transaction));
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+    const unsubAdmins = onSnapshot(
+      query(collection(clientDb, 'admins'), orderBy('name', 'asc')),
+      (snap) => setAdmins(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Admin)),
+    );
+    const unsubRates = onSnapshot(
+      query(collection(clientDb, 'rates'), orderBy('created_at', 'desc'), limit(1)),
+      (snap) => {
+        const doc = snap.docs[0];
+        setRate(doc ? (doc.data() as RateRow) : null);
+      },
+    );
+
     return () => {
       clearInterval(poll);
-      supabase.removeChannel(channel);
+      unsubTx();
+      unsubAdmins();
+      unsubRates();
     };
   }, []);
 

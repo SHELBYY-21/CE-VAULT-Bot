@@ -31,7 +31,7 @@ import {
   getRecentPairs,
 } from '@/lib/transactions';
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { adminDb } from '@/lib/firebaseAdmin';
 import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
@@ -340,11 +340,8 @@ async function handleUpdate(update: any): Promise<void> {
     const txId = session.caption; // เก็บ tx_id ไว้ในฟิลด์ caption
     await clearSession(chatId, userId);
     try {
-      const { data: old } = await supabaseAdmin
-        .from('transactions')
-        .select('type, usdt_amount')
-        .eq('id', txId)
-        .single();
+      const oldDoc = await adminDb.collection('transactions').doc(txId).get();
+      const old = oldDoc.exists ? oldDoc.data() : null;
       if (!old) throw new Error('ไม่พบธุรกรรมเดิม');
 
       const newUsdt = amt.usdt ? amt.usdt.value : Number(old.usdt_amount);
@@ -450,8 +447,8 @@ async function commitIncoming(
     })
       .then((rid) => {
         if (rid)
-          return supabaseAdmin.from('transactions').update({ receiver_id: rid })
-            .eq('id', r.transactionId).then(() => undefined, () => undefined);
+          return adminDb.collection('transactions').doc(r.transactionId)
+            .update({ receiver_id: rid }).then(() => undefined, () => undefined);
       })
       .catch(() => undefined);
   }
@@ -666,8 +663,8 @@ async function finalizeDeal(
     })
       .then((receiverId) => {
         if (receiverId)
-          return supabaseAdmin.from('transactions').update({ receiver_id: receiverId })
-            .eq('id', r.transactionId).then(() => undefined, () => undefined);
+          return adminDb.collection('transactions').doc(r.transactionId)
+            .update({ receiver_id: receiverId }).then(() => undefined, () => undefined);
       })
       .catch(() => undefined);
   }
@@ -802,12 +799,22 @@ async function handleCallback(cb: any): Promise<void> {
   const txId = arg;
 
   // ตรวจว่าคนกดปุ่มเป็นเจ้าของธุรกรรมนี้
-  const { data: tx } = await supabaseAdmin
-    .from('transactions')
-    .select('id, type, admins(telegram_user_id, name)')
-    .eq('id', txId)
-    .single<{ id: string; type: 'THB_DEPOSIT' | 'USDT_SEND'; admins: { telegram_user_id: number; name: string } | null }>();
-  if (!tx || tx.admins?.telegram_user_id !== userId) {
+  const txSnap = await adminDb.collection('transactions').doc(txId).get();
+  const tx = txSnap.exists
+    ? ({ id: txSnap.id, ...(txSnap.data() as any) } as {
+        id: string;
+        type: 'THB_DEPOSIT' | 'USDT_SEND';
+        admins: { telegram_user_id: number; name: string } | null;
+        admin_id?: string;
+      })
+    : null;
+  // denormalized admins may lack telegram_user_id — fall back to admins collection
+  let ownerTg = tx?.admins?.telegram_user_id;
+  if (tx && ownerTg == null && tx.admin_id) {
+    const a = await adminDb.collection('admins').doc(tx.admin_id).get();
+    ownerTg = a.data()?.telegram_user_id;
+  }
+  if (!tx || ownerTg !== userId) {
     return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
   }
 

@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Public read (parity กับ anon RLS เดิม) — เขียนเฉพาะ Admin SDK / server
+    match /admins/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /bank_accounts/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /transactions/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /rates/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /receivers/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // session / chat settings — server only
+    match /bot_sessions/{id} {
+      allow read, write: if false;
+    }
+    match /chat_settings/{id} {
+      allow read, write: if false;
+    }
+  }
+}

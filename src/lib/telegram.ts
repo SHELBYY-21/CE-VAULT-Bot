@@ -1,11 +1,10 @@
 // ============================================================
 // Telegram Bot API helper (ฝั่ง server, ใช้ fetch — เหมาะกับ webhook/serverless)
 // ============================================================
-import { supabaseAdmin } from './supabaseAdmin';
+import { adminStorage, storageBucketName } from './firebaseAdmin';
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const API = `https://api.telegram.org/bot${TOKEN}`;
-const BUCKET = process.env.SUPABASE_BUCKET || 'slips';
 
 async function tg<T = any>(method: string, payload: Record<string, any>): Promise<T> {
   const res = await fetch(`${API}/${method}`, {
@@ -94,18 +93,26 @@ export async function sendSticker(chatId: number, fileId: string): Promise<void>
   }
 }
 
-/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Supabase Storage → คืน public URL */
+/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Firebase Storage → คืน public URL */
 export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const file = await tg<{ file_path: string }>('getFile', { file_id: fileId });
   const fileRes = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`);
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
   const path = `slips/${Date.now()}_${fileId}.jpg`;
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, buffer, {
+  const bucket = adminStorage.bucket(storageBucketName());
+  const f = bucket.file(path);
+  await f.save(buffer, {
     contentType: 'image/jpeg',
-    upsert: true,
+    resumable: false,
+    metadata: { cacheControl: 'public,max-age=31536000' },
   });
-  if (error) throw error;
 
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  // Emulator public URL / production download token URL
+  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+    const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+    return `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
+  }
+  await f.makePublic().catch(() => undefined);
+  return `https://storage.googleapis.com/${bucket.name}/${path}`;
 }

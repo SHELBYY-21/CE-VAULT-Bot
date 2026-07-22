@@ -7,71 +7,49 @@ Single product ("CE VAULT" — a USDT⇄THB arbitrage ledger). One Next.js 16 ap
 repo root hosts BOTH the realtime dashboard AND the Telegram bot (as an API webhook at
 `app/api/telegram/webhook`). `bot/` is only an optional local dev bridge (long-poll →
 local webhook) plus an API smoke test — it is NOT the production bot. Backing store is
-Supabase (Postgres + Realtime + Storage). Setup steps are documented in `README.md` (Thai).
+**Firebase** (Cloud Firestore + Storage). Local dev uses the Firebase Emulator Suite
+(`demo-ce-vault`). Legacy SQL under `supabase/` is historical only and not used at runtime.
 
 ### Standard commands (see `package.json`)
+- Firebase emulators: `npm run emulators` (Firestore `:8080`, Storage `:9199`, UI `:4000`).
+- Seed / verify: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run db:setup` then `npm run db:verify`.
 - Dev server: `npm run dev` (Next.js on port 3000; `/` redirects to `/dashboard`).
+  Requires emulator env vars from `.env.local` (see below).
 - Typecheck: `npm run typecheck` (`tsc --noEmit`).
-- Lint: `npm run lint` (ESLint 9 flat config, `eslint.config.mjs`, typescript-eslint + Next
-  plugin). Currently 0 errors / a few intentional warnings. ESLint 10 is NOT compatible with the
-  Next plugins yet — keep ESLint pinned to v9.
-- Format: `npm run format` / `npm run format:check` (Prettier). Note: legacy files are not yet
-  fully Prettier-formatted, so `format:check` reports diffs across pre-existing files — CI does
-  not gate on it. New/changed files should be formatted.
-- Unit tests: `npm test` (Vitest, `vitest.config.ts`) — covers the pure logic in
-  `src/lib/{profit,fees,amounts}.ts`. Tests live in `src/lib/__tests__/`.
-- CI: `.github/workflows/ci.yml` runs typecheck + lint + test + build (plus a non-blocking
-  `npm audit`) on push/PR.
-- Bot API smoke test: `cd bot && npm run test:api` — hits `/api/health`,
-  `/api/transactions/thb-deposit`, `/api/transactions/usdt-send`. Requires the dev server
-  running and `bot/.env` with `TEST_TELEGRAM_ID` set to an existing `admins` row.
-- Bot webhook logic can be exercised without a real Telegram bot by POSTing simulated Telegram
-  update JSON to `/api/telegram/webhook` (webhook secret check is skipped when `API_SECRET` /
-  `TELEGRAM_WEBHOOK_SECRET` are unset). The DB write happens before the Telegram reply, so core
-  behavior is verifiable even though the reply fails with a placeholder `BOT_TOKEN`.
+- Lint: `npm run lint` (ESLint 9 flat config). Keep ESLint pinned to v9.
+- Format: `npm run format` / `npm run format:check` (Prettier).
+- Unit tests: `npm test` (Vitest) — pure logic in `src/lib/{profit,fees,amounts}.ts`.
+- CI: `.github/workflows/ci.yml` runs typecheck + lint + test + build.
+- Bot API smoke test: `cd bot && npm run test:api` — needs dev server + seed admin
+  `telegram_user_id=6049267196`.
+- Bot webhook can be exercised by POSTing simulated Telegram update JSON to
+  `/api/telegram/webhook` (secret check skipped when `API_SECRET` /
+  `TELEGRAM_WEBHOOK_SECRET` are unset).
 
-### Running end-to-end requires a local Supabase (non-obvious)
-The dashboard and all API routes need Supabase. There is no hosted project wired up, so run
-Supabase locally with the Supabase CLI (`supabase start`), which needs Docker. Docker + the
-Supabase CLI are NOT restored by the update script — start them yourself in the session:
-- Start Docker daemon: `sudo dockerd` (daemon must use `fuse-overlayfs` + iptables-legacy in
-  this VM; `/etc/docker/daemon.json` also sets `features.containerd-snapshotter=false` which is
-  required for fuse-overlayfs on Docker 29).
-- `supabase start` (config is committed at `supabase/config.toml`). Get keys/URL with
-  `supabase status -o json` (use the legacy `ANON_KEY` / `SERVICE_ROLE_KEY` JWTs — the app
-  reads `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`).
+### Running end-to-end (Firebase Emulator)
+1. `npm run emulators`
+2. Ensure `.env.local` has emulator hosts + `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=1`
+   (copy from `.env.local.example`).
+3. `npm run db:setup` then `npm run db:verify`
+4. `npm run dev` → open the app root (port 3000); `/` redirects to `/dashboard`
 
-### Applying the schema — GOTCHA
-`supabase/schema.sql` + `patch-v2..v8.sql` are meant to be pasted into the hosted SQL Editor. If
-you instead apply them via `psql`/`docker exec` as the `postgres` role, the `anon`,
-`authenticated`, `service_role` roles do NOT get table privileges automatically, so every query
-fails with `permission denied for table ...`. After loading the SQL, run once:
-```
-grant usage on schema public to anon, authenticated, service_role;
-grant all privileges on all tables in schema public to anon, authenticated, service_role;
-grant all privileges on all sequences in schema public to anon, authenticated, service_role;
-grant all privileges on all functions in schema public to anon, authenticated, service_role;
-```
-Then seed with `node scripts/setup-db.mjs` (reads `.env.local`; creates the `slips` bucket +
-a seed admin with `telegram_user_id=6049267196` + a bank account) and verify with
-`node scripts/verify-db.mjs`.
+### Production Firebase
+- Create a Firebase project, enable Firestore + Storage.
+- Deploy rules: `firestore.rules`, `storage.rules`, indexes in `firestore.indexes.json`.
+- Set web config `NEXT_PUBLIC_FIREBASE_*` and server `FIREBASE_SERVICE_ACCOUNT_JSON`
+  (stringified service account). Remove `FIRESTORE_EMULATOR_HOST` /
+  `FIREBASE_STORAGE_EMULATOR_HOST` / `NEXT_PUBLIC_USE_FIREBASE_EMULATOR`.
 
 ### Env files (gitignored — recreate each session)
-- Root `.env.local`: at minimum `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY` (from `supabase status`), plus `APP_URL=http://localhost:3000`.
-  Leave `API_SECRET` blank in dev to disable the `x-api-key` check on write API routes.
-  `BOT_TOKEN` can be a placeholder unless testing real Telegram delivery.
-- `bot/.env`: `API_BASE_URL=http://localhost:3000`, `TEST_TELEGRAM_ID=6049267196`,
-  `API_SECRET` matching `.env.local`.
+- Root `.env.local`: Firebase web + project ids, emulator hosts for local, plus
+  set the app public origin env var for local Next. Leave `API_SECRET` blank in dev.
+- `bot/.env`: set bot API base URL to the Next origin and a seed Telegram test user id.
 
 ### API GOTCHA
 `POST /api/transactions/thb-deposit` only validates `adminTelegramId` + `usdtAmount`, but the
-profit calc needs `marketUsdtRate` (and `sellRate`) too. Calling it without `marketUsdtRate`
-throws `null value in column "net_profit_thb"`. This is expected — the real Telegram/webhook
-path fills rates automatically via `getLatestRates()`. When calling the route directly, pass
-`marketUsdtRate` and `sellRate` (see `bot/src/test-api.ts` for a correct payload).
+profit calc needs `marketUsdtRate` (and `sellRate`) too. When calling the route directly, pass
+`marketUsdtRate` and `sellRate` (see `bot/src/test-api.ts`).
 
 ### External services
-Market rate is fetched live from Binance TH (public, no key) and degrades to `rates` table /
-ENV defaults if unreachable. OCR (Grok/OCR.space) and Circle on-chain are optional and no-op
-without keys.
+Market rate is fetched live from Binance TH (public, no key) and degrades to `rates` /
+ENV defaults if unreachable. OCR (Grok/OCR.space) and Circle on-chain are optional.
