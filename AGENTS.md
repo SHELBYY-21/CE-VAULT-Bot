@@ -34,11 +34,12 @@ local webhook) plus an API smoke test — it is NOT the production bot. Backing 
 4. `npm run dev` → open the app root (port 3000); `/` redirects to `/dashboard`
 
 ### Production Firebase
+- Active project ID: `ce88-95911` (see `.firebaserc`).
 - Create a Firebase project, enable Firestore + Storage.
 - Deploy rules: `firestore.rules`, `storage.rules`, indexes in `firestore.indexes.json`.
 - Set web config `NEXT_PUBLIC_FIREBASE_*` and server `FIREBASE_SERVICE_ACCOUNT_JSON`
   (stringified service account). Remove `FIRESTORE_EMULATOR_HOST` /
-  `FIREBASE_STORAGE_EMULATOR_HOST` / `NEXT_PUBLIC_USE_FIREBASE_EMULATOR`.
+  `FIREBASE_STORAGE_EMULATOR_HOST` / set `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=0`.
 
 ### Env files (gitignored — recreate each session)
 - Root `.env.local`: Firebase web + project ids, emulator hosts for local, plus

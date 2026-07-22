@@ -9,11 +9,11 @@ function initAdmin(): App {
   const projectId =
     process.env.FIREBASE_PROJECT_ID ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-    'demo-ce-vault';
+    'ce88-95911';
 
   // Emulator: ไม่ต้องมี credentials จริง
   if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
-    return initializeApp({ projectId, storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com` });
+    return initializeApp({ projectId, storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app` });
   }
 
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
