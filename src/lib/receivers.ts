@@ -3,6 +3,7 @@
 // ============================================================
 import { createHash, randomUUID } from 'crypto';
 import { adminDb } from './firebaseAdmin';
+import { isFirestoreIndexError } from './transactions';
 
 export interface ReceiverStats {
   id: string;
@@ -39,25 +40,38 @@ export async function getReceiver(
 
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    const todaySnap = await adminDb
-      .collection('transactions')
-      .where('receiver_id', '==', data.id)
-      .where('created_at', '>=', start.toISOString())
-      .get()
-      .catch(async () => {
-        // fallback: no composite index yet
-        const all = await adminDb.collection('transactions').where('receiver_id', '==', data.id).get();
-        return {
-          docs: all.docs.filter((d) => String(d.data().created_at || '') >= start.toISOString()),
-        } as typeof all;
-      });
+    const sinceIso = start.toISOString();
+
+    let todaySnap;
+    try {
+      todaySnap = await adminDb
+        .collection('transactions')
+        .where('receiver_id', '==', data.id)
+        .where('created_at', '>=', sinceIso)
+        .get();
+    } catch (e) {
+      // Fallback เฉพาะเมื่อขาด composite index — error อื่นให้ throw ต่อ
+      if (!isFirestoreIndexError(e)) {
+        console.error('[getReceiver] today stats query failed:', e);
+        throw e;
+      }
+      console.warn(
+        '[getReceiver] missing index for receiver_id+created_at — using in-memory fallback',
+      );
+      const all = await adminDb.collection('transactions').where('receiver_id', '==', data.id).get();
+      todaySnap = {
+        docs: all.docs.filter((d) => String(d.data().created_at || '') >= sinceIso),
+      } as typeof all;
+    }
+
     const rows = todaySnap.docs.map((d) => d.data());
     return {
       ...data,
       todayCount: rows.length,
       todayThb: rows.reduce((s, r: any) => s + Number(r.thb_amount || 0), 0),
     };
-  } catch {
+  } catch (e) {
+    console.error('[getReceiver] failed:', e);
     return null;
   }
 }
