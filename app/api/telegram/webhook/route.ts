@@ -520,29 +520,40 @@ async function doNewDay(chatId: number): Promise<void> {
 
 /** ส่งการ์ดสรุปยอด "ห้องนี้" (แยกตาม chat_id + day-cut) + Top Staff + 5 รายการล่าสุด */
 async function sendLedger(chatId: number): Promise<void> {
-  const room = await getRoom(chatId);
-  const [led, staff, recent] = await Promise.all([
-    getTodayLedger(room.dayCutAt, chatId),
-    getStaffLeaderboard(room.dayCutAt, chatId),
-    getRecentPairs(chatId, room.dayCutAt, 5),
-  ]);
-  await sendMessage(
-    chatId,
-    UI.ledgerCard({
-      incomingList: led.incomingList,
-      outgoingList: led.outgoingList,
-      totalThb: led.totalThb,
-      totalIncomingUsdt: led.totalIncomingUsdt,
-      totalOutgoingUsdt: led.totalOutgoingUsdt,
-      fixedRate: room.rate,
-      feePercent: 0,
-      netProfitThb: led.netProfitThb,
-      lastAdminName: led.lastAdminName,
-      roomName: room.name,
-      staff,
-      recent,
-    }),
-  );
+  try {
+    const room = await getRoom(chatId);
+    const [led, staff, recent] = await Promise.all([
+      getTodayLedger(room.dayCutAt, chatId),
+      getStaffLeaderboard(room.dayCutAt, chatId),
+      getRecentPairs(chatId, room.dayCutAt, 5),
+    ]);
+    await sendMessage(
+      chatId,
+      UI.ledgerCard({
+        incomingList: led.incomingList,
+        outgoingList: led.outgoingList,
+        totalThb: led.totalThb,
+        totalIncomingUsdt: led.totalIncomingUsdt,
+        totalOutgoingUsdt: led.totalOutgoingUsdt,
+        fixedRate: room.rate,
+        feePercent: 0,
+        netProfitThb: led.netProfitThb,
+        lastAdminName: led.lastAdminName,
+        roomName: room.name,
+        staff,
+        recent,
+      }),
+    );
+  } catch (e: any) {
+    console.error('[sendLedger]', e?.message || e);
+    // อย่ากลืน error เงียบ — แจ้งสั้น ๆ ว่าสรุปยอดยังโหลดไม่ได้ แต่ดีลหลักอาจสำเร็จแล้ว
+    await sendMessage(chatId, {
+      text:
+        `⚠️ <b>บันทึกแล้ว แต่สรุปยอดยังโหลดไม่ครบ</b>\n` +
+        `<i>${UI.sanitizeErrorDetail(e?.message ?? String(e))}</i>\n` +
+        `ลองพิมพ์ /today อีกครั้ง`,
+    }).catch(() => undefined);
+  }
 }
 
 // รวมฟิลด์ deal ของ session เดิม (setSession เขียนทับทุกคอลัมน์ ต้องส่งครบกันหาย)

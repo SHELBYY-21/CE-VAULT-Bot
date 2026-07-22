@@ -38,6 +38,66 @@ function withId<T>(id: string, data: DocumentData | undefined): (T & { id: strin
   return { id, ...data } as T & { id: string };
 }
 
+/** Firestore FAILED_PRECONDITION when a composite index is missing */
+export function isFirestoreIndexError(e: unknown): boolean {
+  const any = e as { code?: number | string; message?: string };
+  const msg = String(any?.message ?? e ?? '');
+  return (
+    any?.code === 9 ||
+    any?.code === 'failed-precondition' ||
+    msg.includes('FAILED_PRECONDITION') ||
+    msg.includes('requires an index')
+  );
+}
+
+type TxRow = Record<string, any> & { id: string };
+
+/**
+ * โหลดธุรกรรมของห้อง โดยไม่พึ่ง composite index
+ * (where chat_id == X ใช้ single-field อัตโนมัติ แล้ว filter/sort ในหน่วยความจำ)
+ * — แก้เคสบอทพังด้วย "The query requires an index"
+ */
+async function loadRoomTransactions(
+  chatId: number,
+  opts?: {
+    sinceIso?: string | null;
+    type?: string | null;
+    order?: 'asc' | 'desc';
+    limit?: number;
+  },
+): Promise<TxRow[]> {
+  const snap = await adminDb.collection('transactions').where('chat_id', '==', chatId).get();
+  let rows: TxRow[] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (opts?.sinceIso) {
+    const cut = opts.sinceIso;
+    rows = rows.filter((r) => String(r.created_at || '') >= cut);
+  }
+  if (opts?.type) {
+    rows = rows.filter((r) => r.type === opts.type);
+  }
+  const dir = opts?.order === 'desc' ? -1 : 1;
+  rows.sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')) * dir);
+  if (opts?.limit != null && opts.limit >= 0) rows = rows.slice(0, opts.limit);
+  return rows;
+}
+
+/**
+ * พยายามใช้ query ที่มี index ก่อน — ถ้า index ยังไม่พร้อม ถอยไป single-field + memory
+ */
+async function runTxQuery(
+  build: () => Query,
+  fallback: () => Promise<TxRow[]>,
+): Promise<TxRow[]> {
+  try {
+    const snap = await build().get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    if (!isFirestoreIndexError(e)) throw e;
+    console.warn('[firestore] missing index — using in-memory fallback:', (e as Error)?.message?.slice(0, 120));
+    return fallback();
+  }
+}
+
 export async function getAdminByTelegramId(telegramId: number): Promise<Admin | null> {
   const snap = await adminDb
     .collection('admins')
@@ -119,19 +179,33 @@ export async function getTodayLedger(
   midnight.setHours(0, 0, 0, 0);
   const cut = sinceIso && new Date(sinceIso) > midnight ? sinceIso : midnight.toISOString();
 
-  let q: Query = adminDb
-    .collection('transactions')
-    .where('created_at', '>=', cut)
-    .orderBy('created_at', 'asc');
+  let rows: TxRow[];
   if (chatId != null) {
-    q = adminDb
-      .collection('transactions')
-      .where('chat_id', '==', chatId)
-      .where('created_at', '>=', cut)
-      .orderBy('created_at', 'asc');
+    rows = await runTxQuery(
+      () =>
+        adminDb
+          .collection('transactions')
+          .where('chat_id', '==', chatId)
+          .where('created_at', '>=', cut)
+          .orderBy('created_at', 'asc'),
+      () => loadRoomTransactions(chatId, { sinceIso: cut, order: 'asc' }),
+    );
+  } else {
+    rows = await runTxQuery(
+      () =>
+        adminDb
+          .collection('transactions')
+          .where('created_at', '>=', cut)
+          .orderBy('created_at', 'asc'),
+      async () => {
+        const snap = await adminDb.collection('transactions').get();
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as TxRow)
+          .filter((r) => String(r.created_at || '') >= cut)
+          .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+      },
+    );
   }
-  const snap = await q.get();
-  const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -538,19 +612,23 @@ export async function getRecentPairs(
   sinceIso?: string | null,
   limit = 5,
 ): Promise<RecentPair[]> {
-  let q: Query = adminDb
-    .collection('transactions')
-    .where('chat_id', '==', chatId)
-    .orderBy('created_at', 'asc');
-  if (sinceIso) {
-    q = adminDb
-      .collection('transactions')
-      .where('chat_id', '==', chatId)
-      .where('created_at', '>=', sinceIso)
-      .orderBy('created_at', 'asc');
-  }
-  const snap = await q.get();
-  const rows = snap.docs.map((d) => d.data()) as any[];
+  const rows = await runTxQuery(
+    () => {
+      let q: Query = adminDb
+        .collection('transactions')
+        .where('chat_id', '==', chatId)
+        .orderBy('created_at', 'asc');
+      if (sinceIso) {
+        q = adminDb
+          .collection('transactions')
+          .where('chat_id', '==', chatId)
+          .where('created_at', '>=', sinceIso)
+          .orderBy('created_at', 'asc');
+      }
+      return q;
+    },
+    () => loadRoomTransactions(chatId, { sinceIso, order: 'asc' }),
+  );
 
   const sends = rows.filter((r) => r.type === 'USDT_SEND');
   const usedSend = new Set<number>();
@@ -591,23 +669,33 @@ export async function exportRoomCsv(
   chatId: number,
   sinceIso?: string | null,
 ): Promise<{ csv: string; rows: number }> {
-  let q: Query = adminDb
-    .collection('transactions')
-    .where('type', '==', 'THB_DEPOSIT')
-    .where('chat_id', '==', chatId)
-    .orderBy('created_at', 'desc')
-    .limit(5000);
-  if (sinceIso) {
-    q = adminDb
-      .collection('transactions')
-      .where('type', '==', 'THB_DEPOSIT')
-      .where('chat_id', '==', chatId)
-      .where('created_at', '>=', sinceIso)
-      .orderBy('created_at', 'desc')
-      .limit(5000);
-  }
-  const snap = await q.get();
-  const rows = snap.docs.map((d) => d.data()) as any[];
+  const rows = await runTxQuery(
+    () => {
+      let q: Query = adminDb
+        .collection('transactions')
+        .where('type', '==', 'THB_DEPOSIT')
+        .where('chat_id', '==', chatId)
+        .orderBy('created_at', 'desc')
+        .limit(5000);
+      if (sinceIso) {
+        q = adminDb
+          .collection('transactions')
+          .where('type', '==', 'THB_DEPOSIT')
+          .where('chat_id', '==', chatId)
+          .where('created_at', '>=', sinceIso)
+          .orderBy('created_at', 'desc')
+          .limit(5000);
+      }
+      return q;
+    },
+    () =>
+      loadRoomTransactions(chatId, {
+        sinceIso,
+        type: 'THB_DEPOSIT',
+        order: 'desc',
+        limit: 5000,
+      }),
+  );
   const cols = [
     'ledger_ref',
     'created_at',
@@ -691,23 +779,50 @@ export async function getStaffLeaderboard(
   sinceIso?: string | null,
   chatId?: number | null,
 ): Promise<StaffStat[]> {
-  let q: Query = adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT');
-  if (chatId != null && sinceIso) {
-    q = adminDb
-      .collection('transactions')
-      .where('type', '==', 'THB_DEPOSIT')
-      .where('chat_id', '==', chatId)
-      .where('created_at', '>=', sinceIso);
-  } else if (chatId != null) {
-    q = adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT').where('chat_id', '==', chatId);
-  } else if (sinceIso) {
-    q = adminDb
-      .collection('transactions')
-      .where('type', '==', 'THB_DEPOSIT')
-      .where('created_at', '>=', sinceIso);
+  let rows: TxRow[];
+  if (chatId != null) {
+    rows = await runTxQuery(
+      () => {
+        let q: Query = adminDb
+          .collection('transactions')
+          .where('type', '==', 'THB_DEPOSIT')
+          .where('chat_id', '==', chatId);
+        if (sinceIso) {
+          q = adminDb
+            .collection('transactions')
+            .where('type', '==', 'THB_DEPOSIT')
+            .where('chat_id', '==', chatId)
+            .where('created_at', '>=', sinceIso);
+        }
+        return q;
+      },
+      () =>
+        loadRoomTransactions(chatId, {
+          sinceIso,
+          type: 'THB_DEPOSIT',
+          order: 'asc',
+        }),
+    );
+  } else {
+    rows = await runTxQuery(
+      () => {
+        let q: Query = adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT');
+        if (sinceIso) {
+          q = adminDb
+            .collection('transactions')
+            .where('type', '==', 'THB_DEPOSIT')
+            .where('created_at', '>=', sinceIso);
+        }
+        return q;
+      },
+      async () => {
+        const snap = await adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT').get();
+        let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TxRow);
+        if (sinceIso) list = list.filter((r) => String(r.created_at || '') >= sinceIso);
+        return list;
+      },
+    );
   }
-  const snap = await q.get();
-  const rows = snap.docs.map((d) => d.data()) as any[];
   const map = new Map<string, StaffStat>();
   for (const r of rows) {
     const name = r.admins?.name ?? '-';
