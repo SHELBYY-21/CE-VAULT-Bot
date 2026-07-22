@@ -251,8 +251,8 @@ function WaitingCard() {
 }
 
 function SuccessCard({
-  usdtAmount = 286,
-  txid = '0x8d71...a3f8c9',
+  usdtAmount,
+  txid,
   network = 'TRC-20',
 }: {
   usdtAmount?: number | null;
@@ -269,7 +269,13 @@ function SuccessCard({
       }),
     [],
   );
-  const amount = typeof usdtAmount === 'number' && usdtAmount > 0 ? usdtAmount : 286;
+  // แสดงยอดจริงเท่านั้น — ไม่ fallback ค่าม็อก (เคยเป็น 286)
+  const amount =
+    typeof usdtAmount === 'number' && Number.isFinite(usdtAmount) ? Math.max(0, usdtAmount) : 0;
+  const amountLabel = amount.toLocaleString('th-TH', {
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 6,
+  });
   return (
     <div className="glass relative overflow-hidden">
       <div className="brand-grid space-y-3 px-5 py-6 text-center">
@@ -308,7 +314,7 @@ function SuccessCard({
           <div className="text-[12px] tracking-wide text-[color:var(--muted)]">AMOUNT / จำนวน</div>
           <div className="mt-1">
             <span className="text-5xl font-black tracking-tight text-[color:var(--brand-1)]">
-              {amount.toLocaleString('th-TH')}
+              {amountLabel}
             </span>{' '}
             <span className="text-xl font-bold text-cyan-300">USDT</span>
           </div>
