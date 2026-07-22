@@ -25,12 +25,36 @@ const STEP_LABEL: Record<TransactionStatus, string> = {
   completed: 'สำเร็จ',
 };
 
-function statusToCard(status: TransactionStatus | null | undefined, missing: boolean): InteractiveCardState {
-  if (missing) return 'error';
+function statusToCard(status: TransactionStatus | null | undefined): InteractiveCardState {
   if (status === 'completed') return 'success';
   if (status === 'waiting_admin') return 'waiting';
   if (status === 'ocr_success') return 'loading';
   return 'waiting';
+}
+
+function InitialLoadingCard() {
+  return (
+    <div className="glass p-10 text-center">
+      <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-full border-2 border-cyan-400/40 bg-cyan-500/10" />
+      <p className="text-sm font-medium text-[color:var(--text)]">กำลังโหลดสถานะ…</p>
+      <p className="mt-2 text-xs text-[color:var(--muted)]">Loading order status</p>
+    </div>
+  );
+}
+
+function NotFoundYetCard() {
+  return (
+    <div className="glass p-8 text-center">
+      <div className="mx-auto mb-4 flex justify-center">
+        <NovaMascot expression="focused" size={72} />
+      </div>
+      <p className="text-lg font-bold text-[color:var(--text)]">ยังไม่พบรายการนี้</p>
+      <p className="mt-2 text-sm text-[color:var(--muted)]">Not found yet</p>
+      <p className="mt-4 text-xs leading-relaxed text-[color:var(--muted)]">
+        หากเพิ่งส่งสลิป กรุณารอสักครู่ — หน้านี้จะอัปเดตอัตโนมัติเมื่อพบรายการ
+      </p>
+    </div>
+  );
 }
 
 export default function StatusPage() {
@@ -53,7 +77,7 @@ export default function StatusPage() {
         if (!alive) return;
         setRow(json?.row ?? null);
       } catch {
-        /* keep */
+        /* keep previous */
       } finally {
         if (alive) setLoading(false);
       }
@@ -68,15 +92,15 @@ export default function StatusPage() {
 
   const status: TransactionStatus = row?.status ?? 'waiting_admin';
   const current = ORDER.indexOf(status);
-  const cardState = loading
-    ? 'loading'
-    : statusToCard(row?.status, !row);
+  const cardState = row ? statusToCard(row.status) : null;
+  const mascotExpr =
+    loading || !row ? 'focused' : cardState === 'success' ? 'wink' : 'happy';
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10">
       <header className="mb-6 text-center">
         <div className="mx-auto mb-2 flex justify-center">
-          <NovaMascot expression={cardState === 'success' ? 'wink' : cardState === 'error' ? 'sad' : 'happy'} size={56} float />
+          <NovaMascot expression={mascotExpr} size={56} float={!loading} />
         </div>
         <h1 className="text-lg font-extrabold tracking-widest">
           CE <span className="text-emerald-300">VAULT</span>
@@ -112,12 +136,18 @@ export default function StatusPage() {
         </div>
       )}
 
-      <InteractiveStatusCard
-        state={cardState}
-        usdtAmount={row ? Number(row.usdt_amount) : null}
-        txid={row?.tx_hash ?? null}
-        progress={cardState === 'loading' ? 72 : 87}
-      />
+      {loading ? (
+        <InitialLoadingCard />
+      ) : !row ? (
+        <NotFoundYetCard />
+      ) : (
+        <InteractiveStatusCard
+          state={cardState!}
+          usdtAmount={Number(row.usdt_amount) || 0}
+          txid={row.tx_hash ?? null}
+          progress={cardState === 'loading' ? 72 : 87}
+        />
+      )}
 
       {!loading && row && status !== 'completed' && (
         <p className="mt-4 text-center text-xs text-[color:var(--muted)]">
