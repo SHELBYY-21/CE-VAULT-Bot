@@ -1,6 +1,7 @@
 // GET /api/status/[id] — สถานะดีลสาธารณะ (ไม่เปิดเผยกำไร)
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
+import { normalizeTransactionStatus } from '@/types/transactions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ok: true,
       row: {
         id: snap.id,
-        status: d.status ?? null,
+        status: normalizeTransactionStatus(d.status),
         usdt_amount: Number(d.usdt_amount || 0),
         tx_hash: d.usdt_txid ?? d.tx_hash ?? null,
       },

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { setTransactionStatus } from '@/lib/transactions';
+import { normalizeTransactionStatus } from '@/types/transactions';
 
 export const runtime = 'nodejs';
 
@@ -10,11 +11,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   try {
-    await adminDb.collection('transactions').doc(id).update({
-      status: 'completed',
-      updated_at: new Date().toISOString(),
-    });
-    return NextResponse.json({ ok: true });
+    const status = await setTransactionStatus(id, normalizeTransactionStatus('completed'));
+    return NextResponse.json({ ok: true, status });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
   }

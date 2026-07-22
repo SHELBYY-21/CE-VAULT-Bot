@@ -8,7 +8,12 @@ import { calculateDepositProfit, ProfitResult } from './profit';
 import { calculateFee, FeeResult } from './fees';
 import { fetchBinanceThUsdtRate } from './binance';
 import { notifyIncome, notifyOutflow, notifyEdit, notifyDelete } from './notifier';
-import type { Admin } from '@/types/transactions';
+import type { Admin, TransactionStatus } from '@/types/transactions';
+import {
+  DEFAULT_TRANSACTION_STATUS,
+  normalizeTransactionStatus,
+  TRANSACTION_STATUSES,
+} from '@/types/transactions';
 
 let cachedRates: { sellRate: number; marketUsdtRate: number; marketSource: MarketSource } | null = null;
 let ratesCacheTime = 0;
@@ -36,6 +41,22 @@ function clean<T extends Record<string, unknown>>(obj: T): T {
 function withId<T>(id: string, data: DocumentData | undefined): (T & { id: string }) | null {
   if (!data) return null;
   return { id, ...data } as T & { id: string };
+}
+
+/** อัปเดตสถานะดีล — ค่าต้องอยู่ในชุด patch-v8 เท่านั้น */
+export async function setTransactionStatus(
+  txId: string,
+  status: TransactionStatus,
+): Promise<TransactionStatus> {
+  const next = normalizeTransactionStatus(status);
+  if (!TRANSACTION_STATUSES.includes(next)) {
+    throw new Error(`invalid status: ${status}`);
+  }
+  await adminDb.collection('transactions').doc(txId).update({
+    status: next,
+    updated_at: nowIso(),
+  });
+  return next;
 }
 
 /** Firestore FAILED_PRECONDITION when a composite index is missing */
@@ -492,7 +513,8 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
         receiver_bank: input.receiver?.bank ?? null,
         receiver_last4: input.receiver?.last4 ?? null,
         ledger_ref: input.ledgerRef,
-        status: 'waiting_admin',
+        // ดีลยืนยันแล้ว (มี USDT) — รอแอดมินปิดงาน / Mark Completed
+        status: DEFAULT_TRANSACTION_STATUS,
         admins: { name: admin.name },
         created_at: ts,
         updated_at: ts,
@@ -549,7 +571,8 @@ export async function recordIncoming(input: {
         receiver_bank: input.receiver?.bank ?? null,
         receiver_last4: input.receiver?.last4 ?? null,
         ledger_ref: input.ledgerRef,
-        status: 'waiting_admin',
+        // หลัง OCR สลิป THB — ขั้นแรกของ customer status (patch-v8)
+        status: 'ocr_success',
         admins: { name: admin.name },
         created_at: ts,
         updated_at: ts,
