@@ -1,11 +1,11 @@
-# ตั้งชื่อ / About / Description / 12 commands ของ @CEboi88bot
+# ตั้งชื่อ / About / Description / 12 commands / Avatar ของ @CEboi88bot
 name: Set bot profile
 
 on:
   workflow_dispatch:
     inputs:
-      bot_token:8996463931:AAENYk26GhlxXaFdVS7PxXFBYFpYl35YfYk
-        description: 4N-JkCnIbnyeBmlEYMuIYtC7x4XKtS2tmlK8_r6QpQBoRXHH_F_rDQ
+      bot_token:
+        description: BOT_TOKEN (ใช้เมื่อยังไม่มี Actions secret)
         required: false
         type: string
 
@@ -29,3 +29,4 @@ jobs:
             exit 1
           fi
           node scripts/set-bot-profile.mjs
+          node scripts/set-bot-avatar.mjs || echo "Avatar upload skipped (use @BotFather /setuserpic with assets/brand/avatar-512.png)"
