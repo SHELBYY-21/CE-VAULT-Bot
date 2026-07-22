@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# รันบนเครื่องคุณ (มี gh login) เพื่อใส่ Secrets ให้ Bot 24h
+# รันบนเครื่องคุณ (มี gh login + สิทธิ์ secrets) เพื่อใส่ Secrets ให้ Bot 24h
+# ถ้าไม่มีสิทธิ์ secrets: ใช้ Actions → Bot 24h → Run workflow แล้ววาง input แทน
+#   (ดู scripts/print-bot-24h-inputs.sh)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="${1:-SHELBYY-21/CE-VAULT-Bot}"

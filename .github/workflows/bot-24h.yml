@@ -1,16 +1,27 @@
 # รันบอทเกือบ 24/7 บน GitHub Actions (ไม่ต้องใช้ Vercel)
-# วิธีใช้:
-# 1) Repo → Settings → Secrets and variables → Actions → New repository secret
-#    - BOT_TOKEN                         (บังคับ)
-#    - FIREBASE_SERVICE_ACCOUNT_JSON     (บังคับ — ทั้งก้อน JSON)
-#    - GROK_API_KEY                      (ถ้ามี)
-#    - API_SECRET                        (แนะนำ)
-# 2) Actions → "Bot 24h" → Run workflow
-# 3) Merge เข้า main เพื่อให้ schedule ทำงานอัตโนมัติทุก 5 ชม.
+# วิธีใช้ (เร็วสุด — ไม่ต้องตั้ง Secrets ใน Settings):
+# 1) Actions → "Bot 24h" → Run workflow
+# 2) วาง BOT_TOKEN + FIREBASE_SERVICE_ACCOUNT_JSON (หนึ่งบรรทัด) ในช่อง input
+# 3) Run workflow
+#
+# หรือตั้งเป็น Repository secrets แล้ว schedule ทุก 5 ชม. จะรันเองหลัง merge เข้า main:
+#    - BOT_TOKEN
+#    - FIREBASE_SERVICE_ACCOUNT_JSON
+#    - GROK_API_KEY (ถ้ามี)
+#    - API_SECRET (แนะนำ)
 name: Bot 24h
 
 on:
   workflow_dispatch:
+    inputs:
+      bot_token:
+        description: BOT_TOKEN (ใช้เมื่อยังไม่มี Actions secret)
+        required: false
+        type: string
+      firebase_sa_json:
+        description: FIREBASE_SERVICE_ACCOUNT_JSON ทั้งก้อน (minify เป็นหนึ่งบรรทัด)
+        required: false
+        type: string
   schedule:
     # เริ่มรอบใหม่ทุก 5 ชม. (job เก่าถูก cancel → ครอบคลุมเกือบตลอดวัน)
     - cron: '0 */5 * * *'
@@ -47,18 +58,35 @@ jobs:
           NEXT_PUBLIC_USE_FIREBASE_EMULATOR: '0'
         run: npm run build
 
-      - name: Write service account
+      - name: Resolve credentials
+        id: creds
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          SECRET_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SECRET_FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          INPUT_BOT_TOKEN: ${{ inputs.bot_token }}
+          INPUT_FIREBASE_SA: ${{ inputs.firebase_sa_json }}
         run: |
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret"; exit 1; }
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > /tmp/firebase-sa.json
+          BOT_TOKEN="${SECRET_BOT_TOKEN:-$INPUT_BOT_TOKEN}"
+          FIREBASE_SA="${SECRET_FIREBASE_SA:-$INPUT_FIREBASE_SA}"
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "Missing BOT_TOKEN (secret หรือ workflow input)"
+            exit 1
+          fi
+          if [ -z "$FIREBASE_SA" ]; then
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON (secret หรือ workflow input)"
+            exit 1
+          fi
+          # Mask so they do not leak in logs
+          echo "::add-mask::$BOT_TOKEN"
+          printf '%s' "$FIREBASE_SA" > /tmp/firebase-sa.json
+          echo "BOT_TOKEN=$BOT_TOKEN" >> "$GITHUB_ENV"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_SERVICE_ACCOUNT_JSON<<EOF" >> "$GITHUB_ENV"
+          printf '%s\n' "$FIREBASE_SA" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
 
       - name: Clear Telegram webhook (use long-poll)
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          test -n "$BOT_TOKEN" || { echo "Missing BOT_TOKEN secret"; exit 1; }
           curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
           echo
           curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/getMe"
@@ -66,11 +94,8 @@ jobs:
 
       - name: Start Next.js + bot bridge
         env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           API_SECRET: ${{ secrets.API_SECRET }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.API_SECRET }}
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-sa.json
           NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
           NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com
