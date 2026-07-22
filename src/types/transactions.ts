@@ -5,8 +5,24 @@
 
 export type TransactionType = 'THB_DEPOSIT' | 'USDT_SEND';
 
-// สถานะดีลสำหรับลูกค้า (patch-v8): OCR ผ่าน → รอแอดมิน → ส่งสำเร็จ
+// สถานะดีลสำหรับลูกค้า (patch-v8 / Firestore): OCR ผ่าน → รอแอดมิน → ส่งสำเร็จ
 export type TransactionStatus = 'ocr_success' | 'waiting_admin' | 'completed';
+
+export const TRANSACTION_STATUSES: readonly TransactionStatus[] = [
+  'ocr_success',
+  'waiting_admin',
+  'completed',
+] as const;
+
+export const DEFAULT_TRANSACTION_STATUS: TransactionStatus = 'waiting_admin';
+
+/** บังคับค่า status ให้ตรง check constraint ของ patch-v8 */
+export function normalizeTransactionStatus(value: unknown): TransactionStatus {
+  if (value === 'ocr_success' || value === 'waiting_admin' || value === 'completed') {
+    return value;
+  }
+  return DEFAULT_TRANSACTION_STATUS;
+}
 
 export interface Admin {
   id: string;
