@@ -81,11 +81,14 @@ jobs:
           FIREBASE_PROJECT_ID: ce88-95911
           FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
           APP_URL: http://127.0.0.1:3000
-          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
           LOCAL_WEBHOOK_URL: http://127.0.0.1:3000/api/telegram/webhook
           API_BASE_URL: http://127.0.0.1:3000
         run: |
           set -e
+          # Optional OCR key from Actions secret (name: GROK_API_KEY)
+          if [[ -n "${{ secrets.GROK_API_KEY }}" ]]; then
+            export GROK_API_KEY="${{ secrets.GROK_API_KEY }}"
+          fi
           npm run start -- --hostname 127.0.0.1 --port 3000 &
           NEXT_PID=$!
           for i in $(seq 1 60); do

@@ -47,6 +47,3 @@ env:
   - variable: APP_URL
     secret: APP_URL
     availability: [RUNTIME]
-  - variable: GROK_API_KEY
-    secret: GROK_API_KEY
-    availability: [RUNTIME]
