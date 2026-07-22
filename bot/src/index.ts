@@ -1,6 +1,6 @@
 // ============================================================
 // CE VAULT — Dev Bridge (ใช้เฉพาะตอนพัฒนาในเครื่อง)
-// โปรดักชันใช้ Webhook บน Vercel — logic ทั้งหมดอยู่ที่ app/api/telegram/webhook
+// โปรดักชันใช้ Webhook ที่ app/api/telegram/webhook — สคริปต์นี้ใช้เฉพาะ dev
 // สคริปต์นี้แค่ long-poll getUpdates แล้ว forward เข้า webhook local
 // (จะได้ทดสอบบอทในเครื่องโดยไม่ต้องมี public URL / ngrok)
 // ============================================================

@@ -1,0 +1,111 @@
+# รันบอทเกือบ 24/7 บน GitHub Actions (ไม่ต้องใช้ Vercel)
+# วิธีใช้:
+# 1) Repo → Settings → Secrets and variables → Actions → New repository secret
+#    - BOT_TOKEN                         (บังคับ)
+#    - FIREBASE_SERVICE_ACCOUNT_JSON     (บังคับ — ทั้งก้อน JSON)
+#    - GROK_API_KEY                      (ถ้ามี)
+#    - API_SECRET                        (แนะนำ)
+# 2) Actions → "Bot 24h" → Run workflow
+# 3) Merge เข้า main เพื่อให้ schedule ทำงานอัตโนมัติทุก 5 ชม.
+name: Bot 24h
+
+on:
+  workflow_dispatch:
+  schedule:
+    # เริ่มรอบใหม่ทุก 5 ชม. (job เก่าถูก cancel → ครอบคลุมเกือบตลอดวัน)
+    - cron: '0 */5 * * *'
+
+concurrency:
+  group: ce-vault-bot-24h
+  cancel-in-progress: true
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: |
+          npm ci
+          npm ci --prefix bot
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '1061212552362'
+          NEXT_PUBLIC_FIREBASE_APP_ID: 1:1061212552362:web:178ee63516a172826164d3
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: '0'
+        run: npm run build
+
+      - name: Write service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret"; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > /tmp/firebase-sa.json
+
+      - name: Clear Telegram webhook (use long-poll)
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          test -n "$BOT_TOKEN" || { echo "Missing BOT_TOKEN secret"; exit 1; }
+          curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
+          echo
+          curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/getMe"
+          echo
+
+      - name: Start Next.js + bot bridge
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.API_SECRET }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-sa.json
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '1061212552362'
+          NEXT_PUBLIC_FIREBASE_APP_ID: 1:1061212552362:web:178ee63516a172826164d3
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: '0'
+          FIREBASE_PROJECT_ID: ce88-95911
+          FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          APP_URL: http://127.0.0.1:3000
+          LOCAL_WEBHOOK_URL: http://127.0.0.1:3000/api/telegram/webhook
+          API_BASE_URL: http://127.0.0.1:3000
+        run: |
+          set -e
+          # Optional OCR key from Actions secret (name: GROK_API_KEY)
+          if [[ -n "${{ secrets.GROK_API_KEY }}" ]]; then
+            export GROK_API_KEY="${{ secrets.GROK_API_KEY }}"
+          fi
+          npm run start -- --hostname 127.0.0.1 --port 3000 &
+          NEXT_PID=$!
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "Next.js healthy"
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/api/health
+          echo
+          (cd bot && npx ts-node src/index.ts) &
+          BRIDGE_PID=$!
+          # Keep job alive until cancelled / timeout; exit if either dies
+          while kill -0 "$NEXT_PID" 2>/dev/null && kill -0 "$BRIDGE_PID" 2>/dev/null; do
+            sleep 30
+          done
+          echo "Process exited — failing job so schedule restarts"
+          kill "$NEXT_PID" "$BRIDGE_PID" 2>/dev/null || true
+          exit 1

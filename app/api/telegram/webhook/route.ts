@@ -1,5 +1,5 @@
 // ============================================================
-// POST /api/telegram/webhook — ตัวรับ update จาก Telegram (ออนไลน์ 24/7 บน Vercel)
+// POST /api/telegram/webhook — ตัวรับ update จาก Telegram (รันใน Next.js โปรดักชัน)
 // รวม logic ทั้งหมด: onboarding (ถามชื่อ) + อัปโหลดสลิป + บันทึกธุรกรรม + ธีม CE Vault
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +10,7 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
+  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
@@ -51,7 +52,7 @@ function sticker(chatId: number, key: StickerState): void {
 }
 
 export const runtime = 'nodejs';
-export const maxDuration = 30; // Vercel serverless max 30s
+export const maxDuration = 30; // request timeout hint (platform-dependent)
 
 // Validate sticker config at cold-start (logs warning, never crashes the webhook)
 try { validateStickers(); } catch (e: any) { console.warn(`[sticker config] ${e.message}`); }
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     const updateId = update?.update_id || '?';
     log(`📨 incoming update #${updateId}`);
 
-    // Timeout protection: 25s (Vercel limit 30s, buffer 5s)
+    // Timeout protection: 25s (under maxDuration 30s)
     await Promise.race([
       handleUpdate(update),
       new Promise((_, reject) =>

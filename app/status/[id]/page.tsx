@@ -1,12 +1,10 @@
 'use client';
 
-// หน้าสถานะดีลสำหรับลูกค้า (public) — realtime ผ่าน Firestore
+// หน้าสถานะดีลสำหรับลูกค้า (public) — อัปเดตผ่าน API poll
 // อ่านด้วย anon client (RLS: anon อ่าน transactions ได้) + subscribe การเปลี่ยนแปลง
 // แสดงเฉพาะสถานะ + ยอดของออเดอร์ตัวเอง ไม่เปิดเผยกำไร/ค่าธรรมเนียม
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { clientDb, connectClientEmulatorsOnce } from '@/lib/firebaseClient';
 import type { TransactionStatus } from '@/types/transactions';
 import OCRSuccessCard from '@/components/status/OCRSuccessCard';
 import WaitingAdminCard from '@/components/status/WaitingAdminCard';
@@ -37,21 +35,25 @@ export default function StatusPage() {
 
   useEffect(() => {
     if (!id) return;
-    connectClientEmulatorsOnce();
-    const unsub = onSnapshot(
-      doc(clientDb, 'transactions', id),
-      (snap) => {
-        if (!snap.exists()) {
-          setRow(null);
-        } else {
-          const d = snap.data() as any;
-          setRow({ id: snap.id, status: d.status ?? null, usdt_amount: Number(d.usdt_amount || 0) });
-        }
-        setLoading(false);
-      },
-      () => setLoading(false),
-    );
-    return () => unsub();
+    let alive = true;
+    async function load() {
+      try {
+        const res = await fetch(`/api/status/${id}`, { cache: 'no-store' });
+        const json = await res.json();
+        if (!alive) return;
+        setRow(json?.row ?? null);
+      } catch {
+        /* keep */
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    load();
+    const poll = setInterval(load, 3_000);
+    return () => {
+      alive = false;
+      clearInterval(poll);
+    };
   }, [id]);
 
   const status: TransactionStatus = row?.status ?? 'waiting_admin';

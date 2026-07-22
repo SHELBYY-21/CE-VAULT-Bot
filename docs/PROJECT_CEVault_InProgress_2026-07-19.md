@@ -31,7 +31,7 @@
 
 | Priority | รายการ | สถานะ |
 |---|---|---|
-| 🔴 High | `BOT_TOKEN` เคยถูกพิมพ์ในแชทตรงๆ และหลุดเข้าไฟล์ `.env.local.example` / `bot/.env.example` (พบและแก้กลับเป็น placeholder แล้วในเซสชันนี้) | **แนะนำ:** ถ้ากังวลว่าเคยรั่วสู่ที่อื่น ให้ revoke/regenerate ผ่าน @BotFather → `/revoke` แล้วตั้งค่าใหม่ตรงใน Vercel Dashboard เท่านั้น |
+| 🔴 High | `BOT_TOKEN` เคยถูกพิมพ์ในแชทตรงๆ และหลุดเข้าไฟล์ `.env.local.example` / `bot/.env.example` (พบและแก้กลับเป็น placeholder แล้วในเซสชันนี้) | **แนะนำ:** ถ้ากังวลว่าเคยรั่วสู่ที่อื่น ให้ revoke/regenerate ผ่าน @BotFather → `/revoke` แล้วตั้งค่าใหม่ใน env ของโฮสต์เท่านั้น |
 | 🟠 Medium | Sticker pack 12 states เรนเดอร์เป็น WEBM จริงแล้ว (`assets/stickers/`) แต่ยังไม่ได้ publish ขึ้น Telegram | รอชื่อ pack (เช่น `ce_vault_nova_by_CEboi88bot`) + คำยืนยัน แล้วรัน `createNewStickerSet`/`addStickerToSet` ผ่าน Bot API |
 | 🟠 Medium | Avatar/Banner เรนเดอร์เป็น PNG จริงแล้ว (`assets/brand/`) แต่ยังไม่ได้อัปโหลดขึ้นบอทจริง | ต้องทำมือผ่าน @BotFather → `/setuserpic` (ไม่มี Bot API ให้ตั้ง avatar ให้บอทตัวเองได้) |
 | 🟡 Low | สถานะ `ocr_success` มีอยู่ในโค้ด/การ์ดแล้วแต่บอทไม่เคยเซ็ตจริง (แถวถูกสร้างตอนจบดีลเลย = ข้าม state นี้ไปที่ `waiting_admin`) | ต้องแก้ bot flow ให้สร้างแถว transaction ตั้งแต่ตอน OCR ผ่าน (ชื่อ+เลขบัญชี 4 ตัวท้ายตรง) ก่อนรอแอดมิน |
@@ -77,7 +77,7 @@
 | UI | React 19.2 + Tailwind + CSS custom properties | โทน dark cyberpunk |
 | Database | Supabase Postgres | RLS + Realtime (`transactions`, `admins`, `bank_accounts`) |
 | Bot | Telegram Bot API (webhook) | `app/api/telegram/webhook` — ไม่มี process polling แยก |
-| Hosting | Vercel | auto-deploy จาก `main` |
+| Hosting | (self-host / Node host ที่รองรับ Next.js) | ตั้ง webhook ไปที่ `/api/telegram/webhook` |
 | Asset pipeline | `sharp` + `ffmpeg-static` | เรนเดอร์ SVG → PNG/WEBM แบบ headless ไม่ง้อเครื่องมือภายนอก |
 | Optional | Circle SCP / Developer-Controlled Wallets | scaffold ไว้ ยังไม่ผูกใช้งานจริง |
 
@@ -153,7 +153,7 @@ flowchart LR
 
 | ต้องการทำอะไร | คำสั่ง/ที่อยู่ |
 |---|---|
-| Deploy production | `git push origin main` (Vercel auto-deploy) |
+| Deploy production | build/host Next.js บนโฮสต์ของคุณ แล้ว `setWebhook` ไปที่ `APP_URL/api/telegram/webhook` |
 | รัน migration สถานะ | `supabase/patch-v8.sql` ผ่าน Supabase SQL Editor |
 | เรนเดอร์ brand assets ใหม่ | `node scripts/render-brand-assets.mjs` |
 | เรนเดอร์ sticker ใหม่ | `node scripts/render-stickers.mjs` |
@@ -177,7 +177,7 @@ flowchart LR
 
 ## Notes & Recommendations
 
-- **ความปลอดภัย (สำคัญ):** bot token ถูกพิมพ์ตรงในแชท 2 ครั้งในเซสชันนี้ และเคยหลุดเข้าไฟล์ example — แก้กลับเป็น placeholder แล้ว แต่**แนะนำให้ revoke token เดิมผ่าน @BotFather แล้วตั้งค่าใหม่ตรงใน Vercel Environment Variables เท่านั้น** อย่าพิมพ์ credential ลงแชทหรือไฟล์ในโปรเจกต์อีก
+- **ความปลอดภัย (สำคัญ):** bot token ถูกพิมพ์ตรงในแชท 2 ครั้งในเซสชันนี้ และเคยหลุดเข้าไฟล์ example — แก้กลับเป็น placeholder แล้ว แต่**แนะนำให้ revoke token เดิมผ่าน @BotFather แล้วตั้งค่าใหม่ใน env ของโฮสต์เท่านั้น** อย่าพิมพ์ credential ลงแชทหรือไฟล์ในโปรเจกต์อีก
 - **ความคาดหวังเรื่องคุณภาพภาพ:** sticker/avatar ที่เรนเดอร์ไว้เป็น 2D flat vector (SVG→PNG/WEBM) คุณภาพดีและใช้งานได้จริงทันที แต่ไม่ใช่ระดับ "3D anime Pixiv quality" ตามสเปกต้นฉบับ — ถ้าต้องการระดับนั้นต้องใช้ image-generation model ภายนอกกับ prompt ที่เตรียมไว้แล้ว (ดู artifact "NOVA Sticker Brief" ก่อนหน้า)
 - **ก่อน publish sticker pack:** เป็นการกระทำที่มองเห็นได้สาธารณะบน Telegram (ผูกกับ username บอท) — ต้องขอ confirm ชื่อ pack ก่อนเรียก API เสมอ
 - **RLS:** อ่าน `transactions` แบบ anon (สำหรับหน้า `/status/[id]`) เปิดไว้แล้ว — อย่าลืมว่า select ต้องจำกัดคอลัมน์ (ไม่ select `*`) เพื่อไม่ให้กำไร/ค่าฟีหลุดไปหน้า public

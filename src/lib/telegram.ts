@@ -93,26 +93,44 @@ export async function sendSticker(chatId: number, fileId: string): Promise<void>
   }
 }
 
-/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Firebase Storage → คืน public URL */
+/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Firebase Storage → คืน public URL
+ *  ถ้า Storage/Billing ยังไม่พร้อม → fallback เป็น Telegram file URL (ชั่วคราว สำหรับ OCR)
+ */
 export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const file = await tg<{ file_path: string }>('getFile', { file_id: fileId });
-  const fileRes = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`);
+  const telegramUrl = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`;
+  const fileRes = await fetch(telegramUrl);
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
   const path = `slips/${Date.now()}_${fileId}.jpg`;
-  const bucket = adminStorage.bucket(storageBucketName());
-  const f = bucket.file(path);
-  await f.save(buffer, {
-    contentType: 'image/jpeg',
-    resumable: false,
-    metadata: { cacheControl: 'public,max-age=31536000' },
-  });
+  try {
+    const bucket = adminStorage.bucket(storageBucketName());
+    const f = bucket.file(path);
+    await f.save(buffer, {
+      contentType: 'image/jpeg',
+      resumable: false,
+      metadata: { cacheControl: 'public,max-age=31536000' },
+    });
 
-  // Emulator public URL / production download token URL
-  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
-    const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-    return `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
+    if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+      const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+      return `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
+    }
+    await f.makePublic().catch(() => undefined);
+    return `https://storage.googleapis.com/${bucket.name}/${path}`;
+  } catch (e) {
+    // OR_BACR2_44 / billing absent / bucket missing — อย่าให้ทั้งดีลพัง
+    console.warn(
+      '[uploadSlip] Firebase Storage unavailable, using Telegram file URL:',
+      e instanceof Error ? e.message : e,
+    );
+    return telegramUrl;
   }
-  await f.makePublic().catch(() => undefined);
-  return `https://storage.googleapis.com/${bucket.name}/${path}`;
+}
+
+/** URL ที่ปลอดภัยสำหรับเก็บใน DB — ไม่เก็บ bot token ของ Telegram */
+export function toPersistedSlipUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.includes('api.telegram.org/file/bot')) return '';
+  return url;
 }

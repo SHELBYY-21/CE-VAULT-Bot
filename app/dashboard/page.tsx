@@ -4,17 +4,9 @@
 // หน้า Dashboard หลัก (CE Vault)
 // - transactions ล่าสุด + admins (holding) + เรตล่าสุด
 // - การ์ดสรุป: กำไรรวม / avg fee / เรตปัจจุบัน / จำนวนธุรกรรม + holding ต่อแอดมิน
-// - Realtime: Firestore onSnapshot (transactions + admins + rates)
+// - Live poll /api/dashboard/data every 5s (Admin SDK)
 // ============================================================
 import { useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from 'firebase/firestore';
-import { clientDb, connectClientEmulatorsOnce } from '@/lib/firebaseClient';
 import StatsOverview from '@/components/StatsOverview';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
@@ -47,6 +39,22 @@ export default function DashboardPage() {
   // ห้องที่เลือกดูยอด: 'all' = ทุกห้อง, หรือ chat_id ที่บันทึกจากเทเลแกรม
   const [selectedRoom, setSelectedRoom] = useState<string>('all');
 
+  async function loadDashboard() {
+    try {
+      const res = await fetch('/api/dashboard/data', { cache: 'no-store' });
+      const json = await res.json();
+      if (json?.ok) {
+        setTransactions((json.transactions as Transaction[]) ?? []);
+        setAdmins((json.admins as Admin[]) ?? []);
+        setRate((json.rate as RateRow) ?? null);
+      }
+    } catch {
+      /* keep previous */
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadMarketRate() {
     try {
       const res = await fetch('/api/market-rate', { cache: 'no-store' });
@@ -58,35 +66,13 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    connectClientEmulatorsOnce();
+    loadDashboard();
     loadMarketRate();
-    const poll = setInterval(loadMarketRate, 30_000);
-
-    const unsubTx = onSnapshot(
-      query(collection(clientDb, 'transactions'), orderBy('created_at', 'desc'), limit(100)),
-      (snap) => {
-        setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Transaction));
-        setLoading(false);
-      },
-      () => setLoading(false),
-    );
-    const unsubAdmins = onSnapshot(
-      query(collection(clientDb, 'admins'), orderBy('name', 'asc')),
-      (snap) => setAdmins(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Admin)),
-    );
-    const unsubRates = onSnapshot(
-      query(collection(clientDb, 'rates'), orderBy('created_at', 'desc'), limit(1)),
-      (snap) => {
-        const doc = snap.docs[0];
-        setRate(doc ? (doc.data() as RateRow) : null);
-      },
-    );
-
+    const dashPoll = setInterval(loadDashboard, 5_000);
+    const marketPoll = setInterval(loadMarketRate, 30_000);
     return () => {
-      clearInterval(poll);
-      unsubTx();
-      unsubAdmins();
-      unsubRates();
+      clearInterval(dashPoll);
+      clearInterval(marketPoll);
     };
   }, []);
 

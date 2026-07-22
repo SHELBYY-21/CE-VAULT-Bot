@@ -1,4 +1,4 @@
-// GET /api/cron/day-cut — Vercel Cron ยิงตอน 22:00 เวลาไทย
+// GET /api/cron/day-cut — cron endpoint (ยิงตอน 22:00 เวลาไทย)
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { sendMessage } from '@/lib/telegram';

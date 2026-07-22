@@ -4,7 +4,7 @@
 // SCP client  → deploy, import, read queries, event monitors
 // Wallets client → write txs (createContractExecutionTransaction), gas wallets
 //
-// Env (set in .env.local / Vercel — never commit real values):
+// Env (set in .env.local / host env — never commit real values):
 //   CIRCLE_API_KEY   TEST_API_KEY:... or LIVE_API_KEY:...
 //   ENTITY_SECRET    32-byte hex entity secret (registered in Circle console)
 
