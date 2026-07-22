@@ -43,7 +43,14 @@ export async function getReceiver(
       .collection('transactions')
       .where('receiver_id', '==', data.id)
       .where('created_at', '>=', start.toISOString())
-      .get();
+      .get()
+      .catch(async () => {
+        // fallback: no composite index yet
+        const all = await adminDb.collection('transactions').where('receiver_id', '==', data.id).get();
+        return {
+          docs: all.docs.filter((d) => String(d.data().created_at || '') >= start.toISOString()),
+        } as typeof all;
+      });
     const rows = todaySnap.docs.map((d) => d.data());
     return {
       ...data,

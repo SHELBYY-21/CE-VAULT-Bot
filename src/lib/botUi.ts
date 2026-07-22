@@ -1009,13 +1009,35 @@ export function receiverNotFound(last4: string): OutgoingMessage {
 }
 
 // ═══════════════ Error ═══════════════
+/** ตัดข้อความ error ยาว/ลิงก์ index ของ Firebase ให้อ่านง่ายในแชท */
+export function sanitizeErrorDetail(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ';
+  if (/requires an index|FAILED_PRECONDITION|create_composite/i.test(s)) {
+    return 'ระบบกำลังอัปเดตฐานข้อมูล (index) — ลองใหม่ในอีกสักครู่ หรือแจ้งแอดมิน';
+  }
+  if (/permission denied|PERMISSION_DENIED/i.test(s)) {
+    return 'ไม่มีสิทธิ์เข้าถึงข้อมูล — แจ้งแอดมินตรวจสอบ Firebase';
+  }
+  if (/ADMIN_NOT_FOUND/i.test(s)) {
+    return 'ยังไม่ได้ลงทะเบียนแอดมินในระบบ — ให้เจ้าของเพิ่ม telegram id ของคุณ';
+  }
+  // ตัด URL ยาว ๆ ออกจากข้อความที่โชว์ใน Telegram
+  return s
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 280);
+}
+
 export function error(detail: string): OutgoingMessage {
+  const clean = sanitizeErrorDetail(detail);
   return {
     text:
       `${GRAD_RED}\n` +
       `⚠️ <b>ทำรายการไม่สำเร็จ</b>\n` +
       `${GRAD_RED}\n` +
-      `<code>${detail}</code>\n` +
+      `${clean}\n` +
       `<i>ลองใหม่อีกครั้ง หรือแจ้งแอดมินระบบ</i>`,
   };
 }
