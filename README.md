@@ -6,6 +6,14 @@
 
 ---
 
+## แดชบอร์ดออนไลน์
+
+Firebase App Hosting ต้องเปิด Blaze ก่อน — ระหว่างนี้ใช้ GitHub Actions + Cloudflare tunnel:
+
+1. **Actions → Dashboard 24h → Run workflow** (secrets เดียวกับ Bot 24h)
+2. เปิด issue **[CE VAULT Dashboard URL](https://github.com/SHELBYY-21/CE-VAULT-Bot/issues?q=is%3Aissue+CE+VAULT+Dashboard+URL)** — มีลิงก์ `/dashboard` ล่าสุด
+3. URL หมุนใหม่ทุกครั้งที่ job รีสตาร์ท (~5 ชม.)
+
 ## บอทรัน 24 ชั่วโมง (แนะนำ)
 
 Cloud Agent / เครื่องที่บล็อก `api.telegram.org` **รันบอทตอบแชทไม่ได้** — ใช้หนึ่งในวิธีนี้:
