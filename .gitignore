@@ -36,9 +36,6 @@ Thumbs.db
 # Netlify
 .netlify
 
-# Legacy (if present)
-.vercel
-
 # Local dev
 .supabase/
 
