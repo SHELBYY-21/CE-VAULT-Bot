@@ -40,6 +40,9 @@ local webhook) plus an API smoke test — it is NOT the production bot. Backing 
 - Set web config `NEXT_PUBLIC_FIREBASE_*` and server `FIREBASE_SERVICE_ACCOUNT_JSON`
   (stringified service account). Remove `FIRESTORE_EMULATOR_HOST` /
   `FIREBASE_STORAGE_EMULATOR_HOST` / set `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=0`.
+- **Do not use Vercel.** Host via GitHub Actions + Cloudflare tunnel (`dashboard-24h.yml` /
+  `bot-24h.yml`), Docker Compose, or Firebase App Hosting — see `docs/HOSTING.md`.
+  If PRs show a failing Vercel check, uninstall the Vercel GitHub App.
 
 ### Env files (gitignored — recreate each session)
 - Root `.env.local`: Firebase web + project ids, emulator hosts for local, plus
