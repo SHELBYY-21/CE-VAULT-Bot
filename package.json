@@ -19,7 +19,8 @@
     "bot:bridge": "npm --prefix bot run start",
     "prod:24h": "bash scripts/run-24h.sh",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "test:walkthrough": "node scripts/e2e-walkthrough.mjs"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
