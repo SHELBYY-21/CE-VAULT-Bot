@@ -36,6 +36,26 @@ jobs:
       - name: Build
         run: npm run build
 
+  # แทนสถานะ deploy ของ Vercel — ยืนยันว่าโฮสต์เป้าหมายครบใน repo
+  hosting:
+    name: hosting (Cloudflare / Actions / Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify non-Vercel hosting paths
+        run: |
+          set -e
+          test -f docs/HOSTING.md
+          test -f .github/workflows/dashboard-24h.yml
+          test -f .github/workflows/bot-24h.yml
+          test -f Dockerfile
+          test -f docker-compose.yml
+          test -f apphosting.yaml
+          test ! -f vercel.json
+          test ! -d .vercel
+          echo "Hosting stack OK — Cloudflare tunnel + GH Actions + Docker (+ Firebase App Hosting optional)"
+          echo "Do not use Vercel. Disconnect the Vercel GitHub App if PRs still show a Vercel check."
+
   security:
     runs-on: ubuntu-latest
     steps:

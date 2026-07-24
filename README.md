@@ -2,23 +2,26 @@
 
 ระบบบันทึกสลิปโอน THB → แลก USDT ผ่าน Telegram พร้อมแดชบอร์ด Next.js + Firebase (Firestore Realtime)
 
-> **Backend:** Cloud Firestore + Firebase Storage (local = Firebase Emulator Suite / `demo-ce-vault`). โฟลเดอร์ `supabase/` เหลือเป็น legacy schema เท่านั้น
+> **Backend:** Cloud Firestore + Firebase Storage (local = Firebase Emulator Suite / `demo-ce-vault`). โฟลเดอร์ `supabase/` เหลือเป็น legacy schema เท่านั้น  
+> **Hosting:** **ไม่ใช้ Vercel** — ใช้ GitHub Actions + Cloudflare tunnel / Docker / Firebase App Hosting → ดู [`docs/HOSTING.md`](docs/HOSTING.md)
 
 ---
 
-## แดชบอร์ดออนไลน์
+## แดชบอร์ดออนไลน์ (แทน Vercel)
 
-Firebase App Hosting ต้องเปิด Blaze ก่อน — ระหว่างนี้ใช้ GitHub Actions + Cloudflare tunnel:
+Firebase App Hosting ต้องเปิด Blaze ก่อน — **ตอนนี้ใช้ GitHub Actions + Cloudflare tunnel:**
 
 1. **Actions → Dashboard 24h → Run workflow** (secrets เดียวกับ Bot 24h)
 2. เปิด issue **[CE VAULT Dashboard URL](https://github.com/SHELBYY-21/CE-VAULT-Bot/issues?q=is%3Aissue+CE+VAULT+Dashboard+URL)** — มีลิงก์ `/dashboard` ล่าสุด
 3. URL หมุนใหม่ทุกครั้งที่ job รีสตาร์ท (~5 ชม.)
 
+ถ้า PR ยังโชว์เช็ก **Vercel fail** → ถอด Vercel GitHub App ตามขั้นตอนใน [`docs/HOSTING.md`](docs/HOSTING.md)
+
 ## บอทรัน 24 ชั่วโมง (แนะนำ)
 
 Cloud Agent / เครื่องที่บล็อก `api.telegram.org` **รันบอทตอบแชทไม่ได้** — ใช้หนึ่งในวิธีนี้:
 
-### A) GitHub Actions (ไม่ต้องมี VPS / ไม่ใช้ Vercel)
+### A) GitHub Actions (ไม่ต้องมี VPS · ไม่ใช้ Vercel)
 
 **เร็วสุด (ไม่ต้องตั้ง Secrets):** หลัง merge เข้า `main`
 

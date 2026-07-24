@@ -38,6 +38,12 @@ function probe(file) {
   return JSON.parse(r.stdout);
 }
 
+const ff = spawnSync('ffprobe', ['-version'], { encoding: 'utf8' });
+if (ff.status !== 0) {
+  console.error('ffprobe not found — install ffmpeg to run sticker WEBM checks');
+  process.exit(2);
+}
+
 let failed = 0;
 const files = existsSync(OUT_DIR) ? readdirSync(OUT_DIR).filter((f) => f.endsWith('.webm')) : [];
 

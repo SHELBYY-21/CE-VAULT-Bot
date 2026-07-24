@@ -10,7 +10,6 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
-  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
@@ -37,7 +36,7 @@ import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
-import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
+import { findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
   bangkokDate,
@@ -63,6 +62,32 @@ const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 function sticker(chatId: number, key: StickerState): void {
   const id = getSticker(key);
   if (id) sendSticker(chatId, id).catch(() => undefined);
+}
+
+/** Interactive UI ตอนส่งสลิป: รับแล้ว → กำลังตรวจ (edit) → คืน messageId ให้ปิดท้าย */
+async function beginSlipInteractive(chatId: number): Promise<number> {
+  await sendChatAction(chatId, 'typing');
+  sticker(chatId, 'PROCESSING');
+  const msgId = await sendMessage(chatId, UI.interactiveSlipReceived());
+  // เฟรมกำลังตรวจสอบ (edit ข้อความเดิม)
+  for (const pct of [35, 55, 75]) {
+    await editMessage(chatId, msgId, UI.interactiveSlipChecking(pct));
+  }
+  return msgId;
+}
+
+async function finishSlipInteractive(
+  chatId: number,
+  msgId: number | null,
+  complete: Parameters<typeof UI.interactiveSlipComplete>[0],
+): Promise<void> {
+  const card = UI.interactiveSlipComplete(complete);
+  if (msgId) {
+    await editMessage(chatId, msgId, card);
+  } else {
+    await sendMessage(chatId, card);
+  }
+  sticker(chatId, 'OCR_DONE');
 }
 
 export const runtime = 'nodejs';
@@ -311,11 +336,9 @@ async function handleUpdate(update: any): Promise<void> {
         await sendMessage(chatId, UI.askName());
         return;
       }
-      const sell = nums[0];
-      const market: number = (nums[1] ??
-        r.marketUsdtRate ??
-        Number(process.env.DEFAULT_MARKET_RATE) ??
-        34.8) as number;
+      const sell = nums[0]!;
+      const fromEnv = Number(process.env.DEFAULT_MARKET_RATE);
+      const market: number = nums[1] ?? r.marketUsdtRate ?? (Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 34.8);
       await insertRate(admin.id, sell, market);
       await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
     } else {
@@ -332,8 +355,11 @@ async function handleUpdate(update: any): Promise<void> {
       return;
     }
     const fileId = msg.photo[msg.photo.length - 1].file_id;
-    sticker(chatId, 'PROCESSING'); // แสดงมาสคอตกำลังอ่านสลิป (fire-and-forget)
+    let progressMsgId: number | null = null;
     try {
+      progressMsgId = await beginSlipInteractive(chatId);
+      await editMessage(chatId, progressMsgId, UI.interactiveSlipChecking(88));
+
       const imgUrl = await uploadSlipFromTelegram(fileId);
       const slip = await analyzeSlip(imgUrl);
       const confOk =
@@ -353,7 +379,7 @@ async function handleUpdate(update: any): Promise<void> {
         // ตรงบัญชีที่เซ็ตไว้ → OCR สำเร็จ
         if (matched) {
           await clearSession(chatId, userId);
-          await commitIncoming(chatId, userId, slip.thbAmount!, {
+          const recorded = await commitIncoming(chatId, userId, slip.thbAmount!, {
             slipUrl: imgUrl,
             bank: slip.bank ?? matched.bank_name,
             last4: slip.receiverLast4 ?? last4OfAccount(matched.account_number),
@@ -363,8 +389,21 @@ async function handleUpdate(update: any): Promise<void> {
             date: slip.date ?? null,
             pinMatched: true,
             bankAccountId: matched.id,
+            silent: true,
           });
-          sticker(chatId, 'OCR_DONE');
+          await finishSlipInteractive(chatId, progressMsgId, {
+            thb: slip.thbAmount!,
+            usdt: recorded.usdtOwed,
+            bank: slip.bank ?? matched.bank_name,
+            last4: slip.receiverLast4 ?? last4OfAccount(matched.account_number),
+            confidence: slip.confidence ?? null,
+            ledgerRef: recorded.ledgerRef,
+            transactionId: recorded.transactionId,
+            pinMatched: true,
+            title: '✔ OCR สำเร็จ · บันทึกแล้ว',
+            subtitle: 'ตรงบัญชีปักหมุด',
+          });
+          await sendLedger(chatId);
           return;
         }
 
@@ -384,8 +423,9 @@ async function handleUpdate(update: any): Promise<void> {
             admin_id: admin.id,
             admin_name: admin.name,
           });
-          await sendMessage(
+          await editMessage(
             chatId,
+            progressMsgId,
             UI.slipBankMismatch({
               thb: slip.thbAmount ?? null,
               bank: slip.bank,
@@ -412,8 +452,9 @@ async function handleUpdate(update: any): Promise<void> {
           admin_id: admin.id,
           admin_name: admin.name,
         });
-        await sendMessage(
+        await editMessage(
           chatId,
+          progressMsgId,
           UI.slipAskPin({
             thb: slip.thbAmount!,
             bank: slip.bank,
@@ -432,6 +473,11 @@ async function handleUpdate(update: any): Promise<void> {
           network: u.network ?? null,
           txid: u.txid ?? null,
         });
+        await finishSlipInteractive(chatId, progressMsgId, {
+          usdt: u.amount,
+          title: '✔ ส่ง USDT บันทึกแล้ว',
+          subtitle: 'อ่านจากสกรีนช็อต',
+        });
         return;
       }
 
@@ -449,9 +495,14 @@ async function handleUpdate(update: any): Promise<void> {
         admin_id: admin.id,
         admin_name: admin.name,
       });
-      await sendMessage(chatId, UI.slipUnclear(slip?.thbAmount ?? null));
+      await editMessage(chatId, progressMsgId, UI.slipUnclear(slip?.thbAmount ?? null));
     } catch (e: any) {
-      await sendMessage(chatId, UI.error(e?.message ?? 'upload failed'));
+      if (progressMsgId) {
+        await editMessage(chatId, progressMsgId, UI.error(e?.message ?? 'upload failed'));
+      } else {
+        await sendMessage(chatId, UI.error(e?.message ?? 'upload failed'));
+      }
+      sticker(chatId, 'ERROR');
     }
     return;
   }
@@ -576,8 +627,10 @@ async function commitIncoming(
     date?: string | null;
     pinMatched?: boolean;
     bankAccountId?: string | null;
+    /** ถ้า true ไม่ส่ง incomingRecorded (ใช้เมื่อมี interactive complete แทน) */
+    silent?: boolean;
   },
-): Promise<void> {
+): Promise<{ transactionId: string; ledgerRef: string; usdtOwed: number }> {
   const [room, rates] = await Promise.all([getRoom(chatId), getLatestRates()]);
   const sellRate = room.rate ?? rates.sellRate;
   const ledgerRef = UI.newLedgerRef();
@@ -626,24 +679,28 @@ async function commitIncoming(
 
   const recent = await getRecentPairs(chatId, room.dayCutAt, 5).catch(() => []);
 
-  await sendMessage(
-    chatId,
-    UI.incomingRecorded({
-      transactionId: r.transactionId,
-      ledgerRef,
-      thb,
-      usdtOwed: r.usdtOwed,
-      sellRate,
-      adminName: r.adminName,
-      bank: meta.bank ?? null,
-      last4: meta.last4 ?? null,
-      confidence: meta.confidence ?? null,
-      pinMatched: meta.pinMatched ?? false,
-      time: meta.time ?? null,
-      date: meta.date ?? null,
-      recent,
-    }),
-  );
+  if (!meta.silent) {
+    await sendMessage(
+      chatId,
+      UI.incomingRecorded({
+        transactionId: r.transactionId,
+        ledgerRef,
+        thb,
+        usdtOwed: r.usdtOwed,
+        sellRate,
+        adminName: r.adminName,
+        bank: meta.bank ?? null,
+        last4: meta.last4 ?? null,
+        confidence: meta.confidence ?? null,
+        pinMatched: meta.pinMatched ?? false,
+        time: meta.time ?? null,
+        date: meta.date ?? null,
+        recent,
+      }),
+    );
+  }
+
+  return { transactionId: r.transactionId, ledgerRef, usdtOwed: r.usdtOwed };
 }
 
 /** บันทึกขาออก (ส่ง USDT) ทันที */
@@ -940,7 +997,7 @@ function dealSessionFields(session: any): any {
  * usdtMeta != null = มาจากสกรีนช็อต (OCR), = null = พิมพ์เอง (manual)
  * req13: ถ้ามีทั้ง OCR และ manual แล้วต่างกัน > 0.0001 → block + manual review
  */
-async function presentDealConfirm(
+async function _presentDealConfirm(
   chatId: number,
   userId: number,
   session: any,
@@ -1070,36 +1127,23 @@ async function finalizeDeal(
 
   await sendMessage(
     chatId,
-    UI.dealSuccess({
-      transactionId: r.transactionId,
-      ledgerRef,
-      adminName: r.adminName,
+    UI.interactiveSlipComplete({
       thb,
       usdt,
-      buyRate: r.buyRate,
-      sellRate: r.sellRate,
-      profitThb: r.profitThb,
-      receiverName: session.slip_receiver_name,
       bank: session.slip_bank,
       last4: session.slip_last4,
+      confidence: session.ocr_conf != null ? Number(session.ocr_conf) : null,
+      ledgerRef,
+      transactionId: r.transactionId,
+      profitThb: r.profitThb,
+      title: '✔ ทำรายการสำเร็จ',
+      subtitle: 'เสร็จสิ้น',
     }),
   );
   sticker(chatId, 'SUCCESS');
 
   // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
   await sendLedger(chatId);
-
-  // Brand Success Card — ส่งต่อท้ายหลังข้อความปกติเสร็จทั้งหมด (fire-and-forget)
-  sendMessage(
-    chatId,
-    UI.brandCard({
-      usdt,
-      txid: session.usdt_txid ?? null,
-      network: session.usdt_network ?? null,
-      ledgerRef,
-      transactionId: r.transactionId,
-    }),
-  ).catch(() => undefined);
 }
 
 /** จัดการปุ่ม inline: edit:<txId> / del:<txId> / confirm:<usdt> */
