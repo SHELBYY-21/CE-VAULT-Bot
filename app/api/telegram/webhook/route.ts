@@ -10,7 +10,6 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
-  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
@@ -37,7 +36,7 @@ import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
-import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
+import { findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
   bangkokDate,
@@ -337,11 +336,9 @@ async function handleUpdate(update: any): Promise<void> {
         await sendMessage(chatId, UI.askName());
         return;
       }
-      const sell = nums[0];
-      const market: number = (nums[1] ??
-        r.marketUsdtRate ??
-        Number(process.env.DEFAULT_MARKET_RATE) ??
-        34.8) as number;
+      const sell = nums[0]!;
+      const fromEnv = Number(process.env.DEFAULT_MARKET_RATE);
+      const market: number = nums[1] ?? r.marketUsdtRate ?? (Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 34.8);
       await insertRate(admin.id, sell, market);
       await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
     } else {
@@ -1000,7 +997,7 @@ function dealSessionFields(session: any): any {
  * usdtMeta != null = มาจากสกรีนช็อต (OCR), = null = พิมพ์เอง (manual)
  * req13: ถ้ามีทั้ง OCR และ manual แล้วต่างกัน > 0.0001 → block + manual review
  */
-async function presentDealConfirm(
+async function _presentDealConfirm(
   chatId: number,
   userId: number,
   session: any,
