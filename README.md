@@ -68,7 +68,7 @@ npm run dev
 2. เพิ่มบอทเข้ากลุ่ม และปิด Privacy Mode ให้บอทเห็นทุกข้อความในกลุ่ม:
    `/setprivacy` → เลือกบอท → **Disable**
 
-> **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`) = ออนไลน์ 24/7 บน Vercel
+> **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`) = ออนไลน์ 24/7 บน Netlify
 > ไม่มีโปรเซสแยก · ทุกคนในกลุ่มใช้ได้ · ผู้ใช้ใหม่จะถูกถามชื่อก่อนใช้งาน (auto-register)
 
 ### Step 8 — รันในเครื่อง (dev)
@@ -80,23 +80,26 @@ cd bot && npm install
 npm run dev                 # terminal 2 — dev bridge (เห็น "🌉 CE VAULT dev bridge")
 ```
 
-### Step 9 — Deploy ขึ้น Vercel (โปรดักชัน 24/7)
+### Step 9 — Deploy ขึ้น Netlify (โปรดักชัน 24/7)
 ```bash
-npm i -g vercel
-vercel
-vercel env add NEXT_PUBLIC_SUPABASE_URL
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
-vercel env add SUPABASE_SERVICE_ROLE_KEY
-vercel env add API_SECRET
-vercel env add BOT_TOKEN
-vercel env add APP_URL          # = https://<project>.vercel.app
-vercel --prod
+npm i -g netlify-cli
+netlify login
+netlify init                # หรือ netlify link ถ้ามี site อยู่แล้ว
+netlify env:set NEXT_PUBLIC_SUPABASE_URL "..."
+netlify env:set NEXT_PUBLIC_SUPABASE_ANON_KEY "..."
+netlify env:set SUPABASE_SERVICE_ROLE_KEY "..." --secret
+netlify env:set API_SECRET "..." --secret
+netlify env:set BOT_TOKEN "..." --secret
+netlify env:set APP_URL "https://<site>.netlify.app"
+# push ไป production branch หรือ:
+netlify deploy --prod
 ```
+ตั้งค่า build ใน `netlify.toml` แล้ว (Next.js Runtime ติดตั้งอัตโนมัติ) · cron ปิดวัน = `netlify/functions/day-cut-cron.ts` (22:00 เวลาไทย)
 
 ### Step 10 — เปิด webhook (ครั้งเดียว)
 เปิด URL นี้ในเบราว์เซอร์ (แทนค่า secret ด้วย `API_SECRET`):
 ```
-https://<project>.vercel.app/api/telegram/set-webhook?secret=<API_SECRET>
+https://<site>.netlify.app/api/telegram/set-webhook?secret=<API_SECRET>
 ```
 เห็น `{ "telegram": { "ok": true } }` = บอทออนไลน์ตลอดแล้ว ✅ (ปิด dev bridge ได้)
 
@@ -136,7 +139,7 @@ API route ที่เขียนข้อมูล (`thb-deposit`, `usdt-send`
 2. ใส่ค่าเดียวกันทั้ง 2 ที่:
    - `.env.local` (Next.js) → `API_SECRET=...`
    - `bot/.env` (บอท) → `API_SECRET=...`  ← บอทจะแนบ header ให้อัตโนมัติ
-3. ตอน deploy Vercel: `vercel env add API_SECRET`
+3. ตอน deploy Netlify: `netlify env:set API_SECRET "..." --secret`
 > ถ้าเว้น `API_SECRET` ว่าง = ปิดการตรวจ (ใช้เฉพาะ dev). โปรดักชันควรตั้งเสมอ
 
 ## 🧪 ทดสอบ API โดยไม่ต้องเปิด Telegram
@@ -154,17 +157,18 @@ npx ngrok http 3000         # terminal 2 -> ได้ https://xxxx.ngrok-free.ap
 ```
 เอา URL ใส่ `API_BASE_URL` + `DASHBOARD_URL` ใน `bot/.env`
 
-**B) ขึ้น Vercel ถาวร** (region `sin1` สิงคโปร์ ตั้งไว้ใน `vercel.json` แล้ว)
+**B) ขึ้น Netlify ถาวร**
 ```bash
-npm i -g vercel
-vercel
-vercel env add NEXT_PUBLIC_SUPABASE_URL
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
-vercel env add SUPABASE_SERVICE_ROLE_KEY
-vercel env add API_SECRET
-vercel --prod
+npm i -g netlify-cli
+netlify login
+netlify init
+netlify env:set NEXT_PUBLIC_SUPABASE_URL "..."
+netlify env:set NEXT_PUBLIC_SUPABASE_ANON_KEY "..."
+netlify env:set SUPABASE_SERVICE_ROLE_KEY "..." --secret
+netlify env:set API_SECRET "..." --secret
+netlify deploy --prod
 ```
-API จะอยู่ที่ `https://<project>.vercel.app/api/transactions/thb-deposit`
+API จะอยู่ที่ `https://<site>.netlify.app/api/transactions/thb-deposit`
 
 ---
 

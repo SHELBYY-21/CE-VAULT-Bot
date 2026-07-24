@@ -33,7 +33,10 @@ yarn-error.log*
 # OS
 Thumbs.db
 
-# Vercel
+# Netlify
+.netlify
+
+# Legacy (if present)
 .vercel
 
 # Local dev
