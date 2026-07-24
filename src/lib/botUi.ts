@@ -4,21 +4,22 @@
 // ============================================================
 import { randomBytes } from 'crypto';
 import type { OutgoingMessage } from './telegram';
+import { BRAND_HTML, BRAND_MARK, BRAND_NAME, BRAND_SIG } from '@/config/brand';
 
 const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
 const APP = APP_RAW.startsWith('https://') && !APP_RAW.includes('localhost') ? APP_RAW : '';
 const FEE_WARN = Number(process.env.FEE_WARNING_THRESHOLD || 3);
 
 // ═══════════════ Design tokens (Fintech: โทนเข้ม, accent เดียว, ตัวเลข monospace) ═══════════════
-const MARK = '⬢';
-const BRAND = `${MARK} <b>CE VAULT</b>`;
+const MARK = BRAND_MARK;
+const BRAND = BRAND_HTML;
 const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
 // accent เส้นเดียว + จุดสีบอกสถานะ (แทนบล็อกเขียวรัวๆ ให้อ่านง่ายขึ้น)
 const GRAD_INDIGO = '🔷 ━━━━━━━━━━━━━';
 const GRAD_GOLD = '🟡 ━━━━━━━━━━━━━';
 const GRAD_GREEN = '🟢 ━━━━━━━━━━━━━';
 const GRAD_RED = '🔴 ━━━━━━━━━━━━━';
-const SIG = `<i>${MARK} CE VAULT · secure ledger</i>`;
+const SIG = BRAND_SIG;
 
 const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 const money = (n: number) => nf.format(Number(n) || 0);
@@ -534,23 +535,31 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
 
+  const expectedUsdt =
+    gotAmount && d.roomRate && d.roomRate > 0 ? d.thb! / d.roomRate : null;
+  const rateBlock = d.roomRate
+    ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)} THB / USDT</b>\n` +
+      (expectedUsdt != null
+        ? `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(expectedUsdt)} USDT</b>\n` +
+          `🧮 <code>${money(d.thb!)} ÷ ${money(d.roomRate)} = ${money(expectedUsdt)} USDT</code>\n`
+        : '')
+    : '';
+
   return {
     text:
       `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
-      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
+      `${BRAND}  ${header}  <tg-spoiler>AI</tg-spoiler>\n` +
       `${progress(3)}\n${THIN}\n` +
       `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
       (detail.length ? detail.join('\n') + `\n` : '') +
-      (d.roomRate
-        ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n`
-        : '') +
+      rateBlock +
       (gotAmount && lowConf
         ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n`
         : '') +
       (d.historyLine ? `${d.historyLine}\n` : '') +
       `${THIN}\n` +
       `⏳ <b>รอยืนยัน USDT</b> <i>(Awaiting USDT)</i>\n` +
-      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์:\n` +
+      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์จำนวน เช่น <code>150</code> / <code>-150U</code>\n` +
       FORMAT_HINT,
   };
 }
