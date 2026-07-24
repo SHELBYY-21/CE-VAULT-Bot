@@ -1,20 +1,32 @@
 // ============================================================
-// อ่านสลิป — ลำดับความสำคัญ (ทดแทน slipApi เสียเงิน):
-//   1) Grok Vision — ยอด / เวลา / ธนาคาร / เลขท้าย / ชื่อ
-//   2) OCR.space (fallback) — แค่ยอด THB
+// อ่านสลิป — ลำดับความสำคัญ:
+//   1) Grok Vision (ถ้ามี GROK_API_KEY) — structured ทั้งชุด
+//   2) Blackbox Vision (ถ้ามี BLACKBOX_API_KEY) — OpenAI-compatible
+//   3) OCR.space (fallback) — แค่ยอด THB
 // แอดมิน /pin บัญชีวันนี้ → Vision มั่นใจ + เลขตรง = ตีสำเร็จอัตโนมัติ
 // ============================================================
 import { analyzeSlipWithGrok, analyzeUsdtWithGrok, SlipExtract, UsdtExtract } from './grokVision';
+import { analyzeSlipWithBlackbox, analyzeUsdtWithBlackbox } from './blackboxVision';
 
-/** อ่านสกรีนช็อตโอน USDT (Grok, 12s timeout) — null ถ้าอ่านไม่ได้/ไม่มี key */
+/** อ่านสกรีนช็อตโอน USDT (Grok → Blackbox, 12s timeout) — null ถ้าอ่านไม่ได้/ไม่มี key */
 export async function analyzeUsdtScreenshot(imageUrl: string): Promise<UsdtExtract | null> {
   try {
-    return await Promise.race([
+    const fromGrok = await Promise.race([
       analyzeUsdtWithGrok(imageUrl),
       new Promise<UsdtExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
     ]);
+    if (fromGrok && fromGrok.amount != null) return fromGrok;
   } catch (e) {
-    console.warn('USDT OCR error:', e instanceof Error ? e.message : e);
+    console.warn('USDT Grok error:', e instanceof Error ? e.message : e);
+  }
+
+  try {
+    return await Promise.race([
+      analyzeUsdtWithBlackbox(imageUrl),
+      new Promise<UsdtExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
+    ]);
+  } catch (e) {
+    console.warn('USDT Blackbox error:', e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -44,7 +56,18 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     console.warn('Grok vision error:', e instanceof Error ? e.message : e);
   }
 
-  // 2) fallback: OCR.space (แค่ยอด, 8s timeout)
+  // 2) Blackbox Vision (with 12s timeout) — primary เมื่อไม่มี Grok
+  try {
+    const bb = await Promise.race([
+      analyzeSlipWithBlackbox(imageUrl),
+      new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
+    ]);
+    if (bb && bb.thbAmount !== null) return bb;
+  } catch (e) {
+    console.warn('Blackbox vision error:', e instanceof Error ? e.message : e);
+  }
+
+  // 3) fallback: OCR.space (แค่ยอด, 8s timeout)
   try {
     const thb = await Promise.race([
       extractThbAmountFromOcrSpace(imageUrl),
@@ -64,7 +87,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     console.warn('OCR fallback error:', e instanceof Error ? e.message : e);
   }
 
-  // 3) Last resort: null values (ให้ user input เอง)
+  // 4) Last resort: null values (ให้ user input เอง)
   return {
     thbAmount: null,
     time: null,
