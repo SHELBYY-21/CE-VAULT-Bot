@@ -10,6 +10,7 @@ import {
   type InteractiveCardState,
 } from '@/components/brand/InteractiveCards';
 import NovaMascot from '@/components/brand/NovaMascot';
+import { BRAND_MARK, BRAND_NAME, BRAND_TAGLINE } from '@/config/brand';
 
 type Tx = {
   id: string;
@@ -156,7 +157,7 @@ export default function StatusPage() {
       )}
 
       <footer className="mt-8 text-center text-[10px] tracking-[0.15em] text-[color:var(--muted)]">
-        ⬢ CE VAULT · SECURE · FAST · TRUSTED · 24/7
+        {BRAND_MARK} {BRAND_NAME} · {BRAND_TAGLINE}
       </footer>
     </main>
   );

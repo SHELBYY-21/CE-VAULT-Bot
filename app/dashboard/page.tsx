@@ -11,6 +11,7 @@ import StatsOverview from '@/components/StatsOverview';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
 import NovaMascot from '@/components/brand/NovaMascot';
+import { BRAND_MARK, BRAND_NAME } from '@/config/brand';
 import type { Admin, Transaction } from '@/types/transactions';
 
 const FEE_WARNING_THRESHOLD = 3;
@@ -157,7 +158,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
             <NovaMascot expression="happy" size={40} />
-            <span className="gradient-text">CE Vault</span>
+            <span className="gradient-text">{BRAND_MARK} {BRAND_NAME}</span>
           </h1>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
             Secure USDT Ledger · อัปเดตแบบเรียลไทม์ · powered by NOVA
