@@ -1130,25 +1130,6 @@ async function finalizeDeal(
 
   await sendMessage(
     chatId,
-    UI.dealSuccess({
-      transactionId: r.transactionId,
-      ledgerRef,
-      adminName: r.adminName,
-      thb,
-      usdt,
-      buyRate: r.buyRate,
-      sellRate: r.sellRate,
-      profitThb: r.profitThb,
-      receiverName: session.slip_receiver_name,
-      bank: session.slip_bank,
-      last4: session.slip_last4,
-    }),
-  );
-  sticker(chatId, 'SUCCESS');
-
-  // Interactive complete card (ปุ่มยอดวันนี้ / แก้ไข)
-  await sendMessage(
-    chatId,
     UI.interactiveSlipComplete({
       thb,
       usdt,
@@ -1157,25 +1138,15 @@ async function finalizeDeal(
       confidence: session.ocr_conf != null ? Number(session.ocr_conf) : null,
       ledgerRef,
       transactionId: r.transactionId,
+      profitThb: r.profitThb,
       title: '✔ ทำรายการสำเร็จ',
       subtitle: 'เสร็จสิ้น',
     }),
   );
+  sticker(chatId, 'SUCCESS');
 
   // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
   await sendLedger(chatId);
-
-  // Brand Success Card — ส่งต่อท้ายหลังข้อความปกติเสร็จทั้งหมด (fire-and-forget)
-  sendMessage(
-    chatId,
-    UI.brandCard({
-      usdt,
-      txid: session.usdt_txid ?? null,
-      network: session.usdt_network ?? null,
-      ledgerRef,
-      transactionId: r.transactionId,
-    }),
-  ).catch(() => undefined);
 }
 
 /** จัดการปุ่ม inline: edit:<txId> / del:<txId> / confirm:<usdt> */

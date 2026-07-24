@@ -20,7 +20,8 @@
     "prod:24h": "bash scripts/run-24h.sh",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "test:walkthrough": "node scripts/e2e-walkthrough.mjs"
+    "test:walkthrough": "node scripts/e2e-walkthrough.mjs",
+    "demo:slip-ui": "npx --yes tsx scripts/demo-interactive-slip.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",

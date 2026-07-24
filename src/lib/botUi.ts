@@ -53,7 +53,8 @@ function progress(current: Step): string {
   return steps
     .map((label, i) => {
       const n = (i + 1) as Step;
-      const icon = n < current ? '✅' : n === current ? '🟡' : '▫️';
+      // ขั้นสุดท้าย (5) เมื่อถึงแล้ว = เสร็จครบ → ✅ ทั้งหมดถึงขั้นปัจจุบัน
+      const icon = n < current || (current === 5 && n === 5) ? '✅' : n === current ? '🟡' : '▫️';
       return `${icon} ${label}`;
     })
     .join('  ');
@@ -213,6 +214,7 @@ export interface InteractiveSlipCompleteData {
   ledgerRef?: string | null;
   transactionId?: string | null;
   pinMatched?: boolean;
+  profitThb?: number | null;
   title?: string;
   subtitle?: string;
 }
@@ -225,6 +227,8 @@ export function interactiveSlipComplete(d: InteractiveSlipCompleteData = {}): Ou
   if (d.bank || d.last4)
     rows.push(['Bank', `${d.bank ?? '-'}${d.last4 ? ` ••••${d.last4}` : ''}`]);
   if (d.confidence != null) rows.push(['OCR', `${d.confidence.toFixed(0)}%`]);
+  if (d.profitThb != null)
+    rows.push(['Profit', `${d.profitThb >= 0 ? '+' : ''}${money(d.profitThb)}`]);
   if (d.ledgerRef) rows.push(['Ref', `#${d.ledgerRef}`]);
 
   const kb: any[][] = [[{ text: '📊 ยอดวันนี้', callback_data: 'menu_today:1' }]];
@@ -232,9 +236,11 @@ export function interactiveSlipComplete(d: InteractiveSlipCompleteData = {}): Ou
     kb[0].push({ text: '⚡ แก้ไข', callback_data: `edit:${d.transactionId}` });
   }
   if (APP && d.transactionId) {
-    kb.push([{ text: '🔎 เปิดรายละเอียด →', url: `${APP}/dashboard/transactions/${d.transactionId}` }]);
-  }
-  if (APP) {
+    kb.push([
+      { text: '🔎 ติดตามสถานะ', url: `${APP}/status/${d.transactionId}` },
+      { text: '📂 รายละเอียด', url: `${APP}/dashboard/transactions/${d.transactionId}` },
+    ]);
+  } else if (APP) {
     kb.push([{ text: '📊 แดชบอร์ด CE Vault', url: `${APP}/dashboard` }]);
   }
 

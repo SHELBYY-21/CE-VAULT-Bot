@@ -34,10 +34,12 @@ describe('interactive slip UI', () => {
       ledgerRef: 'CE-20260724-ABCD',
       transactionId: 'tx-1',
       pinMatched: true,
+      profitThb: 62.5,
     });
     expect(m.text).toContain('100%');
     expect(m.text).toContain('5,000');
     expect(m.text).toMatch(/ปักหมุด|ตรงบัญชี pin/);
+    expect(m.text).toContain('+62.5');
     const kb = (m.reply_markup as { inline_keyboard: { callback_data?: string }[][] }).inline_keyboard;
     expect(kb.flat().some((b) => b.callback_data === 'menu_today:1')).toBe(true);
   });
