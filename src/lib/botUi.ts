@@ -148,6 +148,114 @@ export function uploading(step = 0): OutgoingMessage {
   };
 }
 
+// ═══════════════ Interactive slip UI (รับสลิป → กำลังตรวจ → เสร็จสิ้น) ═══════════════
+/** แถบ % แบบ interactive (10 ช่อง) */
+function barPct(pct: number): string {
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  const filled = Math.round(p / 10);
+  return `${'🟩'.repeat(filled)}${'⬜'.repeat(10 - filled)}  <b>${p}%</b>`;
+}
+
+function cancelRow(): { inline_keyboard: { text: string; callback_data: string }[][] } {
+  return {
+    inline_keyboard: [[{ text: '✖️ ยกเลิก', callback_data: 'cancelop:1' }]],
+  };
+}
+
+/** ① ส่งสลิปเสร็จ — รับเข้าคิวแล้ว */
+export function interactiveSlipReceived(): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_INDIGO}\n` +
+      `${BRAND}  <i>· รับสลิปแล้ว</i>\n` +
+      `${progress(1)}\n${THIN}\n` +
+      `📸 <b>สลิปเข้าคิวแล้ว</b>\n` +
+      `${barPct(15)}\n` +
+      `<i>กำลังเตรียมตรวจสอบ OCR…</i>\n` +
+      `${THIN}\n` +
+      `✅ รับสลิป\n` +
+      `🟡 รอตรวจสอบ\n` +
+      `▫️ บันทึก / เสร็จสิ้น\n` +
+      `${SIG}`,
+    reply_markup: cancelRow(),
+  };
+}
+
+/** ② กำลังตรวจสอบสลิป (OCR) — เรียกซ้ำแล้ว editMessage ให้ progress วิ่ง */
+export function interactiveSlipChecking(pct = 45): OutgoingMessage {
+  const p = Math.max(0, Math.min(99, Math.round(pct)));
+  const phase =
+    p < 35 ? 'อัปโหลดรูปสลิป' : p < 70 ? 'Grok Vision อ่านยอด / ธนาคาร' : 'จับคู่บัญชี /pin';
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `${BRAND}  <i>· กำลังตรวจสอบ</i>\n` +
+      `${progress(2)}\n${THIN}\n` +
+      `⚙️ <b>กำลังตรวจสอบสลิป (OCR)</b>\n` +
+      `${barPct(p)}\n` +
+      `<i>${phase}…</i>\n` +
+      `${THIN}\n` +
+      `✅ รับสลิป\n` +
+      `🟡 OCR วิเคราะห์สลิป\n` +
+      `▫️ บันทึกธุรกรรม\n` +
+      `▫️ เสร็จสิ้น\n` +
+      `${SIG}`,
+    reply_markup: cancelRow(),
+  };
+}
+
+export interface InteractiveSlipCompleteData {
+  thb?: number | null;
+  usdt?: number | null;
+  bank?: string | null;
+  last4?: string | null;
+  confidence?: number | null;
+  ledgerRef?: string | null;
+  transactionId?: string | null;
+  pinMatched?: boolean;
+  title?: string;
+  subtitle?: string;
+}
+
+/** ③ เสร็จสิ้น — interactive success + ปุ่มติดตาม */
+export function interactiveSlipComplete(d: InteractiveSlipCompleteData = {}): OutgoingMessage {
+  const rows: [string, string][] = [];
+  if (d.thb != null && d.thb > 0) rows.push(['THB', money(d.thb)]);
+  if (d.usdt != null && d.usdt > 0) rows.push(['USDT', money(d.usdt)]);
+  if (d.bank || d.last4)
+    rows.push(['Bank', `${d.bank ?? '-'}${d.last4 ? ` ••••${d.last4}` : ''}`]);
+  if (d.confidence != null) rows.push(['OCR', `${d.confidence.toFixed(0)}%`]);
+  if (d.ledgerRef) rows.push(['Ref', `#${d.ledgerRef}`]);
+
+  const kb: any[][] = [[{ text: '📊 ยอดวันนี้', callback_data: 'menu_today:1' }]];
+  if (d.transactionId) {
+    kb[0].push({ text: '⚡ แก้ไข', callback_data: `edit:${d.transactionId}` });
+  }
+  if (APP && d.transactionId) {
+    kb.push([{ text: '🔎 เปิดรายละเอียด →', url: `${APP}/dashboard/transactions/${d.transactionId}` }]);
+  }
+  if (APP) {
+    kb.push([{ text: '📊 แดชบอร์ด CE Vault', url: `${APP}/dashboard` }]);
+  }
+
+  return {
+    text:
+      `${GRAD_GREEN}\n` +
+      `        ✅\n` +
+      `  <b>${d.title ?? '✔ ตรวจสอบเสร็จสิ้น'}</b>\n` +
+      `${BRAND}  <i>· ${d.subtitle ?? (d.pinMatched ? 'OCR สำเร็จ · ตรงบัญชี pin' : 'เสร็จสิ้น')}</i>\n` +
+      `${progress(5)}\n${THIN}\n` +
+      `${barPct(100)}\n` +
+      `✅ รับสลิป\n` +
+      `✅ OCR ตรวจสอบ\n` +
+      `✅ บันทึก / เสร็จสิ้น\n` +
+      (rows.length ? `${THIN}\n` + table(rows, 22) : '') +
+      (d.pinMatched ? `📌 จับคู่บัญชีปักหมุดแล้ว\n` : '') +
+      `${SIG}`,
+    reply_markup: { inline_keyboard: kb },
+  };
+}
+
 export interface SlipReadyData {
   type: 'THB_DEPOSIT' | 'USDT_SEND';
   thb?: number | null;

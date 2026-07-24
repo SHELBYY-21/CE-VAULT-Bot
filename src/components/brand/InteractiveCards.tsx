@@ -3,12 +3,13 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import NovaMascot from './NovaMascot';
 
-export type InteractiveCardState = 'welcome' | 'loading' | 'waiting' | 'success' | 'error';
+export type InteractiveCardState = 'welcome' | 'received' | 'loading' | 'waiting' | 'success' | 'error';
 
 type Props = {
   /** Controlled state — ถ้าไม่ส่ง จะแสดง tab switcher (showcase) */
   state?: InteractiveCardState;
   usdtAmount?: number | null;
+  thbAmount?: number | null;
   txid?: string | null;
   network?: string;
   progress?: number;
@@ -17,11 +18,12 @@ type Props = {
 };
 
 const TABS: Array<{ id: InteractiveCardState; label: string; icon: string }> = [
-  { id: 'success', label: 'Success', icon: '✅' },
-  { id: 'loading', label: 'Loading', icon: '⚙️' },
+  { id: 'received', label: 'Received', icon: '📸' },
+  { id: 'loading', label: 'Checking', icon: '⚙️' },
+  { id: 'success', label: 'Complete', icon: '✅' },
+  { id: 'waiting', label: 'Waiting', icon: '⏳' },
   { id: 'error', label: 'Error', icon: '⚠️' },
   { id: 'welcome', label: 'Welcome', icon: '🌟' },
-  { id: 'waiting', label: 'Waiting', icon: '⏳' },
 ];
 
 function Chip({
@@ -116,6 +118,56 @@ function WelcomeCard() {
         </div>
       </div>
       <Sig>CE VAULT BOT · @CEboi88bot · 24/7 SUPPORT</Sig>
+    </div>
+  );
+}
+
+function ReceivedCard() {
+  return (
+    <div className="glass overflow-hidden">
+      <div className="brand-grid relative bg-gradient-to-br from-[#001a30] to-[#002a18] px-5 pb-4 pt-6">
+        <div className="relative z-[1] flex items-center justify-center gap-3">
+          <div className="grid h-[84px] w-[84px] place-items-center rounded-2xl border border-cyan-400/40 bg-cyan-500/10 text-4xl shadow-[0_0_24px_rgba(0,216,255,0.35)]">
+            📸
+          </div>
+          <NovaMascot expression="happy" size={88} float />
+        </div>
+        <div className="relative z-[1] mt-3 text-center">
+          <Chip tone="cyan">รับสลิปแล้ว</Chip>
+          <div className="mt-3 text-xl font-bold">สลิปเข้าคิวแล้ว</div>
+          <div className="mt-1 text-sm text-[color:var(--muted)]">Slip received · 已收到转账凭证</div>
+        </div>
+      </div>
+      <div className="space-y-3 px-5 py-5">
+        <div className="h-2 overflow-hidden rounded bg-white/10">
+          <div className="nova-progress h-full w-[15%] rounded bg-gradient-to-r from-emerald-500 to-cyan-400" />
+        </div>
+        <div className="space-y-2.5 text-[13px]">
+          {[
+            { done: true, active: false, label: 'รับสลิป', sub: 'Received' },
+            { done: false, active: true, label: 'รอตรวจสอบ OCR', sub: 'Queued' },
+            { done: false, active: false, label: 'บันทึก / เสร็จสิ้น', sub: 'Pending', dim: true },
+          ].map((s) => (
+            <div key={s.label} className={`flex items-center gap-3 ${s.dim ? 'opacity-35' : ''}`}>
+              <span
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${
+                  s.done
+                    ? 'border border-emerald-400 bg-emerald-500/15 text-emerald-300'
+                    : s.active
+                      ? 'border-2 border-cyan-400'
+                      : 'border border-[color:var(--border)]'
+                }`}
+              >
+                {s.done ? '✓' : s.active ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" /> : '·'}
+              </span>
+              <span className={s.active ? 'text-cyan-300' : ''}>
+                {s.label} <span className="text-[color:var(--muted)]">({s.sub})</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <Sig tone="cyan">CE VAULT · SLIP RECEIVED · 凭证已收</Sig>
     </div>
   );
 }
@@ -393,6 +445,8 @@ export function InteractiveStatusCard({
   progress = 87,
 }: Props) {
   switch (state) {
+    case 'received':
+      return <ReceivedCard />;
     case 'loading':
       return <LoadingCard progress={progress} />;
     case 'waiting':
@@ -407,9 +461,8 @@ export function InteractiveStatusCard({
   }
 }
 
-/** Showcase with tab switcher (brand page) */
 export default function InteractiveCards() {
-  const [state, setState] = useState<InteractiveCardState>('welcome');
+  const [state, setState] = useState<InteractiveCardState>('received');
   const [amount, setAmount] = useState('286');
   const [txid, setTxid] = useState('0x8d71...a3f8c9');
 
@@ -436,6 +489,7 @@ export default function InteractiveCards() {
           state={state}
           usdtAmount={Number(amount) || 0}
           txid={txid}
+          progress={state === 'loading' ? 68 : state === 'received' ? 15 : 100}
         />
         {state === 'success' && (
           <div className="mt-4 flex flex-wrap gap-2.5">
@@ -460,7 +514,7 @@ export default function InteractiveCards() {
           </div>
         )}
         <p className="mt-3 text-center text-[11px] text-[color:var(--muted)]">
-          Live preview — สลับแท็บเพื่อดูทุก state · แก้ค่าสำเร็จเพื่อดูการ์ดเปลี่ยนสด
+          Live preview — ส่งสลิปเสร็จ → กำลังตรวจสอบ → เสร็จสิ้น (สลับแท็บ)
         </p>
       </div>
     </div>
