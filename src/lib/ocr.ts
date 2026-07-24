@@ -51,7 +51,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
       analyzeSlipWithGrok(imageUrl),
       new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 10000)),
     ]);
-    if (grok && grok.thbAmount !== null) return grok;
+    if (grok && (grok.thbAmount !== null || grok.bank || grok.receiverLast4)) return grok;
   } catch (e) {
     console.warn('Grok vision error:', e instanceof Error ? e.message : e);
   }
@@ -62,7 +62,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
       analyzeSlipWithBlackbox(imageUrl),
       new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
     ]);
-    if (bb && bb.thbAmount !== null) return bb;
+    if (bb && (bb.thbAmount !== null || bb.bank || bb.receiverLast4)) return bb;
   } catch (e) {
     console.warn('Blackbox vision error:', e instanceof Error ? e.message : e);
   }

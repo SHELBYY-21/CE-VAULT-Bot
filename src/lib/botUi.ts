@@ -118,7 +118,20 @@ export function askName(): OutgoingMessage {
       `🔐 ก่อนเริ่มใช้งาน ขอทราบ<b>ชื่อของคุณ</b>ก่อนครับ\n` +
       `${THIN}\n` +
       `<i>พิมพ์ชื่อที่อยากให้ระบบเรียก เช่น</i>  <code>แอดมิน A</code>\n` +
+      `<i>ห้ามใช้ตัวเลขล้วน</i> (เช่น <code>150</code> = จำนวนเงิน ไม่ใช่ชื่อ)\n` +
       `${SIG}`,
+  };
+}
+
+/** ชื่อไม่ผ่าน (เลขล้วน / รูปแบบยอด) */
+export function invalidName(): OutgoingMessage {
+  return {
+    text:
+      `${GRAD_GOLD}\n` +
+      `✋ <b>ชื่อนี้ใช้ไม่ได้</b>\n` +
+      `${THIN}\n` +
+      `พิมพ์<b>ชื่อเรียก</b> เช่น <code>RAZEN</code> หรือ <code>แอดมิน A</code>\n` +
+      `<i>ห้ามใช้ตัวเลขล้วน</i> — ตัวเลขใช้ตอนใส่ยอด USDT หลังส่งสลิป`,
   };
 }
 
@@ -490,10 +503,16 @@ export function outgoingRecorded(d: {
   };
 }
 
-/** สลิปอ่านยอดไม่ชัด → ขอให้พิมพ์ +ยอด (สั้นที่สุด ไม่รก) */
+/** สลิปอ่านยอดบาทไม่ชัด → ขอ +ยอดบาท แล้วรอ USDT (ห้ามเดาเป็น OUT) */
 export function slipUnclear(guess?: number | null): OutgoingMessage {
+  const sample = guess && guess > 0 ? money(guess).replace(/,/g, '') : '5000';
   return {
-    text: `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
+    text:
+      `${GRAD_GOLD}\n` +
+      `⚠️ <b>อ่านยอดบาทไม่ชัด</b>\n` +
+      `${THIN}\n` +
+      `นี่คือขาเข้า (ฝาก THB) — พิมพ์ยอดบาท เช่น <code>+${sample}B</code>\n` +
+      `จากนั้นพิมพ์จำนวน USDT เช่น <code>150</code>`,
   };
 }
 

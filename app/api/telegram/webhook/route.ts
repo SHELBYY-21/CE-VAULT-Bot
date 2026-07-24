@@ -36,7 +36,7 @@ import { adminDb } from '@/lib/firebaseAdmin';
 import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
-import { parseAmounts } from '@/lib/amounts';
+import { parseAmounts, parseBarePositiveNumber, isValidDisplayName, isOutgoingCaption } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
@@ -333,6 +333,30 @@ async function handleUpdate(update: any): Promise<void> {
     }
     const fileId = msg.photo[msg.photo.length - 1].file_id;
     sticker(chatId, 'PROCESSING'); // แสดงมาสคอตกำลังอ่านสลิป (fire-and-forget)
+
+    // กำลังรอ USDT ของดีลค้าง → รูปนี้คือสกรีนช็อตโอน USDT
+    if (session?.state === 'WAITING_USDT') {
+      try {
+        const usdtUrl = await uploadSlipFromTelegram(fileId);
+        const u = await analyzeUsdtScreenshot(usdtUrl);
+        if (!u || u.amount == null || u.amount <= 0) {
+          await sendMessage(chatId, {
+            text: '⚠️ อ่านจำนวน USDT จากสกรีนช็อตไม่ได้ — พิมพ์จำนวน เช่น <code>150</code> หรือ <code>-150U</code>',
+          });
+          return;
+        }
+        await presentDealConfirm(chatId, userId, session, u.amount, {
+          network: u.network ?? null,
+          txid: u.txid ?? null,
+          imageUrl: usdtUrl,
+        });
+        sticker(chatId, 'OCR_DONE');
+      } catch (e: any) {
+        await sendMessage(chatId, UI.error(e?.message ?? 'usdt ocr failed'));
+      }
+      return;
+    }
+
     try {
       const imgUrl = await uploadSlipFromTelegram(fileId);
       const slip = await analyzeSlip(imgUrl);
@@ -424,18 +448,22 @@ async function handleUpdate(update: any): Promise<void> {
         return;
       }
 
-      // (B) ไม่ใช่สลิปบาท → ลองอ่านเป็นสกรีนช็อตโอน USDT → บันทึกขาออก
-      const u = await analyzeUsdtScreenshot(imgUrl);
-      if (u?.amount && u.amount > 0) {
-        await commitOutgoing(chatId, userId, u.amount, {
-          slipUrl: imgUrl,
-          network: u.network ?? null,
-          txid: u.txid ?? null,
-        });
-        return;
+      // (B) ขาออก USDT — เฉพาะเมื่อมีแคปชันชัดเจน (กันสลิปบาทถูกเดาเป็น OUT)
+      if (isOutgoingCaption(msg.caption)) {
+        const u = await analyzeUsdtScreenshot(imgUrl);
+        if (u?.amount && u.amount > 0) {
+          await commitOutgoing(chatId, userId, u.amount, {
+            slipUrl: imgUrl,
+            network: u.network ?? null,
+            txid: u.txid ?? null,
+          });
+          return;
+        }
       }
 
-      // (C) อ่านไม่ชัดจริงๆ → เก็บ meta ไว้ แล้วขอสั้นๆ ครั้งเดียว
+      // (C) อ่านไม่ชัด / ยังไม่ปักหมุด → เก็บเป็นขาเข้า แล้วรอ USDT
+      const room = await getRoom(chatId);
+      const ledgerRef = UI.newLedgerRef();
       await setSession(chatId, userId, {
         state: 'WAITING_USDT',
         pending_type: 'THB_DEPOSIT',
@@ -445,11 +473,32 @@ async function handleUpdate(update: any): Promise<void> {
         slip_bank: slip?.bank ?? null,
         slip_receiver_name: slip?.receiverName ?? null,
         ocr_conf: slip?.confidence ?? null,
-        ledger_ref: UI.newLedgerRef(),
+        slip_date: slip?.date ?? null,
+        slip_time: slip?.time ?? null,
+        ledger_ref: ledgerRef,
         admin_id: admin.id,
         admin_name: admin.name,
       });
-      await sendMessage(chatId, UI.slipUnclear(slip?.thbAmount ?? null));
+      if (slip?.thbAmount && slip.thbAmount > 0) {
+        await sendMessage(
+          chatId,
+          UI.waitUsdt({
+            thb: slip.thbAmount,
+            bank: slip.bank ?? null,
+            last4: slip.receiverLast4 ?? null,
+            receiverName: slip.receiverName ?? null,
+            date: slip.date ?? null,
+            time: slip.time ?? null,
+            confidence: slip.confidence ?? null,
+            ledgerRef,
+            roomRate: room.rate,
+            roomName: room.name,
+          }),
+        );
+        sticker(chatId, 'OCR_DONE');
+      } else {
+        await sendMessage(chatId, UI.slipUnclear(slip?.thbAmount ?? null));
+      }
     } catch (e: any) {
       await sendMessage(chatId, UI.error(e?.message ?? 'upload failed'));
     }
@@ -461,11 +510,39 @@ async function handleUpdate(update: any): Promise<void> {
 
   // (ก) รอชื่อ → ลงทะเบียน
   if (session?.state === 'AWAITING_NAME') {
+    if (!isValidDisplayName(text)) {
+      await sendMessage(chatId, UI.invalidName());
+      return;
+    }
     const name = text.slice(0, 60);
     const created = await upsertAdmin(userId, name);
     await clearSession(chatId, userId);
     await sendMessage(chatId, UI.registered(created.name));
     return;
+  }
+
+  // (ข.0) รอ USDT ของดีลค้าง → เลขเปล่า / -150U = ยอดเหรียญ → การ์ดยืนยัน
+  if (session?.state === 'WAITING_USDT') {
+    const amt = parseAmounts(text);
+    const bare = parseBarePositiveNumber(text);
+    const usdtVal =
+      amt.usdt && amt.usdt.value > 0
+        ? amt.usdt.value
+        : bare;
+    if (usdtVal) {
+      await presentDealConfirm(chatId, userId, session, usdtVal, null);
+      return;
+    }
+    if (amt.thb && amt.thb.sign > 0) {
+      // อัปเดตยอดบาทแล้วรอ USDT ต่อ
+      await setSession(chatId, userId, {
+        ...dealSessionFields(session),
+        state: 'WAITING_USDT',
+        ocr_thb: amt.thb.value,
+      });
+      await sendMessage(chatId, UI.thbSetWaitUsdt(amt.thb.value));
+      return;
+    }
   }
 
   // (ข.5) กำลังแก้ไขธุรกรรม → อัปเดต tx เดิม (ใช้รูปแบบ +500B / -13.6U เหมือนกัน)

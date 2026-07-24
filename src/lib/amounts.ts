@@ -62,3 +62,35 @@ export function parseAmounts(text: string): ParsedAmounts {
 
   return { thb, usdt, hasBareNumber };
 }
+
+/**
+ * เลขเปล่าทั้งข้อความ เช่น "150" / "13.6" / "1,500.50"
+ * ใช้เฉพาะในโหมด WAITING_USDT (ยอดเหรียญของดีล) — นอกนั้นห้ามเดา
+ */
+export function parseBarePositiveNumber(text: string): number | null {
+  const s = (text || '').trim();
+  if (!s) return null;
+  if (!/^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$/.test(s)) return null;
+  const value = parseFloat(s.replace(/,/g, ''));
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+/** ชื่อแสดงผล — ห้ามเป็นเลขล้วน / รูปแบบยอด (+500B) / คำสั่ง */
+export function isValidDisplayName(text: string): boolean {
+  const s = (text || '').trim();
+  if (!s || s.length > 60) return false;
+  if (s.startsWith('/')) return false;
+  if (parseBarePositiveNumber(s) != null) return false;
+  const amt = parseAmounts(s);
+  if (amt.thb || amt.usdt) return false;
+  if (/^\d/.test(s) && /\d/.test(s) && s.replace(/[\d\s.,+\-]/g, '').length < 2) return false;
+  return true;
+}
+
+/** แคปชันที่บอกชัดว่าต้องการบันทึกขาออก USDT */
+export function isOutgoingCaption(caption: string | undefined | null): boolean {
+  const s = (caption || '').trim().toLowerCase();
+  if (!s) return false;
+  return /ส่ง\s*usdt|usdt\s*out|ขาออก|outgoing|send\s*usdt/.test(s);
+}

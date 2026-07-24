@@ -46,7 +46,8 @@ export const USDT_VISION_PROMPT = `You are a crypto (USDT) transfer screenshot p
   "time": "HH:MM or null",       // 24-hour transfer time
   "confidence": number           // 0-100 how confident this is a real USDT transfer screenshot with a legible amount
 }
-If a field is unreadable use null (except confidence — always a number). Do not invent values. Output raw JSON only.`;
+If a field is unreadable use null (except confidence — always a number). Do not invent values. Output raw JSON only.
+CRITICAL: If the image is a Thai bank transfer slip (บาท/THB, SCB, KBANK, PromptPay, QR พร้อมเพย์, bank logo, account xxxx-x), this is NOT a USDT screenshot — set amount=null, network=null, txid=null, confidence=0. Never treat a THB bank amount as USDT.`;
 
 const num = (v: any) =>
   typeof v === 'number' && Number.isFinite(v)
