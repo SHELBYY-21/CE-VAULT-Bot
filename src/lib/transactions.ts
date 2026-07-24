@@ -15,7 +15,8 @@ import {
   TRANSACTION_STATUSES,
 } from '@/types/transactions';
 
-let cachedRates: { sellRate: number; marketUsdtRate: number; marketSource: MarketSource } | null = null;
+let cachedRates: { sellRate: number; marketUsdtRate: number; marketSource: MarketSource } | null =
+  null;
 let ratesCacheTime = 0;
 const RATES_CACHE_TTL = 30000;
 
@@ -105,16 +106,16 @@ async function loadRoomTransactions(
 /**
  * พยายามใช้ query ที่มี index ก่อน — ถ้า index ยังไม่พร้อม ถอยไป single-field + memory
  */
-async function runTxQuery(
-  build: () => Query,
-  fallback: () => Promise<TxRow[]>,
-): Promise<TxRow[]> {
+async function runTxQuery(build: () => Query, fallback: () => Promise<TxRow[]>): Promise<TxRow[]> {
   try {
     const snap = await build().get();
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) {
     if (!isFirestoreIndexError(e)) throw e;
-    console.warn('[firestore] missing index — using in-memory fallback:', (e as Error)?.message?.slice(0, 120));
+    console.warn(
+      '[firestore] missing index — using in-memory fallback:',
+      (e as Error)?.message?.slice(0, 120),
+    );
     return fallback();
   }
 }
@@ -229,10 +230,18 @@ export async function getTodayLedger(
   }
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    new Date(iso).toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   const incomingList = rows
     .filter((r) => r.type === 'THB_DEPOSIT')
-    .map((r) => ({ time: fmt(r.created_at), thb: Number(r.thb_amount), usdt: Number(r.usdt_amount) }));
+    .map((r) => ({
+      time: fmt(r.created_at),
+      thb: Number(r.thb_amount),
+      usdt: Number(r.usdt_amount),
+    }));
   const outgoingList = rows
     .filter((r) => r.type === 'USDT_SEND')
     .map((r) => ({ time: fmt(r.created_at), usdt: Number(r.usdt_amount) }));
@@ -269,7 +278,11 @@ export async function insertRate(
 
 export async function getDefaultBankAccountId(): Promise<string | null> {
   if (process.env.DEFAULT_BANK_ACCOUNT_ID) return process.env.DEFAULT_BANK_ACCOUNT_ID;
-  const snap = await adminDb.collection('bank_accounts').orderBy('created_at', 'asc').limit(1).get();
+  const snap = await adminDb
+    .collection('bank_accounts')
+    .orderBy('created_at', 'asc')
+    .limit(1)
+    .get();
   return snap.empty ? null : snap.docs[0]!.id;
 }
 
@@ -368,7 +381,9 @@ export async function recordThbDeposit(input: RecordThbInput): Promise<ThbResult
 
   if (input.bankAccountId) await addBankBalance(input.bankAccountId, input.thbAmount);
   const newHolding = await addAdminHolding(admin.id, input.usdtAmount);
-  notifyIncome({ adminName: admin.name, usdt: input.usdtAmount, thb: input.thbAmount }).catch(() => undefined);
+  notifyIncome({ adminName: admin.name, usdt: input.usdtAmount, thb: input.thbAmount }).catch(
+    () => undefined,
+  );
 
   return {
     transactionId: id,
@@ -394,28 +409,27 @@ export async function editTransaction(
     const profit = calculateDepositProfit(newThb, newUsdt, marketUsdtRate);
     const fee = calculateFee(newThb, marketUsdtRate, newUsdt);
 
-    await adminDb
-      .collection('transactions')
-      .doc(txId)
-      .update({
-        thb_amount: newThb,
-        usdt_amount: newUsdt,
-        sell_rate: sellRate,
-        cost_per_unit: profit.costPerUnit,
-        sell_value_thb: profit.sellValueThb,
-        net_profit_thb: profit.netProfitThb,
-        profit_percent: profit.profitPercent,
-        expected_usdt: fee.expectedUsdt,
-        fee_usdt: fee.feeUsdt,
-        fee_percent: fee.feePercent,
-        updated_at: nowIso(),
-      });
+    await adminDb.collection('transactions').doc(txId).update({
+      thb_amount: newThb,
+      usdt_amount: newUsdt,
+      sell_rate: sellRate,
+      cost_per_unit: profit.costPerUnit,
+      sell_value_thb: profit.sellValueThb,
+      net_profit_thb: profit.netProfitThb,
+      profit_percent: profit.profitPercent,
+      expected_usdt: fee.expectedUsdt,
+      fee_usdt: fee.feeUsdt,
+      fee_percent: fee.feePercent,
+      updated_at: nowIso(),
+    });
 
     const holdingDelta = newUsdt - Number(old.usdt_amount);
     const thbDelta = newThb - Number(old.thb_amount);
     const newHolding = await addAdminHolding(old.admin_id, holdingDelta);
     if (old.bank_account_id) await addBankBalance(old.bank_account_id, thbDelta);
-    notifyEdit({ adminName: old.admins?.name ?? '-', note: 'ฝาก THB → USDT' }).catch(() => undefined);
+    notifyEdit({ adminName: old.admins?.name ?? '-', note: 'ฝาก THB → USDT' }).catch(
+      () => undefined,
+    );
 
     return {
       tx: { ...old, thb_amount: newThb, usdt_amount: newUsdt, ...profit, ...fee },
@@ -437,7 +451,9 @@ export async function editTransaction(
   };
 }
 
-export async function deleteTransaction(txId: string): Promise<{ name: string; holdingUsdt: number }> {
+export async function deleteTransaction(
+  txId: string,
+): Promise<{ name: string; holdingUsdt: number }> {
   const old = await getTx(txId);
   if (!old) throw new Error('ไม่พบธุรกรรม');
 
@@ -537,6 +553,7 @@ export async function recordIncoming(input: {
   ocrConfidence?: number | null;
   slipImageUrl?: string | null;
   receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
+  bankAccountId?: string | null;
 }): Promise<{ transactionId: string; adminName: string; usdtOwed: number; profitThb: number }> {
   const admin = await getAdminByTelegramId(input.adminTelegramId);
   if (!admin) throw new AdminNotFoundError();
@@ -545,6 +562,7 @@ export async function recordIncoming(input: {
   const profitThb = input.thb - usdtOwed * input.marketRate;
   const id = randomUUID();
   const ts = nowIso();
+  const bankAccountId = input.bankAccountId ?? (await getDefaultBankAccountId());
 
   await adminDb
     .collection('transactions')
@@ -553,6 +571,7 @@ export async function recordIncoming(input: {
       clean({
         ...zeroMoneyFields(),
         admin_id: admin.id,
+        bank_account_id: bankAccountId,
         type: 'THB_DEPOSIT',
         thb_amount: input.thb,
         usdt_amount: usdtOwed,
@@ -578,6 +597,10 @@ export async function recordIncoming(input: {
         updated_at: ts,
       }),
     );
+
+  if (bankAccountId) {
+    await addBankBalance(bankAccountId, input.thb).catch(() => undefined);
+  }
 
   notifyIncome({ adminName: admin.name, usdt: usdtOwed, thb: input.thb }).catch(() => undefined);
   return { transactionId: id, adminName: admin.name, usdtOwed, profitThb };
@@ -666,7 +689,9 @@ export async function getRecentPairs(
   const pairs: RecentPair[] = [];
   for (const inRow of rows.filter((r) => r.type === 'THB_DEPOSIT')) {
     const inTime = new Date(inRow.created_at).getTime();
-    const idx = sends.findIndex((s, i) => !usedSend.has(i) && new Date(s.created_at).getTime() >= inTime);
+    const idx = sends.findIndex(
+      (s, i) => !usedSend.has(i) && new Date(s.created_at).getTime() >= inTime,
+    );
     if (idx >= 0) {
       usedSend.add(idx);
       const sendTime = new Date(sends[idx].created_at).getTime();
@@ -741,7 +766,9 @@ export async function exportRoomCsv(
     const s = String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const lines = rows.map((r) => cols.map((c) => (c === 'staff' ? cell(r.admins?.name) : cell(r[c]))).join(','));
+  const lines = rows.map((r) =>
+    cols.map((c) => (c === 'staff' ? cell(r.admins?.name) : cell(r[c]))).join(','),
+  );
   return { csv: [cols.join(','), ...lines].join('\n'), rows: rows.length };
 }
 
@@ -779,9 +806,14 @@ export async function getRoomLeaderboard(sinceIso?: string | null): Promise<Room
   const byRoom = new Map<string, RoomStat>();
   for (const r of rows) {
     const key = String(r.chat_id ?? 'unknown');
-    const cur =
-      byRoom.get(key) ??
-      { chatId: r.chat_id ?? null, roomName: r.room_name ?? null, txCount: 0, totalThb: 0, totalUsdt: 0, profitThb: 0 };
+    const cur = byRoom.get(key) ?? {
+      chatId: r.chat_id ?? null,
+      roomName: r.room_name ?? null,
+      txCount: 0,
+      totalThb: 0,
+      totalUsdt: 0,
+      profitThb: 0,
+    };
     cur.txCount += 1;
     cur.totalThb += Number(r.thb_amount || 0);
     cur.totalUsdt += Number(r.usdt_amount || 0);
@@ -839,7 +871,10 @@ export async function getStaffLeaderboard(
         return q;
       },
       async () => {
-        const snap = await adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT').get();
+        const snap = await adminDb
+          .collection('transactions')
+          .where('type', '==', 'THB_DEPOSIT')
+          .get();
         let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TxRow);
         if (sinceIso) list = list.filter((r) => String(r.created_at || '') >= sinceIso);
         return list;
