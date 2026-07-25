@@ -19,7 +19,9 @@
     "bot:bridge": "npm --prefix bot run start",
     "prod:24h": "bash scripts/run-24h.sh",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "autopilot": "npx --yes tsx scripts/autopilot.ts",
+    "autopilot:list": "npx --yes tsx scripts/autopilot.ts list"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
@@ -31,6 +33,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@cursor/sdk": "^1.0.24",
     "@eslint/js": "^10.0.1",
     "@next/eslint-plugin-next": "^16.2.10",
     "@types/node": "^20.16.5",
