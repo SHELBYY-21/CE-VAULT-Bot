@@ -96,7 +96,7 @@ export async function getTodayLedger(
   sinceIso?: string | null,
   chatId?: number | null,
 ): Promise<{
-  incomingList: { time: string; thb: number; usdt: number }[];
+  incomingList: { time: string; date: string; thb: number; usdt: number }[];
   outgoingList: { time: string; usdt: number }[];
   totalThb: number;
   totalIncomingUsdt: number;
@@ -117,14 +117,25 @@ export async function getTodayLedger(
   const { data } = await q;
 
   const rows = (data ?? []) as any[];
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('th-TH', {
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok',
+    });
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('th-TH', {
+      day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok',
+    });
   const incomingList = rows
     .filter((r) => r.type === 'THB_DEPOSIT')
-    .map((r) => ({ time: fmt(r.created_at), thb: Number(r.thb_amount), usdt: Number(r.usdt_amount) }));
+    .map((r) => ({
+      time: fmtTime(r.created_at),
+      date: fmtDate(r.created_at),
+      thb: Number(r.thb_amount),
+      usdt: Number(r.usdt_amount),
+    }));
   const outgoingList = rows
     .filter((r) => r.type === 'USDT_SEND')
-    .map((r) => ({ time: fmt(r.created_at), usdt: Number(r.usdt_amount) }));
+    .map((r) => ({ time: fmtTime(r.created_at), usdt: Number(r.usdt_amount) }));
   const totalThb = incomingList.reduce((s, r) => s + r.thb, 0);
   const totalIncomingUsdt = incomingList.reduce((s, r) => s + r.usdt, 0);
   const totalOutgoingUsdt = outgoingList.reduce((s, r) => s + r.usdt, 0);

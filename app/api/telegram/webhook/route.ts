@@ -456,6 +456,7 @@ async function commitIncoming(
       .catch(() => undefined);
   }
 
+  const led = await getTodayLedger(room.dayCutAt, chatId);
   await sendMessage(
     chatId,
     UI.incomingRecorded({
@@ -468,6 +469,8 @@ async function commitIncoming(
       bank: meta.bank ?? null,
       last4: meta.last4 ?? null,
       confidence: meta.confidence ?? null,
+      todayIncoming: led.incomingList.map((e) => ({ time: e.time, date: e.date, thb: e.thb })),
+      todayTotalThb: led.totalThb,
     }),
   );
 }
@@ -503,10 +506,13 @@ async function commitOutgoing(
       ledgerRef,
       usdt,
       adminName: r.adminName,
+      shouldSendUsdt: shouldSend,
       remainingUsdt: remaining,
     }),
   );
   sticker(chatId, 'SUCCESS');
+  // ปิดท้ายด้วยสรุป vault ของห้อง
+  await sendLedger(chatId);
 }
 
 /** เริ่มวันใหม่: โพสต์สรุปวันเก่าก่อน → ตั้ง day-cut → ยืนยัน */

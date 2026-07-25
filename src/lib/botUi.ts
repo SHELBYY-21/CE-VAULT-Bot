@@ -293,14 +293,26 @@ export function incomingRecorded(d: {
   bank?: string | null;
   last4?: string | null;
   confidence?: number | null;
+  /** รายการเข้าวันนี้ทั้งหมด (หลังบันทึกรายนี้แล้ว) */
+  todayIncoming?: { time: string; date: string; thb: number }[];
+  todayTotalThb?: number;
 }): OutgoingMessage {
   const conf = d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '';
+  const list = d.todayIncoming ?? [];
+  const total = d.todayTotalThb ?? d.thb;
+  const lines = list
+    .map((e, i) => `${i + 1}.${e.time} ${e.date} ${money(e.thb)}`)
+    .join('\n');
+
   return {
     text:
       `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
       `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
-      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
+      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>\n` +
+      `ยอดรวมเงินบาทวันนี้ &gt; <b>${money(total)}</b>\n` +
+      (lines ? `${lines}\n` : '') +
+      `<i>หลังจากส่งสลิป USDT พิมพ์ยอด</i>`,
     reply_markup: buttons(d.transactionId),
   };
 }
@@ -310,13 +322,18 @@ export function outgoingRecorded(d: {
   ledgerRef: string;
   usdt: number;
   adminName: string;
+  shouldSendUsdt: number;
   remainingUsdt: number;
 }): OutgoingMessage {
   const done = d.remainingUsdt <= 0.009;
+  const over = Math.max(0, -d.remainingUsdt);
+  const short = Math.max(0, d.remainingUsdt);
   return {
     text:
       `🔴 <b>ออก (OUT)</b>  <b>${money(d.usdt)} USDT</b>\n` +
+      `- ยอดที่ต้องส่ง <b>${money(d.shouldSendUsdt)}</b>\n` +
       `${done ? '✅ ส่งครบแล้ว <i>(Settled)</i>' : `⏳ คงเหลือ <i>(Remaining)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
+      `ส่งเกิน <b>${money(over)}</b>  ส่งขาด <b>${short <= 0.009 ? '—' : money(short)}</b>\n` +
       `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>`,
     reply_markup: buttons(d.transactionId),
   };
@@ -759,6 +776,7 @@ export function chatRateSet(rate: number): OutgoingMessage {
 // ═══════════════ Ledger summary (สไตล์ Chinese calc bot) ═══════════════
 export interface LedgerEntry {
   time: string;
+  date?: string;
   thb: number;
   usdt: number;
 }
@@ -775,6 +793,21 @@ export interface LedgerData {
   roomName?: string | null;   // ชื่อห้อง (กลุ่ม)
   staff?: { name: string; count: number; profitThb: number }[]; // Top Staff
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[]; // 5 รายการล่าสุด
+}
+
+/** วันเวลาไทยเต็ม เช่น เสาร์ 25 ก.ค. 2569 02:58:05 */
+function bangkokNowLabel(): string {
+  return new Date().toLocaleString('th-TH', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
@@ -796,6 +829,8 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
       `${GRAD_INDIGO}\n` +
       `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
       `${GRAD_INDIGO}\n` +
+      `🕐 ${bangkokNowLabel()}\n` +
+      `${THIN}\n` +
       `🟢 <b>เข้าบัญชี</b> <i>(Incoming)</i> · ${d.incomingList.length} รายการ\n` +
       (incoming || '<i>— ยังไม่มี —</i>') +
       `\n${THIN}\n` +
