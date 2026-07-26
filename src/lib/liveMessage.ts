@@ -5,6 +5,7 @@
  * Chat stays clean: send once, then edit in place.
  */
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
+import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
 
 export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED' | 'ERROR';
 
@@ -115,10 +116,14 @@ export function liveWaiting(d: {
   last4?: string | null;
   confidence?: number | null;
   hint?: string | null;
+  intel?: ReceiverIntel | null;
 }): OutgoingMessage {
   const lines: string[] = [];
+  if (d.intel) {
+    lines.push(intelBlock(d.intel), '');
+  }
   if (d.thb != null) lines.push(`THB     <code>${liveMoney(d.thb)}</code>`);
-  if (d.bank || d.last4)
+  if (!d.intel && (d.bank || d.last4))
     lines.push(
       `Bank    <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
     );
@@ -173,6 +178,59 @@ export function liveError(message: string, ledgerRef?: string | null): OutgoingM
     stage: 'ERROR',
     ledgerRef,
     body: `<code>${esc(message)}</code>`,
+  });
+}
+
+/** Compact intel block for Live Message body */
+export function intelBlock(intel: ReceiverIntel): string {
+  const bankLine = intel.bank
+    ? `${esc(intel.bank)} •${esc(intel.last4)}`
+    : `••••${esc(intel.last4)}`;
+  return (
+    `<b>Receiver Intelligence</b>\n` +
+    `Receiver       <code>${bankLine}</code>\n` +
+    `Transactions   <code>${intel.transactions}</code>\n` +
+    `Volume         <code>${formatVolumeThb(intel.volumeThb)}</code>\n` +
+    `Last           <code>${esc(intel.lastRelative)}</code>\n` +
+    `Risk           <code>${intel.risk}</code>\n` +
+    `Duplicate      <code>${intel.duplicate ? 'Yes' : 'No'}</code>`
+  );
+}
+
+/** Standalone Assistant card — type 3376 → instant */
+export function receiverIntelCard(intel: ReceiverIntel): OutgoingMessage {
+  const bank = intel.bank ?? '—';
+  return {
+    text:
+      `<b>CE VAULT</b>\n` +
+      `<i>Receiver Intelligence</i>\n` +
+      `${RULE}\n` +
+      `Receiver\n<code>${esc(bank)}</code>\n<code>${esc(intel.last4)}</code>\n\n` +
+      `History\n<code>${intel.transactions}</code>\n\n` +
+      `Volume\n<code>${formatVolumeThb(intel.volumeThb)}</code>\n\n` +
+      `Risk\n<code>${intel.risk}</code>\n` +
+      (intel.known
+        ? `${RULE}\n<i>Known account — slip will load this profile instantly</i>`
+        : `${RULE}\n<i>New receiver — no history yet</i>`),
+  };
+}
+
+/** Live Message stage with Receiver Intelligence (on slip) */
+export function liveIntelVerified(d: {
+  ledgerRef?: string | null;
+  thb?: number | null;
+  confidence?: number | null;
+  intel: ReceiverIntel;
+  skippedOcr?: boolean;
+}): OutgoingMessage {
+  const lines: string[] = [intelBlock(d.intel)];
+  if (d.thb != null) lines.push('', `THB     <code>${liveMoney(d.thb)}</code>`);
+  if (d.confidence != null) lines.push(`OCR     <code>${d.confidence.toFixed(0)}%</code>`);
+  if (d.skippedOcr) lines.push('', `<i>Known account — profile loaded (OCR light)</i>`);
+  return liveCard({
+    stage: d.intel.known ? 'VERIFIED' : 'OCR',
+    ledgerRef: d.ledgerRef,
+    body: lines.join('\n'),
   });
 }
 
