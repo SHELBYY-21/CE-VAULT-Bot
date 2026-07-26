@@ -37,6 +37,7 @@ import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
+import { isValidAdminName, parseAdminCommand } from '@/lib/adminName';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
@@ -255,6 +256,25 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
+  // ----- /admin <ชื่อ> : ตั้งชื่อแอดมิน (บังคับใช้คำสั่งนี้เท่านั้น) -----
+  if (text && /^\/admin(?:@[\w_]+)?(?:\s|$)/i.test(text)) {
+    const parsed = parseAdminCommand(text);
+    if (!parsed.matched) return;
+    if (!parsed.name) {
+      await sendMessage(chatId, UI.adminUsage());
+      return;
+    }
+    if (!isValidAdminName(parsed.name)) {
+      await sendMessage(chatId, UI.nameRejected(parsed.name));
+      return;
+    }
+    const created = await upsertAdmin(userId, parsed.name);
+    await clearSession(chatId, userId);
+    await sendMessage(chatId, UI.registered(created.name));
+    sticker(chatId, 'SUCCESS');
+    return;
+  }
+
   // ----- /export : ดาวน์โหลด CSV ยอดห้องนี้ (ส่งเป็นไฟล์ในแชต) -----
   if (text && text.startsWith('/export')) {
     const room = await getRoom(chatId);
@@ -282,11 +302,7 @@ async function handleUpdate(update: any): Promise<void> {
   ) {
     const existing = await getAdminByTelegramId(userId);
     if (existing) {
-      await setSession(chatId, userId, {
-        state: 'AWAITING_NAME',
-        admin_id: existing.id,
-        admin_name: existing.name,
-      });
+      await clearSession(chatId, userId);
       await sendMessage(chatId, UI.welcomeRegistered(existing.name));
     } else {
       await setSession(chatId, userId, { state: 'AWAITING_NAME' });
@@ -459,12 +475,9 @@ async function handleUpdate(update: any): Promise<void> {
   // ----- ข้อความตัวอักษร -----
   if (!text) return;
 
-  // (ก) รอชื่อ → ลงทะเบียน
+  // (ก) รอชื่อ → ต้องพิมพ์ /admin <ชื่อ> เท่านั้น
   if (session?.state === 'AWAITING_NAME') {
-    const name = text.slice(0, 60);
-    const created = await upsertAdmin(userId, name);
-    await clearSession(chatId, userId);
-    await sendMessage(chatId, UI.registered(created.name));
+    await sendMessage(chatId, UI.askNameAgain());
     return;
   }
 
@@ -1068,6 +1081,7 @@ async function finalizeDeal(
       .catch(() => undefined);
   }
 
+  // One card = one decision — SUCCESS only (no ledger spam / brand double-post)
   await sendMessage(
     chatId,
     UI.dealSuccess({
@@ -1085,21 +1099,6 @@ async function finalizeDeal(
     }),
   );
   sticker(chatId, 'SUCCESS');
-
-  // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
-  await sendLedger(chatId);
-
-  // Brand Success Card — ส่งต่อท้ายหลังข้อความปกติเสร็จทั้งหมด (fire-and-forget)
-  sendMessage(
-    chatId,
-    UI.brandCard({
-      usdt,
-      txid: session.usdt_txid ?? null,
-      network: session.usdt_network ?? null,
-      ledgerRef,
-      transactionId: r.transactionId,
-    }),
-  ).catch(() => undefined);
 }
 
 /** จัดการปุ่ม inline: edit:<txId> / del:<txId> / confirm:<usdt> */
