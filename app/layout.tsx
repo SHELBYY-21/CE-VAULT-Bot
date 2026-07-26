@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'CE Vault · USDT Ledger',
-  description: 'CE Vault — ระบบบันทึกธุรกรรม USDT Arbitrage / P2P',
-};
+  title: 'CE VAULT · Financial Dashboard',
+  description: 'CE VAULT — Financial Dashboard for USDT⇄THB arbitrage ledger',
+}
 
 export default function RootLayout({
   children,
