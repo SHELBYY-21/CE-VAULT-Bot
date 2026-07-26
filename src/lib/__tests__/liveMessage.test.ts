@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  intelBlock,
   liveCard,
   liveRail,
   liveReceiving,
   liveSettled,
   liveWaiting,
+  receiverIntelCard,
 } from '../liveMessage';
+import { toReceiverIntel } from '../receiverIntel';
 
 describe('liveRail', () => {
   it('highlights Receiving first', () => {
@@ -50,5 +53,34 @@ describe('liveCard', () => {
     expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain(
       '<b>● Settled</b>',
     );
+  });
+
+  it('renders Receiver Intelligence block', () => {
+    const intel = toReceiverIntel(
+      {
+        id: 'r1',
+        bank: 'SCB',
+        receiver_name: null,
+        account_last4: '3376',
+        total_transactions: 52,
+        total_amount_thb: 1_200_000,
+        total_usdt: 0,
+        max_amount_thb: 1,
+        last_amount_thb: 1,
+        first_transaction_at: null,
+        last_transaction_at: '2026-07-26T13:00:00+07:00',
+        last_ledger_ref: null,
+        status: 'trusted',
+      },
+      '3376',
+    );
+    const block = intelBlock(intel);
+    expect(block).toContain('SCB •3376');
+    expect(block).toContain('Transactions');
+    expect(block).toContain('52');
+    expect(block).toContain('Duplicate');
+    expect(block).toContain('No');
+    expect(receiverIntelCard(intel).text).toContain('History');
+    expect(receiverIntelCard(intel).text).toContain('3376');
   });
 });

@@ -14,13 +14,22 @@ import {
 } from '@/lib/telegram';
 import {
   liveError,
+  liveIntelVerified,
   liveOcr,
   liveReceiving,
   liveSettled,
-  liveVerified,
   liveWaiting,
+  receiverIntelCard,
   upsertLive,
 } from '@/lib/liveMessage';
+import {
+  checkReceiverDuplicate,
+  isTodayProfitQuestion,
+  parseLast4Query,
+  toReceiverIntel,
+  formatVolumeThb,
+  type ReceiverIntel,
+} from '@/lib/receiverIntel';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
 import {
   getAdminByTelegramId,
@@ -149,37 +158,30 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- /receiver <last4> : ดูประวัติผู้รับ -----
+  // ----- /receiver <last4> : Receiver Intelligence -----
   if (text && text.startsWith('/receiver')) {
     const last4 = (text.replace('/receiver', '').trim().match(/\d{4}/) || [])[0];
     if (!last4) {
-      await sendMessage(chatId, { text: 'พิมพ์ <code>/receiver 6578</code> (เลขท้ายบัญชี 4 ตัว)' });
+      await sendMessage(chatId, { text: 'พิมพ์ <code>/receiver 3376</code> หรือแค่ <code>3376</code>' });
       return;
     }
-    const found = await findReceiversByLast4(last4);
-    if (found.length === 0) {
-      await sendMessage(chatId, UI.receiverNotFound(last4));
-      return;
-    }
-    for (const r of found.slice(0, 3)) {
-      await sendMessage(
-        chatId,
-        UI.receiverCard({
-          bank: r.bank,
-          last4: r.account_last4,
-          name: r.receiver_name,
-          status: r.status,
-          totalTx: r.total_transactions,
-          totalThb: Number(r.total_amount_thb),
-          totalUsdt: Number(r.total_usdt),
-          maxThb: Number(r.max_amount_thb),
-          lastThb: Number(r.last_amount_thb),
-          lastAt: r.last_transaction_at,
-          lastRef: r.last_ledger_ref,
-        }),
-      );
-    }
+    await replyReceiverIntel(chatId, last4);
     return;
+  }
+
+  // ----- Assistant: "วันนี้กำไรเท่าไร" → ตอบทันที -----
+  if (text && isTodayProfitQuestion(text)) {
+    await replyTodayProfit(chatId);
+    return;
+  }
+
+  // ----- Assistant: พิมพ์ 3376 → Receiver Intelligence ทันที -----
+  if (text && !text.startsWith('/')) {
+    const q = parseLast4Query(text);
+    if (q) {
+      await replyReceiverIntel(chatId, q.last4, q.bankHint);
+      return;
+    }
   }
 
   // ----- /cancel : ออกจากโหมดใดๆ -----
@@ -370,45 +372,72 @@ async function handleUpdate(update: any): Promise<void> {
         // not USDT — fall through as new THB slip on same message
       }
 
-      const slip = await analyzeSlip(imgUrl);
-      const confOk =
-        !!slip?.thbAmount &&
-        slip.thbAmount > 0 &&
-        (slip.confidence == null || slip.confidence >= OCR_AUTO_MIN);
-
-      if (confOk) {
+      // Caption last4 → Receiver Intelligence ทันที (ก่อน/คู่กับ OCR)
+      const captionLast4 = (msg.caption || '').match(/\d{4}/)?.[0] ?? null;
+      if (captionLast4) {
+        const early = await loadReceiverIntel(captionLast4, null, null);
         liveId = await upsertLive(
           chatId,
           liveId,
-          liveVerified({
+          liveIntelVerified({
             ledgerRef,
-            thb: slip.thbAmount,
-            bank: slip.bank,
-            last4: slip.receiverLast4,
-            confidence: slip.confidence,
-            receiverName: slip.receiverName,
+            intel: early,
+            skippedOcr: early.known,
           }),
         );
+      }
 
+      const slip = await analyzeSlip(imgUrl);
+      const last4 = slip?.receiverLast4 || captionLast4 || null;
+      const intel = last4
+        ? await loadReceiverIntel(last4, slip?.bank ?? null, slip?.thbAmount ?? null)
+        : null;
+
+      // Known receiver → เติม bank/name จาก DB, ผ่อน OCR threshold (ไม่ต้อง OCR ใหม่หนัก)
+      const bank = slip?.bank || intel?.bank || null;
+      const receiverName = slip?.receiverName || intel?.name || null;
+      const thbOk = !!slip?.thbAmount && slip.thbAmount > 0;
+      const confOk =
+        thbOk &&
+        (intel?.known ||
+          slip!.confidence == null ||
+          slip!.confidence >= OCR_AUTO_MIN);
+
+      if (thbOk && last4 && intel) {
+        liveId = await upsertLive(
+          chatId,
+          liveId,
+          liveIntelVerified({
+            ledgerRef,
+            thb: slip!.thbAmount,
+            confidence: slip!.confidence,
+            intel,
+            skippedOcr: intel.known,
+          }),
+        );
+      }
+
+      if (confOk) {
         const pinnedList = await listPinnedBanksForToday();
         const slipHint = {
-          bank: slip.bank ?? null,
-          last4: slip.receiverLast4 ?? null,
-          receiverName: slip.receiverName ?? null,
+          bank,
+          last4,
+          receiverName,
         };
         const matched = findMatchingPinnedBank(slipHint, pinnedList);
 
+        // Known receiver + มียอด → ข้าม pin ask ถ้าเคยใช้บัญชีนี้ (รอ USDT / หรือ settle ถ้า pin ตรง)
         // ตรงบัญชีที่เซ็ตไว้ → Settled on same Live Message
         if (matched) {
           await clearSession(chatId, userId);
-          await commitIncoming(chatId, userId, slip.thbAmount!, {
+          await commitIncoming(chatId, userId, slip!.thbAmount!, {
             slipUrl: imgUrl,
-            bank: slip.bank ?? matched.bank_name,
-            last4: slip.receiverLast4 ?? last4OfAccount(matched.account_number),
-            receiverName: slip.receiverName ?? null,
-            confidence: slip.confidence ?? null,
-            time: slip.time ?? null,
-            date: slip.date ?? null,
+            bank: bank ?? matched.bank_name,
+            last4: last4 ?? last4OfAccount(matched.account_number),
+            receiverName,
+            confidence: slip!.confidence ?? null,
+            time: slip!.time ?? null,
+            date: slip!.date ?? null,
             pinMatched: true,
             bankAccountId: matched.id,
             liveMessageId: liveId,
@@ -417,20 +446,20 @@ async function handleUpdate(update: any): Promise<void> {
           return;
         }
 
-        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → Waiting (same message)
-        if (pinnedList.length > 0) {
+        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → Waiting + intel
+        if (pinnedList.length > 0 && !intel?.known) {
           const first = pinnedList[0]!;
           await setSession(chatId, userId, {
             state: 'WAITING_USDT',
             pending_type: 'THB_DEPOSIT',
             slip_url: imgUrl,
-            ocr_thb: slip.thbAmount ?? null,
-            slip_date: slip.date ?? null,
-            slip_time: slip.time ?? null,
-            slip_last4: slip.receiverLast4 ?? null,
-            slip_bank: slip.bank ?? null,
-            slip_receiver_name: slip.receiverName ?? null,
-            ocr_conf: slip.confidence ?? null,
+            ocr_thb: slip!.thbAmount ?? null,
+            slip_date: slip!.date ?? null,
+            slip_time: slip!.time ?? null,
+            slip_last4: last4,
+            slip_bank: bank,
+            slip_receiver_name: receiverName,
+            ocr_conf: slip!.confidence ?? null,
             ledger_ref: ledgerRef,
             admin_id: admin.id,
             admin_name: admin.name,
@@ -441,30 +470,31 @@ async function handleUpdate(update: any): Promise<void> {
             liveId,
             liveWaiting({
               ledgerRef,
-              thb: slip.thbAmount,
-              bank: slip.bank,
-              last4: slip.receiverLast4,
-              confidence: slip.confidence,
+              thb: slip!.thbAmount,
+              bank,
+              last4,
+              confidence: slip!.confidence,
+              intel,
               hint:
                 `Pin mismatch — today <code>${first.bank_name} ••••${last4OfAccount(first.account_number) ?? '????'}</code>\n` +
-                `<i>Type</i> <code>+${slip.thbAmount}</code> <i>to record, or</i> <code>/pin …</code>`,
+                `<i>Type</i> <code>+${slip!.thbAmount}</code> <i>to record, or</i> <code>/pin …</code>`,
             }),
           );
           return;
         }
 
-        // ยังไม่เซ็ตบัญชี — Waiting on same Live Message
+        // Known account หรือยังไม่เซ็ต pin → Waiting + Receiver Intelligence
         await setSession(chatId, userId, {
           state: 'WAITING_USDT',
           pending_type: 'THB_DEPOSIT',
           slip_url: imgUrl,
-          ocr_thb: slip.thbAmount ?? null,
-          slip_date: slip.date ?? null,
-          slip_time: slip.time ?? null,
-          slip_last4: slip.receiverLast4 ?? null,
-          slip_bank: slip.bank ?? null,
-          slip_receiver_name: slip.receiverName ?? null,
-          ocr_conf: slip.confidence ?? null,
+          ocr_thb: slip!.thbAmount ?? null,
+          slip_date: slip!.date ?? null,
+          slip_time: slip!.time ?? null,
+          slip_last4: last4,
+          slip_bank: bank,
+          slip_receiver_name: receiverName,
+          ocr_conf: slip!.confidence ?? null,
           ledger_ref: ledgerRef,
           admin_id: admin.id,
           admin_name: admin.name,
@@ -475,13 +505,15 @@ async function handleUpdate(update: any): Promise<void> {
           liveId,
           liveWaiting({
             ledgerRef,
-            thb: slip.thbAmount,
-            bank: slip.bank,
-            last4: slip.receiverLast4,
-            confidence: slip.confidence,
-            hint:
-              `Set receive bank: <code>/pin ${slip.bank ?? 'kbank'} ${slip.receiverLast4 ?? '1234'}</code>\n` +
-              `<i>or type</i> <code>+${slip.thbAmount}</code>`,
+            thb: slip!.thbAmount,
+            bank,
+            last4,
+            confidence: slip!.confidence,
+            intel,
+            hint: intel?.known
+              ? `<i>Known account — profile loaded. Send USDT or type</i> <code>-13.6U</code>`
+              : `Set receive bank: <code>/pin ${bank ?? 'kbank'} ${last4 ?? '1234'}</code>\n` +
+                `<i>or type</i> <code>+${slip!.thbAmount}</code>`,
           }),
         );
         return;
@@ -500,15 +532,15 @@ async function handleUpdate(update: any): Promise<void> {
         return;
       }
 
-      // (C) อ่านไม่ชัด — Waiting, same message
+      // (C) อ่านไม่ชัด — Waiting + intel ถ้ามี last4
       await setSession(chatId, userId, {
         state: 'WAITING_USDT',
         pending_type: 'THB_DEPOSIT',
         slip_url: imgUrl,
         ocr_thb: slip?.thbAmount ?? null,
-        slip_last4: slip?.receiverLast4 ?? null,
-        slip_bank: slip?.bank ?? null,
-        slip_receiver_name: slip?.receiverName ?? null,
+        slip_last4: last4,
+        slip_bank: bank,
+        slip_receiver_name: receiverName,
         ocr_conf: slip?.confidence ?? null,
         ledger_ref: ledgerRef,
         admin_id: admin.id,
@@ -521,6 +553,9 @@ async function handleUpdate(update: any): Promise<void> {
         liveWaiting({
           ledgerRef,
           thb: slip?.thbAmount ?? null,
+          bank,
+          last4,
+          intel,
           hint: `<i>OCR unclear — type</i> <code>+${slip?.thbAmount ?? 500}</code>`,
         }),
       );
@@ -642,6 +677,55 @@ async function handleUpdate(update: any): Promise<void> {
   }
 }
 
+async function loadReceiverIntel(
+  last4: string,
+  bank: string | null,
+  thb: number | null,
+): Promise<ReceiverIntel> {
+  const clean = last4.replace(/\D/g, '').slice(-4);
+  let row = bank ? await getReceiver(bank, clean) : null;
+  if (!row) {
+    const found = await findReceiversByLast4(clean);
+    row = found[0] ?? null;
+  }
+  // Enrich today stats when found via last4-only (getReceiver already adds them)
+  if (row && row.todayCount == null && bank) {
+    row = (await getReceiver(row.bank || bank, clean)) ?? row;
+  }
+  const duplicate = await checkReceiverDuplicate({ last4: clean, thb, bank: bank || row?.bank });
+  return toReceiverIntel(row, clean, { duplicate });
+}
+
+async function replyReceiverIntel(
+  chatId: number,
+  last4: string,
+  bankHint?: string | null,
+): Promise<void> {
+  const intel = await loadReceiverIntel(last4, bankHint ?? null, null);
+  await sendMessage(chatId, receiverIntelCard(intel));
+}
+
+async function replyTodayProfit(chatId: number): Promise<void> {
+  try {
+    const room = await getRoom(chatId);
+    const led = await getTodayLedger(room.dayCutAt, chatId);
+    const profit = Number(led.netProfitThb) || 0;
+    await sendMessage(chatId, {
+      text:
+        `<b>CE VAULT</b>\n` +
+        `<i>Today · Profit</i>\n` +
+        `────────────────\n` +
+        `Profit     <code>${formatVolumeThb(profit)}</code>\n` +
+        `Volume     <code>${formatVolumeThb(led.totalThb)}</code>\n` +
+        `In USDT    <code>${Number(led.totalIncomingUsdt || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</code>\n` +
+        `Out USDT   <code>${Number(led.totalOutgoingUsdt || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</code>` +
+        (room.name ? `\nRoom       <code>${room.name}</code>` : ''),
+    });
+  } catch (e: any) {
+    await sendMessage(chatId, UI.error(e?.message ?? 'profit lookup failed'));
+  }
+}
+
 /** บันทึกขาเข้า — Live Message → Settled (editMessage, ไม่ส่งข้อความใหม่) */
 async function commitIncoming(
   chatId: number,
@@ -736,7 +820,6 @@ async function commitOutgoing(
     ledgerRef?: string | null;
   },
 ): Promise<void> {
-  const room = await getRoom(chatId);
   const ledgerRef = meta.ledgerRef || UI.newLedgerRef();
   const r = await recordOutgoing({
     adminTelegramId: userId,
