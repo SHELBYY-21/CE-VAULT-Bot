@@ -50,6 +50,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    match /slip_fingerprints/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
     match /images/{id} {
       allow read: if true;
       allow write: if false;

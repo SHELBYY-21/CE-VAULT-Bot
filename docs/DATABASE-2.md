@@ -13,8 +13,9 @@
 | **Ledger** | `ledger_entries` | Event-sourced balance deltas |
 | **Room** | `rooms` (+ legacy `chat_settings`) | Group sell rate + day cut |
 | **DailyRate** | `daily_rates` (+ legacy `rates`) | Sell / market rate history |
-| **OCR** | `ocr_runs` | Thai slip OCR artifacts |
+| **OCR** | `ocr_runs` | Thai slip OCR artifacts (+ forged/edited/duplicate + fingerprint) |
 | **Images** | `images` (+ Storage `slips/`) | Slip / USDT proof metadata |
+| **Slip fingerprints** | `slip_fingerprints` | Duplicate slip detection (companion to OCR) |
 | **AuditLog** | `audit_logs` | Create / edit / delete trail |
 | **Wallet** | `wallets` | Staff USDT / bank THB balances |
 | **Settlement** | `settlements` | USDT out / chain proof |

@@ -71,6 +71,7 @@ const DB2 = [
   'wallets',
   'settlements',
   'analytics_daily',
+  'slip_fingerprints',
 ];
 
 console.log('--- legacy ---');

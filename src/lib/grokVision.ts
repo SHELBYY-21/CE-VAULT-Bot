@@ -12,10 +12,14 @@ export interface SlipExtract {
   receiverName: string | null; // ชื่อผู้รับเงิน
   senderName: string | null; // ชื่อผู้โอน (best-effort)
   confidence: number | null; // ความมั่นใจในการอ่าน 0-100
+  /** Authenticity — true = Yes (fail), false = No (pass) */
+  forged: boolean;
+  edited: boolean;
+  duplicate: boolean;
   raw?: string; // ข้อความดิบ (debug)
 }
 
-const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
+const PROMPT = `You are a Thai bank slip parser and authenticity checker. Analyze this slip image and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
 {
   "thbAmount": number,           // amount transferred in THB (the main highlighted number)
   "time": "HH:MM",               // 24-hour transfer time
@@ -24,9 +28,12 @@ const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and rep
   "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|other-uppercase",
   "receiverName": "name or null",// RECEIVER (payee) full name — Thai or English as shown
   "senderName": "name or null",  // sender full name if visible
-  "confidence": number           // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
+  "confidence": number,          // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
+  "forged": boolean,             // true if fake/generated/not a real bank slip; false if authentic (Forged: No)
+  "edited": boolean,             // true if digitally edited/photoshopped/overlaid amounts; false if original (Edited: No)
+  "duplicate": boolean           // true ONLY if the image itself clearly shows a "copy/screenshot of a screenshot" reuse mark; otherwise false (Duplicate is also checked in DB)
 }
-If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
+If unable to read any field, use null (except confidence and the three authenticity booleans — always give values). Prefer forged=false, edited=false, duplicate=false when the slip looks normal. Do not invent money fields. Output raw JSON only.`;
 
 // ─── USDT transfer screenshot (Binance/OKX/TronScan ฯลฯ) ───
 export interface UsdtExtract {
@@ -166,6 +173,9 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
         receiverName: null,
         senderName: null,
         confidence: null,
+        forged: false,
+        edited: false,
+        duplicate: false,
       };
     const jsonStr = cleaned.slice(first, last + 1);
     const data = JSON.parse(jsonStr);
@@ -177,6 +187,15 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
           ? parseFloat(v)
           : null;
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const flag = (v: any) => {
+      if (typeof v === 'boolean') return v;
+      if (typeof v === 'string') {
+        const s = v.trim().toLowerCase();
+        if (['yes', 'true', '1'].includes(s)) return true;
+        if (['no', 'false', '0'].includes(s)) return false;
+      }
+      return false;
+    };
 
     return {
       thbAmount: num(data.thbAmount),
@@ -187,6 +206,9 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       receiverName: str(data.receiverName),
       senderName: str(data.senderName),
       confidence: num(data.confidence),
+      forged: flag(data.forged),
+      edited: flag(data.edited),
+      duplicate: flag(data.duplicate),
       raw: text,
     };
   } catch (e: any) {

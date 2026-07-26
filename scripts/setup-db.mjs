@@ -145,6 +145,7 @@ const DB2 = [
   'audit_logs',
   'settlements',
   'analytics_daily',
+  'slip_fingerprints',
 ];
 for (const name of DB2) {
   await db.collection(name).doc('_meta').set(

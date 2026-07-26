@@ -36,6 +36,15 @@ import { adminDb } from '@/lib/firebaseAdmin';
 import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
+import type { SlipExtract } from '@/lib/grokVision';
+import {
+  findDuplicateSlip,
+  isAuthClean,
+  mergeAuthenticity,
+  rememberSlipFingerprint,
+  slipFingerprint,
+  type SlipAuthenticity,
+} from '@/lib/slipAuth';
 import { parseAmounts } from '@/lib/amounts';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
@@ -324,7 +333,7 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- รูปภาพ: สลิป THB → Vision + ตรวจบัญชีปักหมุด / สกรีนช็อต USDT -----
+  // ----- รูปภาพ: สลิป THB → Vision + authenticity + ตรวจบัญชีปักหมุด / สกรีนช็อต USDT -----
   if (msg.photo) {
     if (!admin) {
       await setSession(chatId, userId, { state: 'AWAITING_NAME' });
@@ -336,12 +345,50 @@ async function handleUpdate(update: any): Promise<void> {
     try {
       const imgUrl = await uploadSlipFromTelegram(fileId);
       const slip = await analyzeSlip(imgUrl);
+      const { auth, fingerprint, prior } = await resolveSlipAuth(slip);
+      const authSession = {
+        auth_forged: auth.forged,
+        auth_edited: auth.edited,
+        auth_duplicate: auth.duplicate,
+        slip_fingerprint: fingerprint,
+      };
       const confOk =
         !!slip?.thbAmount &&
         slip.thbAmount > 0 &&
         (slip.confidence == null || slip.confidence >= OCR_AUTO_MIN);
 
       if (confOk) {
+        // Forged / Edited / Duplicate = Yes → block auto, allow manual override
+        if (!isAuthClean(auth)) {
+          await setSession(chatId, userId, {
+            state: 'WAITING_USDT',
+            pending_type: 'THB_DEPOSIT',
+            slip_url: imgUrl,
+            ocr_thb: slip.thbAmount ?? null,
+            slip_date: slip.date ?? null,
+            slip_time: slip.time ?? null,
+            slip_last4: slip.receiverLast4 ?? null,
+            slip_bank: slip.bank ?? null,
+            slip_receiver_name: slip.receiverName ?? null,
+            ocr_conf: slip.confidence ?? null,
+            ledger_ref: UI.newLedgerRef(),
+            admin_id: admin.id,
+            admin_name: admin.name,
+            ...authSession,
+          });
+          await sendMessage(
+            chatId,
+            UI.slipAuthRejected({
+              auth,
+              thb: slip.thbAmount,
+              bank: slip.bank,
+              last4: slip.receiverLast4,
+              priorLedger: prior?.ledgerRef ?? null,
+            }),
+          );
+          return;
+        }
+
         const pinnedList = await listPinnedBanksForToday();
         const slipHint = {
           bank: slip.bank ?? null,
@@ -363,6 +410,8 @@ async function handleUpdate(update: any): Promise<void> {
             date: slip.date ?? null,
             pinMatched: true,
             bankAccountId: matched.id,
+            auth,
+            fingerprint,
           });
           sticker(chatId, 'OCR_DONE');
           return;
@@ -376,6 +425,8 @@ async function handleUpdate(update: any): Promise<void> {
             pending_type: 'THB_DEPOSIT',
             slip_url: imgUrl,
             ocr_thb: slip.thbAmount ?? null,
+            slip_date: slip.date ?? null,
+            slip_time: slip.time ?? null,
             slip_last4: slip.receiverLast4 ?? null,
             slip_bank: slip.bank ?? null,
             slip_receiver_name: slip.receiverName ?? null,
@@ -383,6 +434,7 @@ async function handleUpdate(update: any): Promise<void> {
             ledger_ref: UI.newLedgerRef(),
             admin_id: admin.id,
             admin_name: admin.name,
+            ...authSession,
           });
           await sendMessage(
             chatId,
@@ -393,6 +445,7 @@ async function handleUpdate(update: any): Promise<void> {
               pinBank: first.bank_name,
               pinLast4: last4OfAccount(first.account_number),
               confidence: slip.confidence,
+              auth,
             }),
           );
           return;
@@ -404,6 +457,8 @@ async function handleUpdate(update: any): Promise<void> {
           pending_type: 'THB_DEPOSIT',
           slip_url: imgUrl,
           ocr_thb: slip.thbAmount ?? null,
+          slip_date: slip.date ?? null,
+          slip_time: slip.time ?? null,
           slip_last4: slip.receiverLast4 ?? null,
           slip_bank: slip.bank ?? null,
           slip_receiver_name: slip.receiverName ?? null,
@@ -411,6 +466,7 @@ async function handleUpdate(update: any): Promise<void> {
           ledger_ref: UI.newLedgerRef(),
           admin_id: admin.id,
           admin_name: admin.name,
+          ...authSession,
         });
         await sendMessage(
           chatId,
@@ -419,6 +475,7 @@ async function handleUpdate(update: any): Promise<void> {
             bank: slip.bank,
             last4: slip.receiverLast4,
             confidence: slip.confidence,
+            auth,
           }),
         );
         return;
@@ -441,6 +498,8 @@ async function handleUpdate(update: any): Promise<void> {
         pending_type: 'THB_DEPOSIT',
         slip_url: imgUrl,
         ocr_thb: slip?.thbAmount ?? null,
+        slip_date: slip?.date ?? null,
+        slip_time: slip?.time ?? null,
         slip_last4: slip?.receiverLast4 ?? null,
         slip_bank: slip?.bank ?? null,
         slip_receiver_name: slip?.receiverName ?? null,
@@ -448,6 +507,7 @@ async function handleUpdate(update: any): Promise<void> {
         ledger_ref: UI.newLedgerRef(),
         admin_id: admin.id,
         admin_name: admin.name,
+        ...authSession,
       });
       await sendMessage(chatId, UI.slipUnclear(slip?.thbAmount ?? null));
     } catch (e: any) {
@@ -520,6 +580,8 @@ async function handleUpdate(update: any): Promise<void> {
               confidence: session.ocr_conf != null ? Number(session.ocr_conf) : null,
               time: session.slip_time ?? null,
               date: session.slip_date ?? null,
+              auth: authFromSession(session),
+              fingerprint: session.slip_fingerprint ?? null,
             }
           : {};
       if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
@@ -561,6 +623,38 @@ async function handleUpdate(update: any): Promise<void> {
   }
 }
 
+function authFromSession(session: {
+  auth_forged?: boolean;
+  auth_edited?: boolean;
+  auth_duplicate?: boolean;
+} | null | undefined): SlipAuthenticity {
+  return {
+    forged: !!session?.auth_forged,
+    edited: !!session?.auth_edited,
+    duplicate: !!session?.auth_duplicate,
+  };
+}
+
+async function resolveSlipAuth(slip: SlipExtract): Promise<{
+  auth: SlipAuthenticity;
+  fingerprint: string;
+  prior: { id: string; txId: string | null; ledgerRef: string | null } | null;
+}> {
+  const fingerprint = slipFingerprint({
+    thb: slip.thbAmount,
+    date: slip.date,
+    time: slip.time,
+    bank: slip.bank,
+    last4: slip.receiverLast4,
+  });
+  const prior = await findDuplicateSlip(fingerprint);
+  const auth = mergeAuthenticity(
+    { forged: slip.forged, edited: slip.edited, duplicate: slip.duplicate },
+    !!prior,
+  );
+  return { auth, fingerprint, prior };
+}
+
 /** บันทึกขาเข้า (รับ THB) ทันที — ไม่ถามยืนยัน */
 async function commitIncoming(
   chatId: number,
@@ -576,11 +670,27 @@ async function commitIncoming(
     date?: string | null;
     pinMatched?: boolean;
     bankAccountId?: string | null;
+    auth?: SlipAuthenticity | null;
+    fingerprint?: string | null;
   },
 ): Promise<void> {
   const [room, rates] = await Promise.all([getRoom(chatId), getLatestRates()]);
   const sellRate = room.rate ?? rates.sellRate;
   const ledgerRef = UI.newLedgerRef();
+  const auth = meta.auth ?? {
+    forged: false,
+    edited: false,
+    duplicate: false,
+  };
+  const fingerprint =
+    meta.fingerprint ||
+    slipFingerprint({
+      thb,
+      date: meta.date ?? null,
+      time: meta.time ?? null,
+      bank: meta.bank ?? null,
+      last4: meta.last4 ?? null,
+    });
 
   const r = await recordIncoming({
     adminTelegramId: userId,
@@ -598,6 +708,16 @@ async function commitIncoming(
       last4: meta.last4 ?? null,
     },
     bankAccountId: meta.bankAccountId ?? null,
+    authenticity: auth,
+    fingerprint,
+  });
+
+  void rememberSlipFingerprint({
+    fingerprint,
+    txId: r.transactionId,
+    ledgerRef,
+    chatId,
+    thb,
   });
 
   // Receiver History (fire-and-forget)
@@ -641,6 +761,7 @@ async function commitIncoming(
       pinMatched: meta.pinMatched ?? false,
       time: meta.time ?? null,
       date: meta.date ?? null,
+      auth,
       recent,
     }),
   );
@@ -925,6 +1046,10 @@ function dealSessionFields(session: any): any {
     slip_bank: session.slip_bank ?? null,
     slip_receiver_name: session.slip_receiver_name ?? null,
     ocr_conf: session.ocr_conf ?? null,
+    auth_forged: !!session.auth_forged,
+    auth_edited: !!session.auth_edited,
+    auth_duplicate: !!session.auth_duplicate,
+    slip_fingerprint: session.slip_fingerprint ?? null,
     ledger_ref: session.ledger_ref ?? null,
     pending_usdt: session.pending_usdt ?? null,
     usdt_network: session.usdt_network ?? null,
@@ -1006,6 +1131,7 @@ async function presentDealConfirm(
       bank: session.slip_bank,
       last4: session.slip_last4,
       network: usdtMeta?.network ?? session.usdt_network ?? null,
+      auth: authFromSession(session),
     }),
   );
 }
@@ -1022,6 +1148,17 @@ async function finalizeDeal(
 ): Promise<void> {
   const [bankAccountId, room] = await Promise.all([getDefaultBankAccountId(), getRoom(chatId)]);
   const ledgerRef = session.ledger_ref || UI.newLedgerRef();
+
+  const auth = authFromSession(session);
+  const fingerprint =
+    session.slip_fingerprint ||
+    slipFingerprint({
+      thb,
+      date: session.slip_date ?? null,
+      time: session.slip_time ?? null,
+      bank: session.slip_bank ?? null,
+      last4: session.slip_last4 ?? null,
+    });
 
   const r = await recordDeal({
     adminTelegramId: userId,
@@ -1042,6 +1179,16 @@ async function finalizeDeal(
       last4: session.slip_last4,
     },
     bankAccountId,
+    authenticity: auth,
+    fingerprint,
+  });
+
+  void rememberSlipFingerprint({
+    fingerprint,
+    txId: r.transactionId,
+    ledgerRef,
+    chatId,
+    thb,
   });
 
   // Receiver History (fire-and-forget)

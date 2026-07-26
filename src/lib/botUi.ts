@@ -4,6 +4,11 @@
 // ============================================================
 import { randomBytes } from 'crypto';
 import type { OutgoingMessage } from './telegram';
+import {
+  authenticityBlock,
+  CLEAN_AUTH,
+  type SlipAuthenticity,
+} from './slipAuth';
 
 const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
 const APP = APP_RAW.startsWith('https://') && !APP_RAW.includes('localhost') ? APP_RAW : '';
@@ -159,6 +164,7 @@ export interface SlipReadyData {
   confidence?: number | null; // ความมั่นใจ OCR 0-100
   chatRate?: number | null; // เรตต่อกลุ่มที่ตั้งไว้
   historyLine?: string | null; // บรรทัด Receiver History (จาก receiverBrief)
+  auth?: SlipAuthenticity | null;
 }
 
 // แสดงความมั่นใจ OCR + สัญญาณเตือน
@@ -200,6 +206,8 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
   if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
+  const auth = d.auth ?? CLEAN_AUTH;
+  detail.push(authenticityBlock(auth));
 
   const canAuto = !!(d.chatRate && gotAmount);
   const usdtAuto = canAuto ? d.thb! / d.chatRate! : 0;
@@ -323,11 +331,13 @@ export function incomingRecorded(d: {
   pinMatched?: boolean;
   time?: string | null;
   date?: string | null;
+  auth?: SlipAuthenticity | null;
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
   const conf = d.confidence != null ? `  <i>· Vision ${d.confidence.toFixed(0)}%</i>` : '';
   const pinLine = d.pinMatched ? `✅ <b>OCR สำเร็จ</b> — ตรงบัญชีที่เซ็ตไว้วันนี้\n` : '';
   const when = d.date || d.time ? `📅 ${[d.date, d.time].filter(Boolean).join(' ')}\n` : '';
+  const auth = d.auth ?? CLEAN_AUTH;
   return {
     text:
       `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
@@ -335,6 +345,7 @@ export function incomingRecorded(d: {
       `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
       when +
+      `${authenticityBlock(auth)}\n` +
       `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
       formatRecentBlock(d.recent),
     reply_markup: buttons(d.transactionId),
@@ -349,7 +360,9 @@ export function slipBankMismatch(d: {
   pinBank?: string | null;
   pinLast4?: string | null;
   confidence?: number | null;
+  auth?: SlipAuthenticity | null;
 }): OutgoingMessage {
+  const auth = d.auth ?? CLEAN_AUTH;
   return {
     text:
       `⚠️ <b>Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้</b>\n` +
@@ -358,6 +371,7 @@ export function slipBankMismatch(d: {
       `🧾 จากสลิป  <b>${d.bank ?? '-'}</b> <code>••••${d.last4 ?? '????'}</code>\n` +
       `📌 ปักหมุดวันนี้  <b>${d.pinBank ?? '-'}</b> <code>••••${d.pinLast4 ?? '????'}</code>\n` +
       (d.confidence != null ? `<i>ความมั่นใจ ${d.confidence.toFixed(0)}%</i>\n` : '') +
+      `${authenticityBlock(auth)}\n` +
       `${THIN}\n` +
       `ถ้าแน่ใจว่าถูกต้อง พิมพ์ <code>+${d.thb != null ? money(d.thb).replace(/,/g, '') : '500'}</code> เพื่อบันทึกเอง\n` +
       `หรือ <code>/pin ${d.bank ?? 'KBANK'} ${d.last4 ?? '1234'}</code> แล้วส่งสลิปใหม่`,
@@ -370,13 +384,16 @@ export function slipAskPin(d: {
   bank?: string | null;
   last4?: string | null;
   confidence?: number | null;
+  auth?: SlipAuthenticity | null;
 }): OutgoingMessage {
+  const auth = d.auth ?? CLEAN_AUTH;
   return {
     text:
       `👁 <b>Vision อ่านสลิปได้</b>  <b>${money(d.thb)} THB</b>` +
       (d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '') +
       `\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
+      `${authenticityBlock(auth)}\n` +
       `${THIN}\n` +
       `ยังไม่ได้เซ็ตบัญชีรับวันนี้ — พิมพ์ <code>/pin ${d.bank ?? 'kbank'} ${d.last4 ?? '1234'}</code>\n` +
       `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
@@ -496,6 +513,33 @@ export function slipUnclear(guess?: number | null): OutgoingMessage {
   };
 }
 
+/** สลิปมีธงความเสี่ยง Forged / Edited / Duplicate = Yes */
+export function slipAuthRejected(d: {
+  auth: SlipAuthenticity;
+  thb?: number | null;
+  bank?: string | null;
+  last4?: string | null;
+  priorLedger?: string | null;
+}): OutgoingMessage {
+  const reasons: string[] = [];
+  if (d.auth.forged) reasons.push('Forged');
+  if (d.auth.edited) reasons.push('Edited');
+  if (d.auth.duplicate) reasons.push('Duplicate');
+  return {
+    text:
+      `${GRAD_RED}\n` +
+      `${MARK} <b>CE VAULT</b>  ⛔ <b>สลิปไม่ผ่านตรวจ</b>\n` +
+      `${THIN}\n` +
+      (d.thb != null ? `💵 ยอดสลิป  <b>${money(d.thb)} THB</b>\n` : '') +
+      (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
+      `${authenticityBlock(d.auth)}\n` +
+      (d.priorLedger ? `📎 เคยบันทึกแล้ว  <code>#${d.priorLedger}</code>\n` : '') +
+      `${THIN}\n` +
+      `ธงเสี่ยง: <b>${reasons.join(' · ') || '—'}</b>\n` +
+      `<i>ไม่บันทึกอัตโนมัติ — ถ้าแน่ใจว่าถูกต้อง พิมพ์</i> <code>+${d.thb != null ? money(d.thb).replace(/,/g, '') : '500'}</code>`,
+  };
+}
+
 // ═══════════════ Deal flow v5: THB slip → wait USDT → confirm ═══════════════
 export interface WaitUsdtData {
   thb?: number | null;
@@ -509,6 +553,7 @@ export interface WaitUsdtData {
   historyLine?: string | null;
   roomRate?: number | null;
   roomName?: string | null;
+  auth?: SlipAuthenticity | null;
 }
 
 /** การ์ดหลัง OCR สลิป THB → รอ USDT (step ③) */
@@ -533,6 +578,8 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
     detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
+  const auth = d.auth ?? CLEAN_AUTH;
+  detail.push(authenticityBlock(auth));
 
   return {
     text:
@@ -566,11 +613,13 @@ export interface DealConfirmData {
   bank?: string | null;
   last4?: string | null;
   network?: string | null;
+  auth?: SlipAuthenticity | null;
 }
 
 /** การ์ดยืนยันดีล (step ④) — Confirm / Edit / Cancel */
 export function dealConfirm(d: DealConfirmData): OutgoingMessage {
   const up = d.profitThb >= 0;
+  const auth = d.auth ?? CLEAN_AUTH;
   return {
     text:
       `${GRAD_GOLD}\n` +
@@ -588,6 +637,7 @@ export function dealConfirm(d: DealConfirmData): OutgoingMessage {
         ? `👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName ?? '-'}</b>${d.last4 ? ` <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
         : '') +
       (d.network ? `🔗 เครือข่าย <i>(Network)</i>  <b>${d.network}</b>\n` : '') +
+      `${authenticityBlock(auth)}\n` +
       `${THIN}\n<i>ตรวจแล้วกด</i> <b>ยืนยัน (Confirm)</b>`,
     reply_markup: {
       inline_keyboard: [

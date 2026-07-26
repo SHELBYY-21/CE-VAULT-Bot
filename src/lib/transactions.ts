@@ -578,6 +578,8 @@ export interface RecordDealInput {
   usdtTxid?: string | null;
   receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
   bankAccountId?: string | null;
+  authenticity?: { forged?: boolean; edited?: boolean; duplicate?: boolean } | null;
+  fingerprint?: string | null;
 }
 export interface DealResult {
   transactionId: string;
@@ -668,6 +670,10 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
       last4: input.receiver?.last4 ?? null,
       receiverName: input.receiver?.name ?? null,
       confidence: input.ocrConfidence ?? null,
+      forged: input.authenticity?.forged ?? false,
+      edited: input.authenticity?.edited ?? false,
+      duplicate: input.authenticity?.duplicate ?? false,
+      fingerprint: input.fingerprint ?? null,
       imageId: imageIds[0] ?? null,
     });
     if (input.usdt > 0) {
@@ -727,6 +733,8 @@ export async function recordIncoming(input: {
   slipImageUrl?: string | null;
   receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
   bankAccountId?: string | null;
+  authenticity?: { forged?: boolean; edited?: boolean; duplicate?: boolean } | null;
+  fingerprint?: string | null;
 }): Promise<{ transactionId: string; adminName: string; usdtOwed: number; profitThb: number }> {
   const admin = await getAdminByTelegramId(input.adminTelegramId);
   if (!admin) throw new AdminNotFoundError();
@@ -791,6 +799,10 @@ export async function recordIncoming(input: {
       last4: input.receiver?.last4 ?? null,
       receiverName: input.receiver?.name ?? null,
       confidence: input.ocrConfidence ?? null,
+      forged: input.authenticity?.forged ?? false,
+      edited: input.authenticity?.edited ?? false,
+      duplicate: input.authenticity?.duplicate ?? false,
+      fingerprint: input.fingerprint ?? null,
       imageId,
     });
     await db2TagTransaction(id, {
@@ -813,7 +825,14 @@ export async function recordIncoming(input: {
       actorStaffId: admin.id,
       actorTelegramId: input.adminTelegramId,
       roomId: String(input.chatId),
-      after: { thb: input.thb, usdt_owed: usdtOwed, ledger_ref: input.ledgerRef },
+      after: {
+        thb: input.thb,
+        usdt_owed: usdtOwed,
+        ledger_ref: input.ledgerRef,
+        forged: input.authenticity?.forged ?? false,
+        edited: input.authenticity?.edited ?? false,
+        duplicate: input.authenticity?.duplicate ?? false,
+      },
     });
   })();
 

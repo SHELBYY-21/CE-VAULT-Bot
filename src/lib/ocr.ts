@@ -59,6 +59,9 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
       receiverName: null,
       senderName: null,
       confidence: thb !== null ? 70 : null, // OCR.space ไม่ให้ confidence — ประเมินกลางๆ
+      forged: false,
+      edited: false,
+      duplicate: false,
     };
   } catch (e) {
     console.warn('OCR fallback error:', e instanceof Error ? e.message : e);
@@ -74,6 +77,9 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     receiverName: null,
     senderName: null,
     confidence: null,
+    forged: false,
+    edited: false,
+    duplicate: false,
   };
 }
 

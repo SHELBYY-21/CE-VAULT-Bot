@@ -125,6 +125,11 @@ export interface OcrRunDoc {
   last4: string | null;
   receiver_name: string | null;
   confidence: number | null;
+  /** Authenticity — true = Yes (fail), false = No (pass) */
+  forged: boolean;
+  edited: boolean;
+  duplicate: boolean;
+  fingerprint: string | null;
   image_id: string | null;
   raw_summary: string | null;
   schema_version: 2;

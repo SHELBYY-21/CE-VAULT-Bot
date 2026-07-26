@@ -20,6 +20,11 @@ export interface BotSession {
   slip_bank?: string | null;
   slip_receiver_name?: string | null;
   ocr_conf?: number | null;
+  /** Slip authenticity — true = Yes (fail), false = No (pass) */
+  auth_forged?: boolean;
+  auth_edited?: boolean;
+  auth_duplicate?: boolean;
+  slip_fingerprint?: string | null;
   ledger_ref?: string | null;
   pending_usdt?: number | null;
   usdt_network?: string | null;
@@ -58,11 +63,17 @@ export async function setSession(
     slip_bank: patch.slip_bank ?? null,
     slip_receiver_name: patch.slip_receiver_name ?? null,
     ocr_conf: patch.ocr_conf ?? null,
+    auth_forged: patch.auth_forged ?? false,
+    auth_edited: patch.auth_edited ?? false,
+    auth_duplicate: patch.auth_duplicate ?? false,
+    slip_fingerprint: patch.slip_fingerprint ?? null,
     ledger_ref: patch.ledger_ref ?? null,
     pending_usdt: patch.pending_usdt ?? null,
     usdt_network: patch.usdt_network ?? null,
     usdt_txid: patch.usdt_txid ?? null,
     usdt_image_url: patch.usdt_image_url ?? null,
+    admin_id: patch.admin_id ?? null,
+    admin_name: patch.admin_name ?? null,
     updated_at: new Date().toISOString(),
   };
   try {

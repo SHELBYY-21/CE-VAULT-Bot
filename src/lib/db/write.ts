@@ -191,6 +191,10 @@ export async function db2RecordOcr(input: {
   last4?: string | null;
   receiverName?: string | null;
   confidence?: number | null;
+  forged?: boolean;
+  edited?: boolean;
+  duplicate?: boolean;
+  fingerprint?: string | null;
   imageId?: string | null;
   rawSummary?: string | null;
 }): Promise<string | null> {
@@ -206,6 +210,10 @@ export async function db2RecordOcr(input: {
       last4: input.last4 ?? null,
       receiver_name: input.receiverName ?? null,
       confidence: input.confidence ?? null,
+      forged: input.forged ?? false,
+      edited: input.edited ?? false,
+      duplicate: input.duplicate ?? false,
+      fingerprint: input.fingerprint ?? null,
       image_id: input.imageId ?? null,
       raw_summary: input.rawSummary ?? null,
       schema_version: SCHEMA_VERSION,
