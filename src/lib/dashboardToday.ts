@@ -2,7 +2,7 @@
  * Financial Dashboard — Today KPIs
  * Volume · Transactions · Waiting · Completed · Profit · Wallet
  */
-import { bangkokDate } from './banks';
+import { bangkokDate } from './time';
 import {
   normalizeTransactionStatus,
   type Admin,

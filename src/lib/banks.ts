@@ -3,6 +3,8 @@
 // /pin SCB|kbank|ktb|bbl|tmn <เลขบัญชี>
 // ============================================================
 import { adminDb } from './firebaseAdmin';
+import { bangkokDate, bangkokNowLabel } from './time';
+export { bangkokDate, bangkokNowLabel };
 
 export const MAX_PINNED_TODAY = 3;
 
@@ -24,31 +26,6 @@ export class PinLimitError extends Error {
     this.name = 'PinLimitError';
     this.pinned = pinned;
   }
-}
-
-/** วันที่ปัจจุบันตามโซนไทย YYYY-MM-DD */
-export function bangkokDate(d = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-}
-
-/** เวลาปัจจุบันไทย อ่านง่าย */
-export function bangkokNowLabel(d = new Date()): string {
-  return d.toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
 }
 
 export function last4OfAccount(accountNumber: string | null | undefined): string | null {
