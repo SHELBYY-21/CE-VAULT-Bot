@@ -51,8 +51,12 @@ export async function sendDocument(
   await fetch(`${API}/sendDocument`, { method: 'POST', body: form }).catch(() => undefined);
 }
 
-/** แก้ไขข้อความในที่เดิม (เอฟเฟกต์ progress) */
-export async function editMessage(chatId: number, messageId: number, m: OutgoingMessage): Promise<void> {
+/** แก้ไขข้อความในที่เดิม (Live Message) — true ถ้าสำเร็จ */
+export async function editMessage(
+  chatId: number,
+  messageId: number,
+  m: OutgoingMessage,
+): Promise<boolean> {
   try {
     await tg('editMessageText', {
       chat_id: chatId,
@@ -62,8 +66,13 @@ export async function editMessage(chatId: number, messageId: number, m: Outgoing
       disable_web_page_preview: true,
       reply_markup: m.reply_markup,
     });
+    return true;
   } catch (e) {
-    console.warn(`editMessage failed (chat=${chatId}, msg=${messageId}):`, e instanceof Error ? e.message : e);
+    console.warn(
+      `editMessage failed (chat=${chatId}, msg=${messageId}):`,
+      e instanceof Error ? e.message : e,
+    );
+    return false;
   }
 }
 
