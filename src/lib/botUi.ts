@@ -121,13 +121,20 @@ export function registered(name: string): OutgoingMessage {
 }
 
 // ═══════════════ OCR / upload ═══════════════
+/** Live Card progress frames (editMessage in-place) */
 export function uploading(step = 0): OutgoingMessage {
-  const labels = ['UPLOAD', 'PROCESS', 'PERSIST', 'READY'];
-  const i = Math.min(step, 3);
+  const frames: Array<{ status: PipelineStatus; label: string; detail: string }> = [
+    { status: 'RECEIVED', label: 'RECEIVED', detail: 'Uploading slip' },
+    { status: 'RECEIVED', label: 'OCR', detail: 'Reading Thai bank slip' },
+    { status: 'OCR_VERIFIED', label: 'OCR', detail: 'Verifying amount · last4 · receiver' },
+    { status: 'WAITING_USDT', label: 'READY', detail: 'Building ledger card' },
+  ];
+  const i = Math.min(Math.max(step, 0), frames.length - 1);
+  const f = frames[i]!;
   return card({
     kind: 'OCR',
-    status: 'RECEIVED',
-    body: `Processing\n<code>${labels[i]}</code>`,
+    status: f.status,
+    body: `Live\n<code>${f.label}</code>\n\n${f.detail}`,
   });
 }
 
@@ -458,12 +465,23 @@ export function outgoingRecorded(d: {
   });
 }
 
-export function slipUnclear(guess?: number | null): OutgoingMessage {
+export function slipUnclear(
+  guess?: number | null,
+  opts?: { confidence?: number | null; ledgerRef?: string | null },
+): OutgoingMessage {
   const g = guess ? money(guess).replace(/,/g, '') : '500';
+  const rows: { label: string; value: string }[] = [];
+  if (guess != null) rows.push({ label: 'THB (guess)', value: money(guess) });
+  if (opts?.confidence != null)
+    rows.push({ label: 'OCR Confidence', value: `${opts.confidence.toFixed(1)}%` });
   return card({
     kind: 'OCR',
+    ledgerId: opts?.ledgerRef ?? undefined,
     status: 'ERROR',
-    body: `Amount unclear\n\nRecord manually\n<code>+${g}</code>`,
+    body:
+      (rows.length ? metrics(rows) + '\n\n' : '') +
+      `Amount unclear\n\nRecord manually\n<code>+${g}</code>\n` +
+      `Or type both legs → Confirmation\n<code>+${g}B -13.6U</code>`,
   });
 }
 
@@ -480,19 +498,27 @@ export interface WaitUsdtData {
   historyLine?: string | null;
   roomRate?: number | null;
   roomName?: string | null;
+  pinMatched?: boolean;
 }
 
 export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   const gotAmount = d.thb != null && d.thb > 0;
   const lowConf = d.confidence != null && d.confidence < 90;
-  const status: PipelineStatus = !gotAmount ? 'RECEIVED' : lowConf ? 'RECEIVED' : 'WAITING_USDT';
+  const status: PipelineStatus = !gotAmount
+    ? 'RECEIVED'
+    : d.pinMatched
+      ? 'OCR_VERIFIED'
+      : lowConf
+        ? 'RECEIVED'
+        : 'WAITING_USDT';
 
   const rows: { label: string; value: string }[] = [];
   if (gotAmount) rows.push({ label: 'THB', value: money(d.thb!) });
   if (d.confidence != null)
-    rows.push({ label: 'Confidence', value: `${d.confidence.toFixed(1)}%` });
+    rows.push({ label: 'OCR Confidence', value: `${d.confidence.toFixed(1)}%` });
   const recv = receiverLine(d.bank, d.last4, d.receiverName);
   if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
   if (d.roomRate)
     rows.push({
       label: 'Sell Rate',
@@ -501,17 +527,22 @@ export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   if (d.date || d.time)
     rows.push({ label: 'Timestamp', value: [d.date, d.time].filter(Boolean).join(' ') });
 
+  const noteParts: string[] = [];
+  if (d.pinMatched) noteParts.push('Pinned account match · OCR verified');
+  if (lowConf) noteParts.push('Confidence below 90% — verify amount');
+  noteParts.push('Next: USDT proof or -13.6U → Confirmation');
+
   return card({
     kind: 'OCR',
     ledgerId: d.ledgerRef,
-    status,
+    status: gotAmount && !lowConf ? 'WAITING_USDT' : status,
     body:
       (rows.length ? metrics(rows) + '\n\n' : '') +
       `Awaiting USDT\n` +
       `Send transfer proof or type:\n` +
       FORMAT_HINT +
       (d.historyLine ? `\n\n${d.historyLine}` : ''),
-    note: lowConf ? 'Confidence below 90% — verify amount' : undefined,
+    note: noteParts.join(' · '),
   });
 }
 
@@ -526,28 +557,33 @@ export interface DealConfirmData {
   bank?: string | null;
   last4?: string | null;
   network?: string | null;
+  confidence?: number | null;
+  historyLine?: string | null;
 }
 
-/** TRANSACTION / Confirmation card */
+/** TRANSACTION / Confirmation card — Buy Rate = THB ÷ USDT */
 export function dealConfirm(d: DealConfirmData): OutgoingMessage {
   const profitPct = d.thb > 0 ? (d.profitThb / d.thb) * 100 : 0;
   const rows: { label: string; value: string }[] = [
     { label: 'THB', value: money(d.thb) },
     { label: 'USDT', value: fmtUsdt(d.usdt) },
-    { label: 'Buy Rate', value: money(d.buyRate) },
+    { label: 'Buy Rate', value: `${money(d.buyRate)}  (THB ÷ USDT)` },
     { label: 'Sell Rate', value: money(d.sellRate) },
     { label: 'Profit', value: `${pct(profitPct)}  (${money(d.profitThb)} THB)` },
   ];
+  if (d.confidence != null)
+    rows.push({ label: 'OCR Confidence', value: `${d.confidence.toFixed(1)}%` });
   const recv = receiverLine(d.bank, d.last4, d.receiverName);
   if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
   if (d.network) rows.push({ label: 'Network', value: d.network });
 
   return card({
     kind: 'CONFIRM',
     ledgerId: d.ledgerRef,
     status: 'REVIEW',
-    body: metrics(rows),
-    note: 'One decision — confirm, edit, or cancel',
+    body: metrics(rows) + (d.historyLine ? `\n\n${d.historyLine}` : ''),
+    note: 'One decision — Confirm · Edit · Cancel',
     reply_markup: confirmKeyboard(d.ledgerRef),
   });
 }
@@ -571,12 +607,13 @@ export function dealSuccess(d: DealSuccessData): OutgoingMessage {
   const rows: { label: string; value: string }[] = [
     { label: 'THB', value: money(d.thb) },
     { label: 'USDT', value: fmtUsdt(d.usdt) },
-    { label: 'Buy Rate', value: money(d.buyRate) },
+    { label: 'Buy Rate', value: `${money(d.buyRate)}  (THB ÷ USDT)` },
     { label: 'Sell Rate', value: money(d.sellRate) },
     { label: 'Profit', value: `${pct(profitPct)}  (${money(d.profitThb)} THB)` },
   ];
   const recv = receiverLine(d.bank, d.last4, d.receiverName);
   if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
   rows.push({ label: 'Operator', value: d.adminName });
 
   return card({
