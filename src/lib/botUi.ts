@@ -114,10 +114,45 @@ export function askName(): OutgoingMessage {
       `${GRAD_INDIGO}\n` +
       `${BRAND}  <i>· ยินดีต้อนรับ</i>\n` +
       `${GRAD_INDIGO}\n` +
-      `🔐 ก่อนเริ่มใช้งาน ขอทราบ<b>ชื่อของคุณ</b>ก่อนครับ\n` +
+      `🔐 ก่อนเริ่มใช้งาน ต้องตั้ง<b>ชื่อแอดมิน</b>ก่อนครับ\n` +
       `${THIN}\n` +
-      `<i>พิมพ์ชื่อที่อยากให้ระบบเรียก เช่น</i>  <code>แอดมิน A</code>\n` +
+      `พิมพ์คำสั่ง <code>/admin</code> ตามด้วยชื่อ เช่น\n` +
+      `<code>/admin แอดมิน A</code>\n` +
+      `<i>บอทจะทำรายการตั้งชื่อให้เมื่อมี</i> <code>/admin</code> <i>เท่านั้น</i>\n` +
       `${SIG}`,
+  };
+}
+
+/** /admin โดยไม่มีชื่อ */
+export function adminUsage(): OutgoingMessage {
+  return {
+    text:
+      `${MARK} <b>ตั้งชื่อแอดมิน</b>\n` +
+      `${THIN}\n` +
+      `พิมพ์ <code>/admin</code> ตามด้วยชื่อ เช่น\n` +
+      `<code>/admin แอดมิน A</code>\n` +
+      `<code>/admin RAZEN</code>\n` +
+      `${SIG}`,
+  };
+}
+
+/** พิมพ์ชื่อเปล่า / รูปแบบผิดตอนรอลงทะเบียน */
+export function askNameAgain(): OutgoingMessage {
+  return {
+    text:
+      `✋ ต้องพิมพ์ <code>/admin</code> ตามด้วยชื่อครับ\n` +
+      `เช่น <code>/admin แอดมิน A</code>\n` +
+      `<i>พิมพ์ชื่ออย่างเดียว บอทจะยังไม่ตั้งชื่อให้</i>`,
+  };
+}
+
+/** ชื่อใช้ไม่ได้ (เลขล้วน / ยอดเงิน) */
+export function nameRejected(raw: string): OutgoingMessage {
+  return {
+    text:
+      `✋ <b>ชื่อนี้ใช้ไม่ได้</b>  <code>${raw.slice(0, 40)}</code>\n` +
+      `พิมพ์ชื่อเรียก เช่น <code>/admin RAZEN</code> หรือ <code>/admin แอดมิน A</code>\n` +
+      `<i>ห้ามใช้ตัวเลขล้วน</i>`,
   };
 }
 
@@ -1074,6 +1109,7 @@ export function menuCard(): OutgoingMessage {
       `\n` +
       `${THIN}\n` +
       `<b>คำสั่ง</b>\n` +
+      `👤 <code>/admin แอดมิน A</code>  ตั้งชื่อแอดมิน (ต้องมี /admin)\n` +
       `📊 <code>/today</code>  ยอดห้องนี้วันนี้\n` +
       `📌 <code>/pin kbank 1234567890</code>  เซ็ตบชรับวันนี้ (สูงสุด 3)\n` +
       `   <i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
