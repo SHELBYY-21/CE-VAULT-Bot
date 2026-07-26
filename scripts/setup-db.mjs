@@ -44,11 +44,13 @@ if (!getApps().length) {
 const db = getFirestore();
 const now = new Date().toISOString();
 
-// admin
+// admin + staff (Database 2.0)
 {
   const snap = await db.collection('admins').where('telegram_user_id', '==', 6049267196).limit(1).get();
+  let adminId;
   if (snap.empty) {
-    await db.collection('admins').doc(randomUUID()).set({
+    adminId = randomUUID();
+    await db.collection('admins').doc(adminId).set({
       telegram_user_id: 6049267196,
       name: 'Admin (จริง)',
       holding_usdt: 0,
@@ -57,8 +59,35 @@ const now = new Date().toISOString();
     });
     console.log('admin 6049267196: inserted ✓');
   } else {
-    console.log('admin 6049267196: exists ✓', snap.docs[0].id);
+    adminId = snap.docs[0].id;
+    console.log('admin 6049267196: exists ✓', adminId);
   }
+  await db.collection('staff').doc(adminId).set(
+    {
+      display_name: 'Admin (จริง)',
+      telegram_user_id: 6049267196,
+      role: 'owner',
+      active: true,
+      holding_usdt: 0,
+      legacy_admin_id: adminId,
+      created_at: now,
+      updated_at: now,
+    },
+    { merge: true },
+  );
+  await db.collection('wallets').doc(`staff_${adminId}_USDT`).set(
+    {
+      owner_type: 'staff',
+      owner_id: adminId,
+      asset: 'USDT',
+      balance: 0,
+      external_ref: null,
+      schema_version: 2,
+      updated_at: now,
+    },
+    { merge: true },
+  );
+  console.log('staff + wallet: ok ✓');
 }
 
 // bank
@@ -80,19 +109,49 @@ const now = new Date().toISOString();
   }
 }
 
-// default rate
+// default rate + daily_rates (Database 2.0)
 {
+  const sell = Number(process.env.DEFAULT_SELL_RATE) || 35.5;
+  const market = Number(process.env.DEFAULT_MARKET_RATE) || 34.8;
   const snap = await db.collection('rates').limit(1).get();
   if (snap.empty) {
     await db.collection('rates').doc(randomUUID()).set({
-      sell_rate: Number(process.env.DEFAULT_SELL_RATE) || 35.5,
-      market_usdt_rate: Number(process.env.DEFAULT_MARKET_RATE) || 34.8,
+      sell_rate: sell,
+      market_usdt_rate: market,
       created_at: now,
     });
     console.log('rates: seeded ✓');
   } else {
     console.log('rates: exists ✓');
   }
+  await db.collection('daily_rates').doc(randomUUID()).set({
+    sell_rate: sell,
+    market_usdt_rate: market,
+    source: 'default',
+    set_by_staff_id: null,
+    valid_from: now,
+    schema_version: 2,
+    created_at: now,
+  });
+  console.log('daily_rates: seeded ✓');
 }
+
+// Ensure empty Database 2.0 collections exist (placeholder metadata doc)
+const DB2 = [
+  'ledger_entries',
+  'rooms',
+  'ocr_runs',
+  'images',
+  'audit_logs',
+  'settlements',
+  'analytics_daily',
+];
+for (const name of DB2) {
+  await db.collection(name).doc('_meta').set(
+    { schema_version: 2, bootstrapped_at: now, collection: name },
+    { merge: true },
+  );
+}
+console.log('db2 domains bootstrapped ✓', DB2.join(', '));
 
 console.log('setup-db done (project=%s, emulator=%s)', projectId, process.env.FIRESTORE_EMULATOR_HOST || 'off');

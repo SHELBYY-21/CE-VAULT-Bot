@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Public read (parity กับ anon RLS เดิม) — เขียนเฉพาะ Admin SDK / server
+    // ── Legacy (compat reads) — writes Admin SDK only ──
     match /admins/{id} {
       allow read: if true;
       allow write: if false;
@@ -22,12 +22,52 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
-    // session / chat settings — server only
     match /bot_sessions/{id} {
       allow read, write: if false;
     }
     match /chat_settings/{id} {
       allow read, write: if false;
+    }
+
+    // ── Database 2.0 domains — server write only ──
+    match /staff/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /rooms/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /daily_rates/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /ledger_entries/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /ocr_runs/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /images/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /audit_logs/{id} {
+      allow read, write: if false;
+    }
+    match /wallets/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /settlements/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /analytics_daily/{id} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

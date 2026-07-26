@@ -49,14 +49,51 @@ const db = getFirestore();
 console.log('project:', projectId);
 console.log('firestore emulator:', process.env.FIRESTORE_EMULATOR_HOST || '(cloud)');
 
-for (const t of ['admins', 'bank_accounts', 'transactions', 'rates', 'bot_sessions', 'chat_settings', 'receivers']) {
+const LEGACY = [
+  'admins',
+  'bank_accounts',
+  'transactions',
+  'rates',
+  'bot_sessions',
+  'chat_settings',
+  'receivers',
+];
+const DB2 = [
+  'staff',
+  'receivers',
+  'transactions',
+  'ledger_entries',
+  'rooms',
+  'daily_rates',
+  'ocr_runs',
+  'images',
+  'audit_logs',
+  'wallets',
+  'settlements',
+  'analytics_daily',
+];
+
+console.log('--- legacy ---');
+for (const t of LEGACY) {
   try {
     const snap = await db.collection(t).limit(1).get();
     const countSnap = await db.collection(t).count().get();
     const count = countSnap.data().count;
-    console.log('collection', t.padEnd(15), `ok (sample=${snap.size}, count≈${count})`);
+    console.log('collection', t.padEnd(18), `ok (sample=${snap.size}, count≈${count})`);
   } catch (e) {
-    console.log('collection', t.padEnd(15), 'ERR:', e.message);
+    console.log('collection', t.padEnd(18), 'ERR:', e.message);
+  }
+}
+
+console.log('--- database 2.0 ---');
+for (const t of DB2) {
+  try {
+    const snap = await db.collection(t).limit(1).get();
+    const countSnap = await db.collection(t).count().get();
+    const count = countSnap.data().count;
+    console.log('collection', t.padEnd(18), `ok (sample=${snap.size}, count≈${count})`);
+  } catch (e) {
+    console.log('collection', t.padEnd(18), 'ERR:', e.message);
   }
 }
 

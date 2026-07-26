@@ -41,6 +41,12 @@ local webhook) plus an API smoke test — it is NOT the production bot. Backing 
   (stringified service account). Remove `FIRESTORE_EMULATOR_HOST` /
   `FIREBASE_STORAGE_EMULATOR_HOST` / set `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=0`.
 
+### Database 2.0
+Domain collections (dual-written; legacy still primary for reads):
+`staff`, `receivers`, `transactions`, `ledger_entries`, `rooms`, `daily_rates`,
+`ocr_runs`, `images`, `audit_logs`, `wallets`, `settlements`, `analytics_daily`.
+See `docs/DATABASE-2.md` and `src/lib/db/`.
+
 ### Env files (gitignored — recreate each session)
 - Root `.env.local`: Firebase web + project ids, emulator hosts for local, plus
   set the app public origin env var for local Next. Leave `API_SECRET` blank in dev.

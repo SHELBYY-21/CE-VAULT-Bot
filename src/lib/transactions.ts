@@ -14,6 +14,18 @@ import {
   normalizeTransactionStatus,
   TRANSACTION_STATUSES,
 } from '@/types/transactions';
+import {
+  db2AppendLedger,
+  db2Audit,
+  db2BumpAnalytics,
+  db2InsertDailyRate,
+  db2RecordImage,
+  db2RecordOcr,
+  db2RecordSettlement,
+  db2TagTransaction,
+  db2UpsertStaff,
+  db2UpsertWallet,
+} from '@/lib/db';
 
 let cachedRates: { sellRate: number; marketUsdtRate: number; marketSource: MarketSource } | null =
   null;
@@ -135,6 +147,19 @@ export async function upsertAdmin(telegramId: number, name: string): Promise<Adm
   const existing = await getAdminByTelegramId(telegramId);
   if (existing) {
     await adminDb.collection('admins').doc(existing.id).update({ name, updated_at: nowIso() });
+    void db2UpsertStaff({
+      staffId: existing.id,
+      telegramUserId: telegramId,
+      displayName: name,
+      holdingUsdt: existing.holding_usdt,
+    });
+    void db2Audit({
+      action: 'staff.update',
+      entity: 'staff',
+      entityId: existing.id,
+      actorTelegramId: telegramId,
+      after: { display_name: name },
+    });
     return { ...existing, name };
   }
   const id = randomUUID();
@@ -146,6 +171,21 @@ export async function upsertAdmin(telegramId: number, name: string): Promise<Adm
     updated_at: nowIso(),
   };
   await adminDb.collection('admins').doc(id).set(row);
+  void db2UpsertStaff({
+    staffId: id,
+    telegramUserId: telegramId,
+    displayName: name,
+    holdingUsdt: 0,
+    legacyAdminId: id,
+  });
+  void db2UpsertWallet({ ownerType: 'staff', ownerId: id, asset: 'USDT', balance: 0 });
+  void db2Audit({
+    action: 'staff.create',
+    entity: 'staff',
+    entityId: id,
+    actorTelegramId: telegramId,
+    after: { display_name: name, telegram_user_id: telegramId },
+  });
   return { id, ...row };
 }
 
@@ -274,6 +314,18 @@ export async function insertRate(
     set_by_admin_id: adminId,
     created_at: nowIso(),
   });
+  void db2InsertDailyRate({
+    sellRate,
+    marketUsdtRate,
+    source: 'manual',
+    setByStaffId: adminId,
+  });
+  void db2Audit({
+    action: 'daily_rate.insert',
+    entity: 'daily_rates',
+    actorStaffId: adminId,
+    after: { sell_rate: sellRate, market_usdt_rate: marketUsdtRate },
+  });
 }
 
 export async function getDefaultBankAccountId(): Promise<string | null> {
@@ -286,24 +338,56 @@ export async function getDefaultBankAccountId(): Promise<string | null> {
   return snap.empty ? null : snap.docs[0]!.id;
 }
 
-async function addAdminHolding(adminId: string, delta: number): Promise<number> {
+async function addAdminHolding(
+  adminId: string,
+  delta: number,
+  meta?: { txId?: string | null; ledgerRef?: string | null; reason?: string },
+): Promise<number> {
   const ref = adminDb.collection('admins').doc(adminId);
-  return adminDb.runTransaction(async (tx) => {
+  const next = await adminDb.runTransaction(async (tx) => {
     const doc = await tx.get(ref);
-    const next = Number(doc.data()?.holding_usdt || 0) + delta;
-    tx.update(ref, { holding_usdt: next, updated_at: nowIso() });
-    return next;
+    const value = Number(doc.data()?.holding_usdt || 0) + delta;
+    tx.update(ref, { holding_usdt: value, updated_at: nowIso() });
+    return value;
   });
+  void db2AppendLedger({
+    accountKind: 'staff_usdt',
+    accountId: adminId,
+    delta,
+    balanceAfter: next,
+    txId: meta?.txId ?? null,
+    ledgerRef: meta?.ledgerRef ?? null,
+    reason: meta?.reason ?? 'holding_adjust',
+    staffId: adminId,
+  });
+  void db2UpsertWallet({ ownerType: 'staff', ownerId: adminId, asset: 'USDT', balance: next });
+  void db2UpsertStaff({ staffId: adminId, holdingUsdt: next });
+  return next;
 }
 
-async function addBankBalance(bankId: string, delta: number): Promise<number> {
+async function addBankBalance(
+  bankId: string,
+  delta: number,
+  meta?: { txId?: string | null; ledgerRef?: string | null; reason?: string },
+): Promise<number> {
   const ref = adminDb.collection('bank_accounts').doc(bankId);
-  return adminDb.runTransaction(async (tx) => {
+  const next = await adminDb.runTransaction(async (tx) => {
     const doc = await tx.get(ref);
-    const next = Number(doc.data()?.current_balance || 0) + delta;
-    tx.update(ref, { current_balance: next, updated_at: nowIso() });
-    return next;
+    const value = Number(doc.data()?.current_balance || 0) + delta;
+    tx.update(ref, { current_balance: value, updated_at: nowIso() });
+    return value;
   });
+  void db2AppendLedger({
+    accountKind: 'bank_thb',
+    accountId: bankId,
+    delta,
+    balanceAfter: next,
+    txId: meta?.txId ?? null,
+    ledgerRef: meta?.ledgerRef ?? null,
+    reason: meta?.reason ?? 'bank_balance_adjust',
+  });
+  void db2UpsertWallet({ ownerType: 'system', ownerId: bankId, asset: 'THB', balance: next });
+  return next;
 }
 
 async function getTx(txId: string): Promise<any | null> {
@@ -463,6 +547,18 @@ export async function deleteTransaction(
     await addBankBalance(old.bank_account_id, -Number(old.thb_amount));
   }
   await adminDb.collection('transactions').doc(txId).delete();
+  void db2Audit({
+    action: 'transaction.delete',
+    entity: 'transactions',
+    entityId: txId,
+    actorStaffId: old.admin_id ?? null,
+    before: {
+      type: old.type,
+      thb_amount: old.thb_amount,
+      usdt_amount: old.usdt_amount,
+      ledger_ref: old.ledger_ref ?? old.note,
+    },
+  });
   notifyDelete({ adminName: old.admins?.name ?? '-' }).catch(() => undefined);
   return { name: old.admins?.name ?? '-', holdingUsdt: newHolding };
 }
@@ -537,7 +633,84 @@ export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
       }),
     );
 
-  if (input.bankAccountId) await addBankBalance(input.bankAccountId, input.thb);
+  if (input.bankAccountId) {
+    await addBankBalance(input.bankAccountId, input.thb, {
+      txId: id,
+      ledgerRef: input.ledgerRef,
+      reason: 'deal_thb_in',
+    });
+  }
+
+  // Database 2.0 dual-write (OCR · Images · Settlement · Analytics · Audit)
+  void (async () => {
+    const imageIds: string[] = [];
+    if (input.slipImageUrl) {
+      const img = await db2RecordImage({
+        kind: 'thb_slip',
+        url: input.slipImageUrl,
+        txId: id,
+      });
+      if (img) imageIds.push(img);
+    }
+    if (input.usdtImageUrl) {
+      const img = await db2RecordImage({
+        kind: 'usdt_proof',
+        url: input.usdtImageUrl,
+        txId: id,
+      });
+      if (img) imageIds.push(img);
+    }
+    const ocrId = await db2RecordOcr({
+      txId: id,
+      engine: input.ocrConfidence != null ? 'grok' : 'manual',
+      thb: input.thb,
+      bank: input.receiver?.bank ?? null,
+      last4: input.receiver?.last4 ?? null,
+      receiverName: input.receiver?.name ?? null,
+      confidence: input.ocrConfidence ?? null,
+      imageId: imageIds[0] ?? null,
+    });
+    if (input.usdt > 0) {
+      await db2RecordSettlement({
+        txId: id,
+        amountUsdt: input.usdt,
+        network: input.usdtNetwork ?? null,
+        chainTxid: input.usdtTxid ?? null,
+        imageId: imageIds[1] ?? imageIds[0] ?? null,
+        staffId: admin.id,
+        status: input.usdtTxid ? 'submitted' : 'pending',
+      });
+    }
+    await db2TagTransaction(id, {
+      staff_id: admin.id,
+      room_id: input.chatId != null ? String(input.chatId) : null,
+      ocr_run_id: ocrId,
+      image_ids: imageIds,
+    });
+    await db2BumpAnalytics({
+      chatId: input.chatId ?? null,
+      thbIn: input.thb,
+      usdtIn: input.usdt,
+      profitThb,
+      staffName: admin.name,
+    });
+    await db2Audit({
+      action: 'transaction.deal',
+      entity: 'transactions',
+      entityId: id,
+      actorStaffId: admin.id,
+      actorTelegramId: input.adminTelegramId,
+      roomId: input.chatId != null ? String(input.chatId) : null,
+      after: {
+        thb: input.thb,
+        usdt: input.usdt,
+        buy_rate: buyRate,
+        sell_rate: input.sellRate,
+        ledger_ref: input.ledgerRef,
+      },
+    });
+  })();
+
   notifyIncome({ adminName: admin.name, usdt: input.usdt, thb: input.thb }).catch(() => undefined);
   return { transactionId: id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
 }
@@ -599,8 +772,50 @@ export async function recordIncoming(input: {
     );
 
   if (bankAccountId) {
-    await addBankBalance(bankAccountId, input.thb).catch(() => undefined);
+    await addBankBalance(bankAccountId, input.thb, {
+      txId: id,
+      ledgerRef: input.ledgerRef,
+      reason: 'incoming_thb',
+    }).catch(() => undefined);
   }
+
+  void (async () => {
+    const imageId = input.slipImageUrl
+      ? await db2RecordImage({ kind: 'thb_slip', url: input.slipImageUrl, txId: id })
+      : null;
+    const ocrId = await db2RecordOcr({
+      txId: id,
+      engine: input.ocrConfidence != null ? 'grok' : 'manual',
+      thb: input.thb,
+      bank: input.receiver?.bank ?? null,
+      last4: input.receiver?.last4 ?? null,
+      receiverName: input.receiver?.name ?? null,
+      confidence: input.ocrConfidence ?? null,
+      imageId,
+    });
+    await db2TagTransaction(id, {
+      staff_id: admin.id,
+      room_id: String(input.chatId),
+      ocr_run_id: ocrId,
+      image_ids: imageId ? [imageId] : [],
+    });
+    await db2BumpAnalytics({
+      chatId: input.chatId,
+      thbIn: input.thb,
+      usdtIn: usdtOwed,
+      profitThb,
+      staffName: admin.name,
+    });
+    await db2Audit({
+      action: 'transaction.incoming',
+      entity: 'transactions',
+      entityId: id,
+      actorStaffId: admin.id,
+      actorTelegramId: input.adminTelegramId,
+      roomId: String(input.chatId),
+      after: { thb: input.thb, usdt_owed: usdtOwed, ledger_ref: input.ledgerRef },
+    });
+  })();
 
   notifyIncome({ adminName: admin.name, usdt: usdtOwed, thb: input.thb }).catch(() => undefined);
   return { transactionId: id, adminName: admin.name, usdtOwed, profitThb };
@@ -642,6 +857,41 @@ export async function recordOutgoing(input: {
         updated_at: ts,
       }),
     );
+
+  void (async () => {
+    const imageId = input.slipImageUrl
+      ? await db2RecordImage({ kind: 'usdt_proof', url: input.slipImageUrl, txId: id })
+      : null;
+    await db2RecordSettlement({
+      txId: id,
+      amountUsdt: input.usdt,
+      network: input.usdtNetwork ?? null,
+      chainTxid: input.usdtTxid ?? null,
+      imageId,
+      staffId: admin.id,
+      status: input.usdtTxid ? 'submitted' : 'pending',
+    });
+    await db2TagTransaction(id, {
+      staff_id: admin.id,
+      room_id: String(input.chatId),
+      image_ids: imageId ? [imageId] : [],
+    });
+    await db2BumpAnalytics({
+      chatId: input.chatId,
+      usdtOut: input.usdt,
+      dealCount: 1,
+      staffName: admin.name,
+    });
+    await db2Audit({
+      action: 'transaction.outgoing',
+      entity: 'transactions',
+      entityId: id,
+      actorStaffId: admin.id,
+      actorTelegramId: input.adminTelegramId,
+      roomId: String(input.chatId),
+      after: { usdt: input.usdt, ledger_ref: input.ledgerRef },
+    });
+  })();
 
   notifyOutflow({ adminName: admin.name, usdt: input.usdt }).catch(() => undefined);
   return { transactionId: id, adminName: admin.name };

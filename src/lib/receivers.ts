@@ -118,6 +118,7 @@ export async function upsertReceiverOnDeposit(input: {
         last_transaction_at: now,
         last_ledger_ref: input.ledgerRef,
         status: 'normal',
+        schema_version: 2,
       });
       return id;
     }
@@ -136,6 +137,7 @@ export async function upsertReceiverOnDeposit(input: {
       last_transaction_at: now,
       last_ledger_ref: input.ledgerRef,
       status: old.status === 'blacklist' ? 'blacklist' : nextCount >= 20 ? 'trusted' : old.status,
+      schema_version: 2,
     });
     return oldDoc.id;
   } catch {

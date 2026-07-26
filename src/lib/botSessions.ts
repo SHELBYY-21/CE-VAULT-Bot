@@ -2,6 +2,7 @@
 // จัดการสถานะสนทนาต่อผู้ใช้ + chat-level settings (per-group rate)
 // ============================================================
 import { adminDb } from './firebaseAdmin';
+import { db2UpsertRoom } from '@/lib/db';
 
 export type SessionState = 'AWAITING_NAME' | 'AWAITING_AMOUNT' | 'EDITING' | 'WAITING_USDT';
 
@@ -101,6 +102,11 @@ export async function setChatRate(chatId: number, rate: number, roomName?: strin
     .doc(String(chatId))
     .set(row, { merge: true })
     .catch(() => undefined);
+  void db2UpsertRoom({
+    chatId,
+    fixedRate: rate,
+    name: roomName ?? undefined,
+  });
 }
 
 export async function getRoom(
@@ -127,6 +133,7 @@ export async function startNewDay(chatId: number): Promise<void> {
     .doc(String(chatId))
     .set({ chat_id: chatId, day_cut_at: now, updated_at: now }, { merge: true })
     .catch(() => undefined);
+  void db2UpsertRoom({ chatId, dayCutAt: now });
 }
 
 export async function setRoomName(chatId: number, name: string): Promise<void> {
@@ -136,4 +143,5 @@ export async function setRoomName(chatId: number, name: string): Promise<void> {
     .doc(String(chatId))
     .set({ chat_id: chatId, room_name: name, updated_at: now }, { merge: true })
     .catch(() => undefined);
+  void db2UpsertRoom({ chatId, name });
 }
