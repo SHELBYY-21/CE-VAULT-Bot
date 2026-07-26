@@ -29,9 +29,10 @@ const ABOUT =
   'CE VAULT\n\nUSDT EXCHANGE\n\n24/7\n\nFAST • SAFE • TRUSTED';
 const DESCRIPTION = '欢迎\n\nWelcome to\n\nCE VAULT';
 
-/** 12 คำสั่งหลักที่บอทรองรับ */
+/** คำสั่งหลักที่บอทรองรับ */
 const COMMANDS = [
   { command: 'start', description: 'เริ่มใช้งาน / ยินดีต้อนรับ' },
+  { command: 'admin', description: 'ตั้งชื่อแอดมิน — /admin ชื่อ' },
   { command: 'help', description: 'คู่มือใช้งาน CE VAULT' },
   { command: 'menu', description: 'เมนูคำสั่ง' },
   { command: 'today', description: 'ยอดห้องนี้วันนี้' },

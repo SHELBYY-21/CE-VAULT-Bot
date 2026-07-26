@@ -1,5 +1,5 @@
 // GET /api/telegram/set-profile?secret=API_SECRET
-// ตั้งชื่อ / About / Description / 12 commands ของบอท
+// ตั้งชื่อ / About / Description / commands ของบอท
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -10,6 +10,7 @@ const DESCRIPTION = '欢迎\n\nWelcome to\n\nCE VAULT';
 
 const COMMANDS = [
   { command: 'start', description: 'เริ่มใช้งาน / ยินดีต้อนรับ' },
+  { command: 'admin', description: 'ตั้งชื่อแอดมิน — /admin ชื่อ' },
   { command: 'help', description: 'คู่มือใช้งาน CE VAULT' },
   { command: 'menu', description: 'เมนูคำสั่ง' },
   { command: 'today', description: 'ยอดห้องนี้วันนี้' },
