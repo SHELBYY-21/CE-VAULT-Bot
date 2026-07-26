@@ -6,13 +6,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as UI from '@/lib/botUi';
 import {
   sendMessage,
-  editMessage,
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
   toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
+import {
+  liveError,
+  liveOcr,
+  liveReceiving,
+  liveSettled,
+  liveVerified,
+  liveWaiting,
+  upsertLive,
+} from '@/lib/liveMessage';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
 import {
   getAdminByTelegramId,
@@ -324,7 +332,7 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
-  // ----- รูปภาพ: สลิป THB → Vision + ตรวจบัญชีปักหมุด / สกรีนช็อต USDT -----
+  // ----- รูปภาพ: Live Message (send once → editMessage ตลอด) -----
   if (msg.photo) {
     if (!admin) {
       await setSession(chatId, userId, { state: 'AWAITING_NAME' });
@@ -332,9 +340,36 @@ async function handleUpdate(update: any): Promise<void> {
       return;
     }
     const fileId = msg.photo[msg.photo.length - 1].file_id;
-    sticker(chatId, 'PROCESSING'); // แสดงมาสคอตกำลังอ่านสลิป (fire-and-forget)
+    sendChatAction(chatId, 'upload_photo').catch(() => undefined);
+
+    // Reuse open Live Message when waiting USDT; otherwise start a new one (single send)
+    const ledgerRef = session?.ledger_ref || UI.newLedgerRef();
+    let liveId =
+      session?.state === 'WAITING_USDT' && session.live_message_id
+        ? session.live_message_id
+        : await upsertLive(chatId, null, liveReceiving(ledgerRef));
+
     try {
+      liveId = await upsertLive(chatId, liveId, liveOcr(ledgerRef));
       const imgUrl = await uploadSlipFromTelegram(fileId);
+
+      // USDT proof while THB deal is open → settle on same Live Message
+      if (session?.state === 'WAITING_USDT' && Number(session.ocr_thb) > 0) {
+        const u = await analyzeUsdtScreenshot(imgUrl);
+        if (u?.amount && u.amount > 0) {
+          await commitOutgoing(chatId, userId, u.amount, {
+            slipUrl: imgUrl,
+            network: u.network ?? null,
+            txid: u.txid ?? null,
+            liveMessageId: liveId,
+            ledgerRef: session.ledger_ref ?? ledgerRef,
+          });
+          await clearSession(chatId, userId);
+          return;
+        }
+        // not USDT — fall through as new THB slip on same message
+      }
+
       const slip = await analyzeSlip(imgUrl);
       const confOk =
         !!slip?.thbAmount &&
@@ -342,6 +377,19 @@ async function handleUpdate(update: any): Promise<void> {
         (slip.confidence == null || slip.confidence >= OCR_AUTO_MIN);
 
       if (confOk) {
+        liveId = await upsertLive(
+          chatId,
+          liveId,
+          liveVerified({
+            ledgerRef,
+            thb: slip.thbAmount,
+            bank: slip.bank,
+            last4: slip.receiverLast4,
+            confidence: slip.confidence,
+            receiverName: slip.receiverName,
+          }),
+        );
+
         const pinnedList = await listPinnedBanksForToday();
         const slipHint = {
           bank: slip.bank ?? null,
@@ -350,7 +398,7 @@ async function handleUpdate(update: any): Promise<void> {
         };
         const matched = findMatchingPinnedBank(slipHint, pinnedList);
 
-        // ตรงบัญชีที่เซ็ตไว้ → OCR สำเร็จ
+        // ตรงบัญชีที่เซ็ตไว้ → Settled on same Live Message
         if (matched) {
           await clearSession(chatId, userId);
           await commitIncoming(chatId, userId, slip.thbAmount!, {
@@ -363,12 +411,13 @@ async function handleUpdate(update: any): Promise<void> {
             date: slip.date ?? null,
             pinMatched: true,
             bankAccountId: matched.id,
+            liveMessageId: liveId,
+            ledgerRef,
           });
-          sticker(chatId, 'OCR_DONE');
           return;
         }
 
-        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → ไม่ auto
+        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → Waiting (same message)
         if (pinnedList.length > 0) {
           const first = pinnedList[0]!;
           await setSession(chatId, userId, {
@@ -376,66 +425,82 @@ async function handleUpdate(update: any): Promise<void> {
             pending_type: 'THB_DEPOSIT',
             slip_url: imgUrl,
             ocr_thb: slip.thbAmount ?? null,
+            slip_date: slip.date ?? null,
+            slip_time: slip.time ?? null,
             slip_last4: slip.receiverLast4 ?? null,
             slip_bank: slip.bank ?? null,
             slip_receiver_name: slip.receiverName ?? null,
             ocr_conf: slip.confidence ?? null,
-            ledger_ref: UI.newLedgerRef(),
+            ledger_ref: ledgerRef,
             admin_id: admin.id,
             admin_name: admin.name,
+            live_message_id: liveId,
           });
-          await sendMessage(
+          await upsertLive(
             chatId,
-            UI.slipBankMismatch({
-              thb: slip.thbAmount ?? null,
+            liveId,
+            liveWaiting({
+              ledgerRef,
+              thb: slip.thbAmount,
               bank: slip.bank,
               last4: slip.receiverLast4,
-              pinBank: first.bank_name,
-              pinLast4: last4OfAccount(first.account_number),
               confidence: slip.confidence,
+              hint:
+                `Pin mismatch — today <code>${first.bank_name} ••••${last4OfAccount(first.account_number) ?? '????'}</code>\n` +
+                `<i>Type</i> <code>+${slip.thbAmount}</code> <i>to record, or</i> <code>/pin …</code>`,
             }),
           );
           return;
         }
 
-        // ยังไม่เซ็ตบัญชี — เก็บ meta แล้วขอ /pin หรือพิมพ์ +ยอด
+        // ยังไม่เซ็ตบัญชี — Waiting on same Live Message
         await setSession(chatId, userId, {
           state: 'WAITING_USDT',
           pending_type: 'THB_DEPOSIT',
           slip_url: imgUrl,
           ocr_thb: slip.thbAmount ?? null,
+          slip_date: slip.date ?? null,
+          slip_time: slip.time ?? null,
           slip_last4: slip.receiverLast4 ?? null,
           slip_bank: slip.bank ?? null,
           slip_receiver_name: slip.receiverName ?? null,
           ocr_conf: slip.confidence ?? null,
-          ledger_ref: UI.newLedgerRef(),
+          ledger_ref: ledgerRef,
           admin_id: admin.id,
           admin_name: admin.name,
+          live_message_id: liveId,
         });
-        await sendMessage(
+        await upsertLive(
           chatId,
-          UI.slipAskPin({
-            thb: slip.thbAmount!,
+          liveId,
+          liveWaiting({
+            ledgerRef,
+            thb: slip.thbAmount,
             bank: slip.bank,
             last4: slip.receiverLast4,
             confidence: slip.confidence,
+            hint:
+              `Set receive bank: <code>/pin ${slip.bank ?? 'kbank'} ${slip.receiverLast4 ?? '1234'}</code>\n` +
+              `<i>or type</i> <code>+${slip.thbAmount}</code>`,
           }),
         );
         return;
       }
 
-      // (B) ไม่ใช่สลิปบาท → ลองอ่านเป็นสกรีนช็อตโอน USDT → บันทึกขาออก
+      // (B) ไม่ใช่สลิปบาท → สกรีนช็อต USDT → Settled on Live Message
       const u = await analyzeUsdtScreenshot(imgUrl);
       if (u?.amount && u.amount > 0) {
         await commitOutgoing(chatId, userId, u.amount, {
           slipUrl: imgUrl,
           network: u.network ?? null,
           txid: u.txid ?? null,
+          liveMessageId: liveId,
+          ledgerRef,
         });
         return;
       }
 
-      // (C) อ่านไม่ชัดจริงๆ → เก็บ meta ไว้ แล้วขอสั้นๆ ครั้งเดียว
+      // (C) อ่านไม่ชัด — Waiting, same message
       await setSession(chatId, userId, {
         state: 'WAITING_USDT',
         pending_type: 'THB_DEPOSIT',
@@ -445,13 +510,22 @@ async function handleUpdate(update: any): Promise<void> {
         slip_bank: slip?.bank ?? null,
         slip_receiver_name: slip?.receiverName ?? null,
         ocr_conf: slip?.confidence ?? null,
-        ledger_ref: UI.newLedgerRef(),
+        ledger_ref: ledgerRef,
         admin_id: admin.id,
         admin_name: admin.name,
+        live_message_id: liveId,
       });
-      await sendMessage(chatId, UI.slipUnclear(slip?.thbAmount ?? null));
+      await upsertLive(
+        chatId,
+        liveId,
+        liveWaiting({
+          ledgerRef,
+          thb: slip?.thbAmount ?? null,
+          hint: `<i>OCR unclear — type</i> <code>+${slip?.thbAmount ?? 500}</code>`,
+        }),
+      );
     } catch (e: any) {
-      await sendMessage(chatId, UI.error(e?.message ?? 'upload failed'));
+      await upsertLive(chatId, liveId, liveError(e?.message ?? 'upload failed', ledgerRef));
     }
     return;
   }
@@ -520,8 +594,11 @@ async function handleUpdate(update: any): Promise<void> {
               confidence: session.ocr_conf != null ? Number(session.ocr_conf) : null,
               time: session.slip_time ?? null,
               date: session.slip_date ?? null,
+              liveMessageId: session.live_message_id ?? null,
+              ledgerRef: session.ledger_ref ?? null,
             }
           : {};
+      const liveId = meta.liveMessageId ?? null;
       if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
       try {
         // ถ้าปักหมุดไว้แล้วและเลขตรง → ติดธง pinMatched
@@ -535,18 +612,22 @@ async function handleUpdate(update: any): Promise<void> {
           pinMatched: !!matched,
           bankAccountId: matched?.id ?? null,
         });
-        sticker(chatId, 'SUCCESS');
       } catch (e: any) {
-        await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
+        await upsertLive(chatId, liveId, liveError(e?.message ?? 'record failed', meta.ledgerRef));
       }
       return;
     }
     if (amt.usdt && amt.usdt.sign < 0) {
+      const liveId = session?.live_message_id ?? null;
+      const ledgerRef = session?.ledger_ref ?? null;
       try {
-        await commitOutgoing(chatId, userId, amt.usdt.value, {});
-        sticker(chatId, 'SUCCESS');
+        await commitOutgoing(chatId, userId, amt.usdt.value, {
+          liveMessageId: liveId,
+          ledgerRef,
+        });
+        if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
       } catch (e: any) {
-        await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
+        await upsertLive(chatId, liveId, liveError(e?.message ?? 'record failed', ledgerRef));
       }
       return;
     }
@@ -561,7 +642,7 @@ async function handleUpdate(update: any): Promise<void> {
   }
 }
 
-/** บันทึกขาเข้า (รับ THB) ทันที — ไม่ถามยืนยัน */
+/** บันทึกขาเข้า — Live Message → Settled (editMessage, ไม่ส่งข้อความใหม่) */
 async function commitIncoming(
   chatId: number,
   userId: number,
@@ -576,11 +657,13 @@ async function commitIncoming(
     date?: string | null;
     pinMatched?: boolean;
     bankAccountId?: string | null;
+    liveMessageId?: number | null;
+    ledgerRef?: string | null;
   },
 ): Promise<void> {
   const [room, rates] = await Promise.all([getRoom(chatId), getLatestRates()]);
   const sellRate = room.rate ?? rates.sellRate;
-  const ledgerRef = UI.newLedgerRef();
+  const ledgerRef = meta.ledgerRef || UI.newLedgerRef();
 
   const r = await recordIncoming({
     adminTelegramId: userId,
@@ -624,37 +707,37 @@ async function commitIncoming(
       .catch(() => undefined);
   }
 
-  const recent = await getRecentPairs(chatId, room.dayCutAt, 5).catch(() => []);
-
-  await sendMessage(
+  await upsertLive(
     chatId,
-    UI.incomingRecorded({
-      transactionId: r.transactionId,
+    meta.liveMessageId,
+    liveSettled({
       ledgerRef,
       thb,
-      usdtOwed: r.usdtOwed,
+      usdt: r.usdtOwed,
       sellRate,
       adminName: r.adminName,
       bank: meta.bank ?? null,
       last4: meta.last4 ?? null,
-      confidence: meta.confidence ?? null,
-      pinMatched: meta.pinMatched ?? false,
-      time: meta.time ?? null,
-      date: meta.date ?? null,
-      recent,
+      transactionId: r.transactionId,
     }),
   );
 }
 
-/** บันทึกขาออก (ส่ง USDT) ทันที */
+/** บันทึกขาออก — Live Message → Settled */
 async function commitOutgoing(
   chatId: number,
   userId: number,
   usdt: number,
-  meta: { slipUrl?: string | null; network?: string | null; txid?: string | null },
+  meta: {
+    slipUrl?: string | null;
+    network?: string | null;
+    txid?: string | null;
+    liveMessageId?: number | null;
+    ledgerRef?: string | null;
+  },
 ): Promise<void> {
   const room = await getRoom(chatId);
-  const ledgerRef = UI.newLedgerRef();
+  const ledgerRef = meta.ledgerRef || UI.newLedgerRef();
   const r = await recordOutgoing({
     adminTelegramId: userId,
     chatId,
@@ -665,26 +748,16 @@ async function commitOutgoing(
     usdtTxid: meta.txid ?? null,
   });
 
-  // คงเหลือที่ต้องส่ง = (ยอดรับรวม / เรต) − ส่งไปแล้ว
-  const [led, recent] = await Promise.all([
-    getTodayLedger(room.dayCutAt, chatId),
-    getRecentPairs(chatId, room.dayCutAt, 5).catch(() => []),
-  ]);
-  const shouldSend = room.rate ? led.totalThb / room.rate : led.totalIncomingUsdt;
-  const remaining = shouldSend - led.totalOutgoingUsdt;
-
-  await sendMessage(
+  await upsertLive(
     chatId,
-    UI.outgoingRecorded({
-      transactionId: r.transactionId,
+    meta.liveMessageId,
+    liveSettled({
       ledgerRef,
       usdt,
       adminName: r.adminName,
-      remainingUsdt: remaining,
-      recent,
+      transactionId: r.transactionId,
     }),
   );
-  sticker(chatId, 'SUCCESS');
 }
 
 async function replyPinOk(

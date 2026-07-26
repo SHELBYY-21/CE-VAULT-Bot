@@ -26,6 +26,8 @@ export interface BotSession {
   usdt_image_url?: string | null;
   admin_id?: string | null;
   admin_name?: string | null;
+  /** Telegram message_id — Live Message (editMessage only after first send) */
+  live_message_id?: number | null;
 }
 
 function sessionDocId(chatId: number, userId: number) {
@@ -62,6 +64,9 @@ export async function setSession(
     usdt_network: patch.usdt_network ?? null,
     usdt_txid: patch.usdt_txid ?? null,
     usdt_image_url: patch.usdt_image_url ?? null,
+    admin_id: patch.admin_id ?? null,
+    admin_name: patch.admin_name ?? null,
+    live_message_id: patch.live_message_id ?? null,
     updated_at: new Date().toISOString(),
   };
   try {
