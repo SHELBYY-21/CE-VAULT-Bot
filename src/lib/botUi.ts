@@ -1,36 +1,28 @@
 // ============================================================
-// CE VAULT — Bot message theme v2 (colorful, animated, distinctive)
-// ใช้ HTML + emoji + spoiler + gradient-blocks ให้ดูล้ำสมัยที่สุดในขีดจำกัด Telegram
+// CE VAULT — FinTech Operations Console (Telegram)
+// One message = one card. Typography first. Monospace numbers.
 // ============================================================
 import { randomBytes } from 'crypto';
 import type { OutgoingMessage } from './telegram';
+import {
+  APP,
+  FEE_WARN,
+  FORMAT_HINT,
+  RULE,
+  actionButtons,
+  card,
+  confirmKeyboard,
+  esc,
+  fmtUsdt,
+  metrics,
+  money,
+  monoRows,
+  pct,
+  type PipelineStatus,
+} from './botConsole';
 
-const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
-const APP = APP_RAW.startsWith('https://') && !APP_RAW.includes('localhost') ? APP_RAW : '';
-const FEE_WARN = Number(process.env.FEE_WARNING_THRESHOLD || 3);
+export { FORMAT_HINT, money, pct, statusRail } from './botConsole';
 
-// ═══════════════ Design tokens (Fintech: โทนเข้ม, accent เดียว, ตัวเลข monospace) ═══════════════
-const MARK = '⬢';
-const BRAND = `${MARK} <b>CE VAULT</b>`;
-const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
-// accent เส้นเดียว + จุดสีบอกสถานะ (แทนบล็อกเขียวรัวๆ ให้อ่านง่ายขึ้น)
-const GRAD_INDIGO = '🔷 ━━━━━━━━━━━━━';
-const GRAD_GOLD = '🟡 ━━━━━━━━━━━━━';
-const GRAD_GREEN = '🟢 ━━━━━━━━━━━━━';
-const GRAD_RED = '🔴 ━━━━━━━━━━━━━';
-const SIG = `<i>${MARK} CE VAULT · secure ledger</i>`;
-
-const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
-const money = (n: number) => nf.format(Number(n) || 0);
-const pct = (n: number) => `${(Number(n) || 0).toFixed(2)}%`;
-
-// ตาราง monospace จัดคอลัมน์ตัวเลขให้ตรงกัน (label ASCII, value ชิดขวา)
-function table(rows: [string, string][], width = 15): string {
-  const body = rows.map(([k, v]) => k.padEnd(6) + v.padStart(width - 6)).join('\n');
-  return `<pre>${body}</pre>`;
-}
-
-// Ledger ID: #CE-YYYYMMDD-XXXX (XXXX = 4 ตัวแรกของ uuid) — ค้นย้อนหลังง่าย
 export function refCode(txId: string): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -38,7 +30,6 @@ export function refCode(txId: string): string {
   return `CE-${ymd}-${tail}`;
 }
 
-// Ledger ID ใหม่สำหรับดีล (สร้างตอนรับสลิป ก่อนมี txId) — คงที่ตลอดดีล
 export function newLedgerRef(): string {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -46,106 +37,105 @@ export function newLedgerRef(): string {
   return `CE-${ymd}-${rand}`;
 }
 
-// แถบ progress 5 ขั้น: รับสลิป → OCR → รอ USDT → ส่งเหรียญ → เสร็จ
-type Step = 1 | 2 | 3 | 4 | 5;
-function progress(current: Step): string {
-  const steps = ['รับสลิป', 'OCR', 'รอ USDT', 'คำนวณ', 'เสร็จ'];
-  return steps
-    .map((label, i) => {
-      const n = (i + 1) as Step;
-      const icon = n < current ? '✅' : n === current ? '🟡' : '▫️';
-      return `${icon} ${label}`;
-    })
-    .join('  ');
+function receiverLine(
+  bank?: string | null,
+  last4?: string | null,
+  name?: string | null,
+): string | null {
+  if (!bank && !last4 && !name) return null;
+  const acct = last4 ? `${bank ?? 'BANK'} ••••${last4}` : (bank ?? '-');
+  return name ? `${name} · ${acct}` : acct;
 }
 
-// tier badge ตามกำไร %
-function profitTier(pctVal: number): string {
-  if (pctVal >= 5) return '🏆 <b>EXCELLENT</b>';
-  if (pctVal >= 2) return '💎 <b>GREAT</b>';
-  if (pctVal >= 0) return '✨ <b>GOOD</b>';
-  if (pctVal >= -2) return '⚠️ <b>WATCH</b>';
-  return '🔻 <b>LOSS</b>';
-}
-
-// ปุ่ม inline — edit/delete เป็น callback (ใช้ได้กับทุก URL), ปุ่มลิงก์ต้อง https
-function buttons(transactionId?: string): unknown {
-  const rows: any[][] = [];
-  if (transactionId) {
-    rows.push([
-      { text: '⚡ แก้ไขข้อมูล', callback_data: `edit:${transactionId}` },
-      { text: '🗑 ลบธุรกรรม', callback_data: `del:${transactionId}` },
-    ]);
-  }
-  if (APP) {
-    if (transactionId)
-      rows.push([
-        { text: '🔎 เปิดรายละเอียด →', url: `${APP}/dashboard/transactions/${transactionId}` },
-      ]);
-    rows.push([{ text: '📊 แดชบอร์ด CE Vault', url: `${APP}/dashboard` }]);
-  }
-  return rows.length ? { inline_keyboard: rows } : undefined;
-}
-
-// ═══════════════ Welcome / Onboarding ═══════════════
+// ═══════════════ Onboarding ═══════════════
 export function welcomeRegistered(name: string): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· secure USDT ledger</i>\n` +
-      `${GRAD_INDIGO}\n` +
-      `🔐 ยินดีต้อนรับกลับ <b>${name}</b>\n` +
-      `${THIN}\n` +
-      `<b>①  ฝาก THB → USDT</b>\n` +
-      `<blockquote>ส่งรูปสลิป แล้วพิมพ์ USDT ที่ได้จริง\n` +
-      `<code>11</code>  หรือ  <code>5000 11 35.5 34.8</code></blockquote>\n` +
-      `<b>②  ส่ง USDT ให้ทุนจีน</b>\n` +
-      `<blockquote>ส่งรูปสลิป + แคปชัน <code>ส่ง usdt</code> แล้วพิมพ์จำนวน</blockquote>\n` +
-      `<b>③  เรตตลาด</b>  <code>/rate</code> ดู · <code>/rate 35.5</code> ตั้งเรตขาย\n` +
-      `${THIN}\n` +
-      `${SIG}`,
-    reply_markup: buttons(),
-  };
+  return card({
+    kind: 'CONSOLE',
+    subtitle: 'Secure Ledger',
+    body:
+      `Operator\n<code>${esc(name)}</code>\n\n` +
+      `<b>1 · Receive</b>\n` +
+      `<i>Send THB slip · system reads amount</i>\n\n` +
+      `<b>2 · Settle</b>\n` +
+      `<i>Send USDT proof or type</i> <code>-13.6U</code>\n\n` +
+      `<b>3 · Rates</b>\n` +
+      `<code>/rate</code>  view ·  <code>/rate 35.5</code>  set sell`,
+    reply_markup: actionButtons(),
+  });
 }
 
 export function askName(): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· ยินดีต้อนรับ</i>\n` +
-      `${GRAD_INDIGO}\n` +
-      `🔐 ก่อนเริ่มใช้งาน ขอทราบ<b>ชื่อของคุณ</b>ก่อนครับ\n` +
-      `${THIN}\n` +
-      `<i>พิมพ์ชื่อที่อยากให้ระบบเรียก เช่น</i>  <code>แอดมิน A</code>\n` +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'ACCESS',
+    subtitle: 'Secure Ledger',
+    body:
+      `Admin identity required\n\n` +
+      `Type <code>/admin</code> followed by your name\n\n` +
+      `<code>/admin Operator A</code>`,
+    note: 'Name alone will not register',
+  });
+}
+
+export function adminUsage(): OutgoingMessage {
+  return card({
+    kind: 'ACCESS',
+    body:
+      `Set admin name\n\n` +
+      `<code>/admin Operator A</code>\n` +
+      `<code>/admin RAZEN</code>`,
+  });
+}
+
+export function askNameAgain(): OutgoingMessage {
+  return card({
+    kind: 'ACCESS',
+    status: 'ERROR',
+    body:
+      `Command required\n\n` +
+      `Use <code>/admin</code> + name\n` +
+      `<code>/admin Operator A</code>`,
+  });
+}
+
+export function nameRejected(raw: string): OutgoingMessage {
+  return card({
+    kind: 'ACCESS',
+    status: 'ERROR',
+    body:
+      `Invalid name\n<code>${esc(raw.slice(0, 40))}</code>\n\n` +
+      `Use a display name, not an amount\n` +
+      `<code>/admin RAZEN</code>`,
+  });
 }
 
 export function registered(name: string): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GREEN}\n` +
-      `✅ <b>ลงทะเบียนสำเร็จ</b>\n` +
-      `${GRAD_GREEN}\n` +
-      `${MARK} ยินดีต้อนรับสู่ <b>CE VAULT</b>, <b>${name}</b>\n` +
-      `${THIN}\n` +
-      `🚀 เริ่มได้เลย: ส่ง<b>รูปสลิป</b> แล้วพิมพ์จำนวน USDT\n` +
-      `${SIG}`,
-    reply_markup: buttons(),
-  };
+  return card({
+    kind: 'ACCESS',
+    subtitle: 'Secure Ledger',
+    status: 'SETTLED',
+    body:
+      `Registered\n<code>${esc(name)}</code>\n\n` +
+      `Send a THB slip to open a ledger entry`,
+    reply_markup: actionButtons(),
+  });
 }
 
-// ═══════════════ Upload progress (multi-step edit animation) ═══════════════
+// ═══════════════ OCR / upload ═══════════════
+/** Live Card progress frames (editMessage in-place) */
 export function uploading(step = 0): OutgoingMessage {
-  // แถบวิ่ง 4 เฟรม — bridge/webhook edit ต่อกันจะดูเหมือน progress bar
-  const frames = ['🟨⬜⬜⬜⬜', '🟨🟨⬜⬜⬜', '🟨🟨🟨⬜⬜', '🟩🟩🟩🟩🟩'];
-  const label = ['กำลังอัปโหลด', 'กำลังประมวลผล', 'กำลังบันทึก', 'พร้อม'][Math.min(step, 3)];
-  return {
-    text:
-      `${MARK} <b>CE VAULT</b>\n${THIN}\n` +
-      `${frames[Math.min(step, 3)]}\n` +
-      `<i>${label}...</i>`,
-  };
+  const frames: Array<{ status: PipelineStatus; label: string; detail: string }> = [
+    { status: 'RECEIVED', label: 'RECEIVED', detail: 'Uploading slip' },
+    { status: 'RECEIVED', label: 'OCR', detail: 'Reading Thai bank slip' },
+    { status: 'OCR_VERIFIED', label: 'OCR', detail: 'Verifying amount · last4 · receiver' },
+    { status: 'WAITING_USDT', label: 'READY', detail: 'Building ledger card' },
+  ];
+  const i = Math.min(Math.max(step, 0), frames.length - 1);
+  const f = frames[i]!;
+  return card({
+    kind: 'OCR',
+    status: f.status,
+    body: `Live\n<code>${f.label}</code>\n\n${f.detail}`,
+  });
 }
 
 export interface SlipReadyData {
@@ -156,159 +146,116 @@ export interface SlipReadyData {
   last4?: string | null;
   bank?: string | null;
   receiverName?: string | null;
-  confidence?: number | null; // ความมั่นใจ OCR 0-100
-  chatRate?: number | null; // เรตต่อกลุ่มที่ตั้งไว้
-  historyLine?: string | null; // บรรทัด Receiver History (จาก receiverBrief)
-}
-
-// แสดงความมั่นใจ OCR + สัญญาณเตือน
-function confidenceLine(c?: number | null): string {
-  if (c == null) return '';
-  const dot = c >= 90 ? '🟢' : c >= 75 ? '🟡' : '🔴';
-  return `${dot} ความมั่นใจ <i>(Confidence)</i>  <b>${c.toFixed(1)}%</b>`;
+  confidence?: number | null;
+  chatRate?: number | null;
+  historyLine?: string | null;
 }
 
 export function slipReady(d: SlipReadyData): OutgoingMessage {
   if (d.type === 'USDT_SEND') {
-    return {
-      text:
-        `${GRAD_GOLD}\n${MARK} <b>CE VAULT</b>  <i>· ส่ง USDT</i>\n` +
-        `${progress(3)}\n${THIN}\n` +
-        `🚀 พิมพ์จำนวน USDT ที่ส่ง เช่น <code>11</code>`,
-    };
+    return card({
+      kind: 'OCR',
+      status: 'WAITING_USDT',
+      body: `USDT transfer detected\n\nEnter amount\n<code>-13.6U</code>`,
+    });
   }
 
-  // THB_DEPOSIT
-  const conf = d.confidence ?? null;
   const gotAmount = d.thb != null && d.thb > 0;
-  const lowConf = conf != null && conf < 90;
+  const lowConf = d.confidence != null && d.confidence < 90;
+  const status: PipelineStatus = !gotAmount || lowConf ? 'RECEIVED' : 'OCR_VERIFIED';
 
-  // header สะท้อนความจริง: อ่านยอดไม่ได้ / ความมั่นใจต่ำ / สำเร็จ
-  const header = !gotAmount
-    ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>'
-    : lowConf
-      ? '⚠️ <b>ตรวจสอบสลิปอีกครั้ง</b>'
-      : '✅ <b>OCR สำเร็จ</b>';
-
-  const detail: string[] = [];
-  if (gotAmount) detail.push(`💵 ยอดเงิน   <b>${money(d.thb!)} บาท</b>`);
-  if (d.receiverName) detail.push(`👤 ผู้รับ     <b>${d.receiverName}</b>`);
-  if (d.last4 || d.bank)
-    detail.push(
-      `🏦 ธนาคาร   <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>>>${d.last4}</code>` : ''}`,
-    );
-  if (d.date || d.time) detail.push(`📅 เวลา     <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
-  const cLine = confidenceLine(conf);
-  if (cLine) detail.push(cLine);
+  const rows: { label: string; value: string }[] = [];
+  if (gotAmount) rows.push({ label: 'THB', value: money(d.thb!) });
+  if (d.confidence != null)
+    rows.push({ label: 'Confidence', value: `${d.confidence.toFixed(1)}%` });
+  const recv = receiverLine(d.bank, d.last4, d.receiverName);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.date || d.time)
+    rows.push({ label: 'Timestamp', value: [d.date, d.time].filter(Boolean).join(' ') });
 
   const canAuto = !!(d.chatRate && gotAmount);
   const usdtAuto = canAuto ? d.thb! / d.chatRate! : 0;
 
   let ask: string;
   if (!gotAmount) {
-    // OCR อ่านยอดไม่ได้ → ต้องให้พิมพ์ยอด+เรตเอง (ห้าม fallback 5000)
-    ask = `พิมพ์ <b>ยอดบาท เรต</b> เช่น <code>500 36.65</code>\n<i>ระบบจะคำนวณ USDT ให้</i>`;
+    ask = `Amount unread\nType <code>500 36.65</code>`;
   } else if (canAuto) {
     ask =
-      `🧮 <code>${money(d.thb!)} ÷ ${money(d.chatRate!)} = ${money(usdtAuto)} USDT</code>\n` +
-      `กดปุ่ม <b>ยืนยัน</b> ด้านล่าง หรือพิมพ์เรตใหม่`;
+      metrics([
+        { label: 'Should Send USDT', value: fmtUsdt(usdtAuto) },
+        { label: 'Sell Rate', value: money(d.chatRate!) },
+      ]) + `\n\nConfirm below or type a new rate`;
   } else {
-    ask = `พิมพ์ <b>เรตแลก</b> เช่น <code>36.65</code> → ระบบคำนวณ USDT ให้`;
+    ask = `Type USDT received\n<code>11</code>`;
   }
 
-  return {
-    text:
-      `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
-      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
-      `${progress(2)}\n${THIN}\n` +
-      (detail.length ? detail.join('\n') + `\n${THIN}\n` : '') +
-      (gotAmount && lowConf
-        ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอดก่อนยืนยัน</i>\n${THIN}\n`
-        : '') +
-      ask +
-      (d.historyLine ? `\n${d.historyLine}` : ''),
-    reply_markup: canAuto
+  const kb =
+    canAuto && gotAmount
       ? {
           inline_keyboard: [
             [
-              {
-                text: `✅ ยืนยัน (${money(usdtAuto)} USDT)`,
-                callback_data: `confirm:${usdtAuto.toFixed(2)}`,
-              },
+              { text: 'Confirm', callback_data: `confirm:${usdtAuto.toFixed(2)}` },
+              { text: 'Cancel', callback_data: 'cancelop:1' },
             ],
           ],
         }
-      : undefined,
-  };
+      : undefined;
+
+  return card({
+    kind: 'OCR',
+    status,
+    body: (rows.length ? metrics(rows) + '\n\n' : '') + ask,
+    note: lowConf ? 'Confidence below 90% — verify before settle' : undefined,
+    reply_markup: kb,
+  });
 }
 
-// ═══════════════ รูปแบบการพิมพ์ยอด (ระบุชัดเจน ไม่ให้บอทเดา) ═══════════════
-const FORMAT_HINT =
-  `<b>+500B</b>   บาทเข้า  <i>(THB in)</i>\n` +
-  `<b>-13.6U</b>  USDT ออก  <i>(USDT out)</i>\n` +
-  `<i>รวมกันได้ · เขียนเต็มก็ได้:</i>  <code>+500B -13.6U</code>  ·  <code>+500THB -13.6USDT</code>`;
-
-/** เลขลอยๆ ไม่ระบุสกุล → บอทไม่เดา ขอรูปแบบที่ชัดเจน */
 export function amountFormatHelp(): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `✋ <b>ต้องระบุสกุลเงินให้ชัด</b>\n` +
-      `${THIN}\n` +
-      `ระบบไม่เดายอดให้ — ใส่เครื่องหมาย + / − และสกุล B / U\n` +
-      `${THIN}\n` +
-      FORMAT_HINT,
-  };
+  return card({
+    kind: 'INPUT',
+    status: 'ERROR',
+    body: `Currency required\n\n${FORMAT_HINT}`,
+  });
 }
 
-/** ทิศทางผิด (เช่น -500B หรือ +300U) */
 export function wrongDirection(cur: 'THB' | 'USDT'): OutgoingMessage {
   const msg =
     cur === 'THB'
-      ? `ยอด<b>บาท</b>ในดีลนี้คือเงิน<b>เข้า</b> → ใช้ <code>+500B</code>`
-      : `ยอด<b>USDT</b>ในดีลนี้คือเหรียญ<b>ออก</b> → ใช้ <code>-13.6U</code>`;
-  return {
-    text: `${GRAD_RED}\n⚠️ <b>ทิศทางไม่ถูก</b>\n${THIN}\n${msg}`,
-  };
+      ? `THB is inbound — use <code>+500B</code>`
+      : `USDT is outbound — use <code>-13.6U</code>`;
+  return card({ kind: 'INPUT', status: 'ERROR', body: `Direction invalid\n\n${msg}` });
 }
 
-/** ตั้งยอดบาทแล้ว รอ USDT */
 export function thbSetWaitUsdt(thb: number): OutgoingMessage {
-  return {
-    text:
-      `✅ ตั้งยอดบาท  <b>${money(thb)} ฿</b>\n` +
-      `${THIN}\n` +
-      `⏳ ต่อไป: ส่ง<b>สกรีนช็อต USDT</b> หรือพิมพ์ <code>-13.6U</code>`,
-  };
+  return card({
+    kind: 'RECEIVE',
+    status: 'WAITING_USDT',
+    body:
+      metrics([{ label: 'THB', value: money(thb) }]) +
+      `\n\nAwaiting USDT proof\n<code>-13.6U</code>`,
+  });
 }
 
-/** มี USDT แต่ยังไม่รู้ยอดบาท */
 export function needThb(): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `⚠️ <b>ยังไม่ทราบยอดบาท</b>\n` +
-      `${THIN}\n` +
-      `อ่านจากสลิปไม่ได้ — พิมพ์ยอดบาทด้วย เช่น <code>+500B -13.6U</code>`,
-  };
+  return card({
+    kind: 'OCR',
+    status: 'ERROR',
+    body: `THB unknown\n\nType both legs\n<code>+500B -13.6U</code>`,
+  });
 }
 
-// ═══════════════ v8: บันทึกทันที (การ์ดสั้น ไม่รกแชท) ═══════════════
 export function formatRecentBlock(
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null,
 ): string {
   if (!recent?.length) return '';
-  return (
-    `${THIN}\n🕒 <b>5 รายการล่าสุด</b> <i>(Recent)</i>\n` +
-    `<pre>${recent
-      .map((r) => {
-        const gap = r.gapMin == null ? 'รอส่ง' : `${r.gapMin} นาที`;
-        return `${r.time} » ${money(r.thb).padStart(9)} » ${money(r.usdt).padStart(8)}  (${gap})`;
-      })
-      .join('\n')}</pre>`
-  );
+  const lines = recent.map((r) => {
+    const gap = r.gapMin == null ? 'pending' : `${r.gapMin}m`;
+    return `${r.time}  ${money(r.thb).padStart(10)}  ${fmtUsdt(r.usdt).padStart(10)}  ${gap}`;
+  });
+  return `${RULE}\nRecent\n<pre>${lines.map((l) => esc(l)).join('\n')}</pre>`;
 }
 
+/** RECEIVE card — THB inbound recorded */
 export function incomingRecorded(d: {
   transactionId: string;
   ledgerRef: string;
@@ -319,29 +266,32 @@ export function incomingRecorded(d: {
   bank?: string | null;
   last4?: string | null;
   confidence?: number | null;
-  /** Vision ยืนยันตรงบัญชีปักหมุดวันนี้ */
   pinMatched?: boolean;
   time?: string | null;
   date?: string | null;
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
-  const conf = d.confidence != null ? `  <i>· Vision ${d.confidence.toFixed(0)}%</i>` : '';
-  const pinLine = d.pinMatched ? `✅ <b>OCR สำเร็จ</b> — ตรงบัญชีที่เซ็ตไว้วันนี้\n` : '';
-  const when = d.date || d.time ? `📅 ${[d.date, d.time].filter(Boolean).join(' ')}\n` : '';
-  return {
-    text:
-      `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
-      pinLine +
-      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
-      (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
-      when +
-      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
-      formatRecentBlock(d.recent),
-    reply_markup: buttons(d.transactionId),
-  };
+  const rows: { label: string; value: string }[] = [
+    { label: 'THB', value: money(d.thb) },
+    { label: 'Should Send USDT', value: fmtUsdt(d.usdtOwed) },
+    { label: 'Sell Rate', value: money(d.sellRate) },
+  ];
+  const recv = receiverLine(d.bank, d.last4);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.confidence != null)
+    rows.push({ label: 'Confidence', value: `${d.confidence.toFixed(1)}%` });
+  rows.push({ label: 'Operator', value: d.adminName });
+
+  return card({
+    kind: 'RECEIVE',
+    ledgerId: d.ledgerRef,
+    status: d.pinMatched ? 'OCR_VERIFIED' : 'WAITING_USDT',
+    body: metrics(rows) + formatRecentBlock(d.recent),
+    note: d.pinMatched ? 'Pinned account match' : 'Awaiting USDT settlement',
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
-/** สลิป Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้ */
 export function slipBankMismatch(d: {
   thb: number | null;
   bank?: string | null;
@@ -350,38 +300,55 @@ export function slipBankMismatch(d: {
   pinLast4?: string | null;
   confidence?: number | null;
 }): OutgoingMessage {
-  return {
-    text:
-      `⚠️ <b>Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้</b>\n` +
-      `${THIN}\n` +
-      (d.thb != null ? `💵 ยอดสลิป  <b>${money(d.thb)} THB</b>\n` : '') +
-      `🧾 จากสลิป  <b>${d.bank ?? '-'}</b> <code>••••${d.last4 ?? '????'}</code>\n` +
-      `📌 ปักหมุดวันนี้  <b>${d.pinBank ?? '-'}</b> <code>••••${d.pinLast4 ?? '????'}</code>\n` +
-      (d.confidence != null ? `<i>ความมั่นใจ ${d.confidence.toFixed(0)}%</i>\n` : '') +
-      `${THIN}\n` +
-      `ถ้าแน่ใจว่าถูกต้อง พิมพ์ <code>+${d.thb != null ? money(d.thb).replace(/,/g, '') : '500'}</code> เพื่อบันทึกเอง\n` +
-      `หรือ <code>/pin ${d.bank ?? 'KBANK'} ${d.last4 ?? '1234'}</code> แล้วส่งสลิปใหม่`,
-  };
+  const rows: { label: string; value: string }[] = [];
+  if (d.thb != null) rows.push({ label: 'THB', value: money(d.thb) });
+  rows.push({
+    label: 'Slip',
+    value: `${d.bank ?? '-'} ••••${d.last4 ?? '????'}`,
+  });
+  rows.push({
+    label: 'Pinned',
+    value: `${d.pinBank ?? '-'} ••••${d.pinLast4 ?? '????'}`,
+  });
+  if (d.confidence != null)
+    rows.push({ label: 'Confidence', value: `${d.confidence.toFixed(1)}%` });
+
+  const hint = d.thb != null ? money(d.thb).replace(/,/g, '') : '500';
+  return card({
+    kind: 'OCR',
+    status: 'ERROR',
+    body:
+      metrics(rows) +
+      `\n\nAccount mismatch\n` +
+      `Manual record  <code>+${hint}</code>\n` +
+      `Or pin  <code>/pin ${esc(d.bank ?? 'KBANK')} ${esc(d.last4 ?? '1234')}</code>`,
+  });
 }
 
-/** มี Vision ยอดชัด แต่ยังไม่ได้ปักหมุดบัญชีวันนี้ */
 export function slipAskPin(d: {
   thb: number;
   bank?: string | null;
   last4?: string | null;
   confidence?: number | null;
 }): OutgoingMessage {
-  return {
-    text:
-      `👁 <b>Vision อ่านสลิปได้</b>  <b>${money(d.thb)} THB</b>` +
-      (d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '') +
-      `\n` +
-      (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
-      `${THIN}\n` +
-      `ยังไม่ได้เซ็ตบัญชีรับวันนี้ — พิมพ์ <code>/pin ${d.bank ?? 'kbank'} ${d.last4 ?? '1234'}</code>\n` +
-      `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
-      `หรือบันทึกเองด้วย <code>+${money(d.thb).replace(/,/g, '')}</code>`,
-  };
+  const rows: { label: string; value: string }[] = [
+    { label: 'THB', value: money(d.thb) },
+  ];
+  const recv = receiverLine(d.bank, d.last4);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.confidence != null)
+    rows.push({ label: 'Confidence', value: `${d.confidence.toFixed(1)}%` });
+
+  return card({
+    kind: 'OCR',
+    status: 'OCR_VERIFIED',
+    body:
+      metrics(rows) +
+      `\n\nNo receive account pinned today\n` +
+      `<code>/pin ${esc(d.bank ?? 'kbank')} ${esc(d.last4 ?? '1234')}</code>\n` +
+      `Or record  <code>+${money(d.thb).replace(/,/g, '')}</code>`,
+    note: 'Aliases: scb · kbank · ktb · bbl · tmn',
+  });
 }
 
 export function pinStatusCard(d: {
@@ -396,35 +363,34 @@ export function pinStatusCard(d: {
 }): OutgoingMessage {
   const max = d.max ?? 3;
   if (!d.banks.length) {
-    return {
-      text:
-        `📌 <b>ยังไม่ได้เซ็ตบัญชีรับวันนี้</b> <i>(${d.today})</i>\n` +
-        `${THIN}\n` +
-        `พิมพ์ <code>/pin kbank 1234567890</code>\n` +
-        `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
-        `ตั้งได้สูงสุด <b>${max}</b> บัญชีพร้อมกัน\n` +
-        `สลิปตรงบัญชีที่เซ็ต = <b>OCR สำเร็จ</b>`,
-    };
+    return card({
+      kind: 'PIN',
+      subtitle: d.today,
+      body:
+        `No receive accounts\n\n` +
+        `<code>/pin kbank 1234567890</code>\n` +
+        `Max <code>${max}</code> · match = OCR verified`,
+      note: 'Aliases: scb · kbank · ktb · bbl · tmn',
+    });
   }
-  const lines = d.banks
+  const block = d.banks
     .map((b, i) => {
       const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
       return (
-        `<b>${i + 1}.</b> 🏦 <b>${b.bank_name}</b>  <code>••••${last4}</code>\n` +
-        `    ${b.label} · คงเหลือ <b>${money(b.current_balance)} THB</b>`
+        `<b>${i + 1}</b>  ${esc(b.bank_name)}  <code>••••${last4}</code>\n` +
+        `<i>${esc(b.label)}</i>  <code>${money(b.current_balance)}</code>`
       );
     })
-    .join('\n');
-  return {
-    text:
-      `📌 <b>บัญชีรับวันนี้</b> <i>(${d.today})</i> · ${d.banks.length}/${max}\n` +
-      `${THIN}\n` +
-      `${lines}\n` +
-      `${THIN}\n` +
-      `<code>/pin scb 9876543210</code> เพิ่ม` +
-      (d.banks.length >= max ? ` <i>(เต็ม — ต้อง /unpin ก่อน)</i>` : '') +
-      `\n<code>/unpin 1</code> หรือ <code>/unpin 6578</code> ลบตัวเดิม`,
-  };
+    .join('\n\n');
+  return card({
+    kind: 'PIN',
+    subtitle: `${d.today} · ${d.banks.length}/${max}`,
+    body:
+      block +
+      `\n\n<code>/pin scb 9876543210</code>` +
+      (d.banks.length >= max ? `  <i>full — /unpin first</i>` : '') +
+      `\n<code>/unpin 1</code>`,
+  });
 }
 
 export function pinSetOk(d: {
@@ -436,12 +402,16 @@ export function pinSetOk(d: {
   max?: number;
 }): OutgoingMessage {
   const max = d.max ?? 3;
-  return {
-    text:
-      `✅ <b>เซ็ตบัญชีรับวันนี้แล้ว</b> <i>(${d.today})</i> · ${d.count}/${max}\n` +
-      `🏦 <b>${d.bank_name}</b>  <code>••••${d.last4}</code> · ${d.label}\n` +
-      `ส่งสลิปได้เลย — ตรงบัญชีที่เซ็ต = OCR สำเร็จ`,
-  };
+  return card({
+    kind: 'PIN',
+    subtitle: `${d.today} · ${d.count}/${max}`,
+    status: 'OCR_VERIFIED',
+    body: metrics([
+      { label: 'Bank', value: `${d.bank_name} ••••${d.last4}` },
+      { label: 'Label', value: d.label },
+    ]),
+    note: 'Matching slips auto-verify',
+  });
 }
 
 export function pinLimitCard(d: {
@@ -457,19 +427,18 @@ export function pinLimitCard(d: {
   const lines = d.banks
     .map((b, i) => {
       const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
-      return `<b>${i + 1}.</b> ${b.bank_name} <code>••••${last4}</code> · ${b.label}`;
+      return `<b>${i + 1}</b>  ${esc(b.bank_name)}  <code>••••${last4}</code>`;
     })
     .join('\n');
-  return {
-    text:
-      `⚠️ <b>ปักหมุดครบ ${max} บัญชีแล้ว</b> <i>(${d.today})</i>\n` +
-      `${THIN}\n` +
-      `${lines}\n` +
-      `${THIN}\n` +
-      `ลบตัวเดิมก่อน: <code>/unpin 1</code> หรือ <code>/unpin kbank 7890</code>`,
-  };
+  return card({
+    kind: 'PIN',
+    subtitle: d.today,
+    status: 'ERROR',
+    body: `Pin limit <code>${max}</code>\n\n${lines}\n\n<code>/unpin 1</code>`,
+  });
 }
 
+/** SUCCESS / OUT card */
 export function outgoingRecorded(d: {
   transactionId: string;
   ledgerRef: string;
@@ -479,24 +448,44 @@ export function outgoingRecorded(d: {
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
   const done = d.remainingUsdt <= 0.009;
-  return {
-    text:
-      `🔴 <b>ออก (OUT)</b>  <b>${money(d.usdt)} USDT</b>\n` +
-      `${done ? '✅ ส่งครบแล้ว <i>(Settled)</i>' : `⏳ คงเหลือ <i>(Remaining)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
-      `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
-      formatRecentBlock(d.recent),
-    reply_markup: buttons(d.transactionId),
-  };
+  return card({
+    kind: 'SETTLE',
+    ledgerId: d.ledgerRef,
+    status: done ? 'SETTLED' : 'WAITING_USDT',
+    body:
+      metrics([
+        { label: 'USDT Out', value: fmtUsdt(d.usdt) },
+        {
+          label: done ? 'Status' : 'Remaining USDT',
+          value: done ? 'SETTLED' : fmtUsdt(d.remainingUsdt),
+        },
+        { label: 'Operator', value: d.adminName },
+      ]) + formatRecentBlock(d.recent),
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
-/** สลิปอ่านยอดไม่ชัด → ขอให้พิมพ์ +ยอด (สั้นที่สุด ไม่รก) */
-export function slipUnclear(guess?: number | null): OutgoingMessage {
-  return {
-    text: `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
-  };
+export function slipUnclear(
+  guess?: number | null,
+  opts?: { confidence?: number | null; ledgerRef?: string | null },
+): OutgoingMessage {
+  const g = guess ? money(guess).replace(/,/g, '') : '500';
+  const rows: { label: string; value: string }[] = [];
+  if (guess != null) rows.push({ label: 'THB (guess)', value: money(guess) });
+  if (opts?.confidence != null)
+    rows.push({ label: 'OCR Confidence', value: `${opts.confidence.toFixed(1)}%` });
+  return card({
+    kind: 'OCR',
+    ledgerId: opts?.ledgerRef ?? undefined,
+    status: 'ERROR',
+    body:
+      (rows.length ? metrics(rows) + '\n\n' : '') +
+      `Amount unclear\n\nRecord manually\n<code>+${g}</code>\n` +
+      `Or type both legs → Confirmation\n<code>+${g}B -13.6U</code>`,
+  });
 }
 
-// ═══════════════ Deal flow v5: THB slip → wait USDT → confirm ═══════════════
+// ═══════════════ Confirmation / deal ═══════════════
 export interface WaitUsdtData {
   thb?: number | null;
   bank?: string | null;
@@ -509,50 +498,52 @@ export interface WaitUsdtData {
   historyLine?: string | null;
   roomRate?: number | null;
   roomName?: string | null;
+  pinMatched?: boolean;
 }
 
-/** การ์ดหลัง OCR สลิป THB → รอ USDT (step ③) */
 export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
-  const conf = d.confidence ?? null;
   const gotAmount = d.thb != null && d.thb > 0;
-  const lowConf = conf != null && conf < 90;
-  const header = !gotAmount
-    ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>'
-    : lowConf
-      ? '⚠️ <b>ตรวจสอบสลิป</b>'
-      : '✅ <b>OCR สำเร็จ</b>';
+  const lowConf = d.confidence != null && d.confidence < 90;
+  const status: PipelineStatus = !gotAmount
+    ? 'RECEIVED'
+    : d.pinMatched
+      ? 'OCR_VERIFIED'
+      : lowConf
+        ? 'RECEIVED'
+        : 'WAITING_USDT';
 
-  const detail: string[] = [];
-  if (gotAmount) detail.push(`💵 ยอดเงิน <i>(Amount)</i>  <b>${money(d.thb!)} THB</b>`);
-  if (d.receiverName) detail.push(`👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName}</b>`);
-  if (d.bank || d.last4)
-    detail.push(
-      `🏦 ธนาคาร <i>(Bank)</i>  <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`,
-    );
+  const rows: { label: string; value: string }[] = [];
+  if (gotAmount) rows.push({ label: 'THB', value: money(d.thb!) });
+  if (d.confidence != null)
+    rows.push({ label: 'OCR Confidence', value: `${d.confidence.toFixed(1)}%` });
+  const recv = receiverLine(d.bank, d.last4, d.receiverName);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
+  if (d.roomRate)
+    rows.push({
+      label: 'Sell Rate',
+      value: d.roomName ? `${money(d.roomRate)} · ${d.roomName}` : money(d.roomRate),
+    });
   if (d.date || d.time)
-    detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
-  const cLine = confidenceLine(conf);
-  if (cLine) detail.push(cLine);
+    rows.push({ label: 'Timestamp', value: [d.date, d.time].filter(Boolean).join(' ') });
 
-  return {
-    text:
-      `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
-      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
-      `${progress(3)}\n${THIN}\n` +
-      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
-      (detail.length ? detail.join('\n') + `\n` : '') +
-      (d.roomRate
-        ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n`
-        : '') +
-      (gotAmount && lowConf
-        ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n`
-        : '') +
-      (d.historyLine ? `${d.historyLine}\n` : '') +
-      `${THIN}\n` +
-      `⏳ <b>รอยืนยัน USDT</b> <i>(Awaiting USDT)</i>\n` +
-      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์:\n` +
-      FORMAT_HINT,
-  };
+  const noteParts: string[] = [];
+  if (d.pinMatched) noteParts.push('Pinned account match · OCR verified');
+  if (lowConf) noteParts.push('Confidence below 90% — verify amount');
+  noteParts.push('Next: USDT proof or -13.6U → Confirmation');
+
+  return card({
+    kind: 'OCR',
+    ledgerId: d.ledgerRef,
+    status: gotAmount && !lowConf ? 'WAITING_USDT' : status,
+    body:
+      (rows.length ? metrics(rows) + '\n\n' : '') +
+      `Awaiting USDT\n` +
+      `Send transfer proof or type:\n` +
+      FORMAT_HINT +
+      (d.historyLine ? `\n\n${d.historyLine}` : ''),
+    note: noteParts.join(' · '),
+  });
 }
 
 export interface DealConfirmData {
@@ -566,39 +557,35 @@ export interface DealConfirmData {
   bank?: string | null;
   last4?: string | null;
   network?: string | null;
+  confidence?: number | null;
+  historyLine?: string | null;
 }
 
-/** การ์ดยืนยันดีล (step ④) — Confirm / Edit / Cancel */
+/** TRANSACTION / Confirmation card — Buy Rate = THB ÷ USDT */
 export function dealConfirm(d: DealConfirmData): OutgoingMessage {
-  const up = d.profitThb >= 0;
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก (Review)</i>\n` +
-      `${progress(4)}\n${THIN}\n` +
-      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
-      table([
-        ['THB', money(d.thb)],
-        ['USDT', money(d.usdt)],
-        ['Buy', money(d.buyRate)],
-        ['Sell', money(d.sellRate)],
-      ]) +
-      `${up ? '📈' : '📉'} กำไรประเมิน <i>(Est. Profit)</i>  <b>${up ? '+' : ''}${money(d.profitThb)} THB</b>\n` +
-      (d.receiverName || d.last4
-        ? `👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName ?? '-'}</b>${d.last4 ? ` <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
-        : '') +
-      (d.network ? `🔗 เครือข่าย <i>(Network)</i>  <b>${d.network}</b>\n` : '') +
-      `${THIN}\n<i>ตรวจแล้วกด</i> <b>ยืนยัน (Confirm)</b>`,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ ยืนยัน', callback_data: `dealok:${d.ledgerRef}` },
-          { text: '✏️ แก้ USDT', callback_data: 'dealedit:1' },
-          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
-        ],
-      ],
-    },
-  };
+  const profitPct = d.thb > 0 ? (d.profitThb / d.thb) * 100 : 0;
+  const rows: { label: string; value: string }[] = [
+    { label: 'THB', value: money(d.thb) },
+    { label: 'USDT', value: fmtUsdt(d.usdt) },
+    { label: 'Buy Rate', value: `${money(d.buyRate)}  (THB ÷ USDT)` },
+    { label: 'Sell Rate', value: money(d.sellRate) },
+    { label: 'Profit', value: `${pct(profitPct)}  (${money(d.profitThb)} THB)` },
+  ];
+  if (d.confidence != null)
+    rows.push({ label: 'OCR Confidence', value: `${d.confidence.toFixed(1)}%` });
+  const recv = receiverLine(d.bank, d.last4, d.receiverName);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
+  if (d.network) rows.push({ label: 'Network', value: d.network });
+
+  return card({
+    kind: 'CONFIRM',
+    ledgerId: d.ledgerRef,
+    status: 'REVIEW',
+    body: metrics(rows) + (d.historyLine ? `\n\n${d.historyLine}` : ''),
+    note: 'One decision — Confirm · Edit · Cancel',
+    reply_markup: confirmKeyboard(d.ledgerRef),
+  });
 }
 
 export interface DealSuccessData {
@@ -615,168 +602,135 @@ export interface DealSuccessData {
   last4?: string | null;
 }
 
-/** การ์ดบันทึกสำเร็จ (step ⑤) */
 export function dealSuccess(d: DealSuccessData): OutgoingMessage {
-  const up = d.profitThb >= 0;
-  return {
-    text:
-      `${up ? GRAD_GREEN : GRAD_RED}\n` +
-      `${BRAND}  <i>· บันทึกสำเร็จ (Recorded)</i>\n` +
-      `${progress(5)}\n${THIN}\n` +
-      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
-      `👤 <b>${d.adminName}</b>  <i>(Staff)</i>\n` +
-      table([
-        ['THB', money(d.thb)],
-        ['USDT', money(d.usdt)],
-        ['Buy', money(d.buyRate)],
-        ['Sell', money(d.sellRate)],
-      ]) +
-      `${up ? '📈' : '📉'} กำไร <i>(Profit)</i>  <b>${up ? '+' : ''}${money(d.profitThb)} THB</b>\n` +
-      (d.receiverName || d.last4
-        ? `👤 ${d.receiverName ?? '-'}${d.last4 ? `  <code>${d.bank ?? ''}••••${d.last4}</code>` : ''}\n`
-        : '') +
-      `${SIG}`,
-    reply_markup: buttons(d.transactionId),
-  };
+  const profitPct = d.thb > 0 ? (d.profitThb / d.thb) * 100 : 0;
+  const rows: { label: string; value: string }[] = [
+    { label: 'THB', value: money(d.thb) },
+    { label: 'USDT', value: fmtUsdt(d.usdt) },
+    { label: 'Buy Rate', value: `${money(d.buyRate)}  (THB ÷ USDT)` },
+    { label: 'Sell Rate', value: money(d.sellRate) },
+    { label: 'Profit', value: `${pct(profitPct)}  (${money(d.profitThb)} THB)` },
+  ];
+  const recv = receiverLine(d.bank, d.last4, d.receiverName);
+  if (recv) rows.push({ label: 'Receiver', value: recv });
+  if (d.last4) rows.push({ label: 'Last4', value: d.last4 });
+  rows.push({ label: 'Operator', value: d.adminName });
+
+  return card({
+    kind: 'SUCCESS',
+    ledgerId: d.ledgerRef,
+    status: 'SETTLED',
+    body: metrics(rows),
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
-// ═══════════════ Brand Success Card (ส่งต่อท้ายข้อความปกติหลังดีลสำเร็จ) ═══════════════
 export interface BrandCardData {
   usdt: number;
   txid?: string | null;
   network?: string | null;
   ledgerRef: string;
-  transactionId?: string | null; // สำหรับสร้างลิงก์สถานะให้ลูกค้า /status/<id>
+  transactionId?: string | null;
 }
 
-/** การ์ดแบรนด์ CE VAULT — trilingual TH/ZH/EN ตาม Brand Cards Kit v1.0 */
 export function brandCard(d: BrandCardData): OutgoingMessage {
-  const t = new Date().toLocaleTimeString('th-TH', { hour12: false, timeZone: 'Asia/Bangkok' });
+  const t = new Date().toLocaleTimeString('en-GB', {
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
   const shortTxid = d.txid ? `${d.txid.slice(0, 6)}…${d.txid.slice(-6)}` : null;
-  return {
-    text:
-      `🟢 ━━━━━━━━━━━━━\n` +
-      `        ✅\n` +
-      `  <b>✔ TRANSACTION COMPLETE</b>\n\n` +
-      `      <b>ทำรายการสำเร็จ</b>\n` +
-      `   <i>交易完成 · USDT Sent</i>\n` +
-      `${THIN}\n` +
-      `  AMOUNT / <i>จำนวน</i>\n` +
-      `  💠 <b>${money(d.usdt)} USDT</b>\n` +
-      `${THIN}\n` +
-      table(
-        [
-          ...(shortTxid ? [['TXID', shortTxid] as [string, string]] : []),
-          ['Net', d.network ?? 'TRC-20'],
-          ['Time', t],
-          ['Ref', `#${d.ledgerRef}`],
-        ],
-        24,
-      ) +
-      (APP && d.transactionId
-        ? `🔎 <a href="${APP}/status/${d.transactionId}">ติดตามสถานะรายการ (Track order)</a>\n`
-        : '') +
-      `${SIG}`,
-  };
+  const rows: { label: string; value: string }[] = [
+    { label: 'USDT', value: fmtUsdt(d.usdt) },
+    { label: 'Network', value: d.network ?? 'TRC-20' },
+    { label: 'Time', value: t },
+  ];
+  if (shortTxid) rows.push({ label: 'TXID', value: shortTxid });
+
+  return card({
+    kind: 'SUCCESS',
+    ledgerId: d.ledgerRef,
+    status: 'SETTLED',
+    body: metrics(rows),
+    note:
+      APP && d.transactionId
+        ? `<a href="${APP}/status/${d.transactionId}">Track order</a>`
+        : undefined,
+  });
 }
 
-/** req13: OCR USDT ไม่ตรงกับที่พิมพ์เอง → บล็อกการยืนยัน ต้องตรวจสอบเอง */
 export function usdtMismatch(ocrVal: number, manualVal: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_RED}\n` +
-      `🛑 <b>USDT ไม่ตรงกัน — ต้องตรวจสอบ</b>\n` +
-      `${THIN}\n` +
-      table([
-        ['OCR', money(ocrVal)],
-        ['พิมพ์', money(manualVal)],
-        ['ต่าง', money(Math.abs(ocrVal - manualVal))],
+  return card({
+    kind: 'ERROR',
+    status: 'ERROR',
+    body:
+      `USDT mismatch — confirmation blocked\n\n` +
+      metrics([
+        { label: 'OCR', value: fmtUsdt(ocrVal) },
+        { label: 'Entered', value: fmtUsdt(manualVal) },
+        { label: 'Delta', value: fmtUsdt(Math.abs(ocrVal - manualVal)) },
       ]) +
-      `<i>ระบบระงับการยืนยันไว้ก่อน</i>\n` +
-      `ส่ง <b>สกรีนช็อต USDT</b> ที่ถูกต้องอีกครั้ง หรือพิมพ์จำนวนที่ถูก\n` +
-      `<i>พิมพ์</i> <code>/cancel</code> <i>เพื่อยกเลิก</i>`,
-  };
+      `\n\nResend proof or type the correct amount\n<code>/cancel</code>`,
+  });
 }
 
-// ═══════════════ Confirm before commit (ลดส่งผิด) ═══════════════
 export function confirmDeposit(thb: number, usdt: number, rate: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนบันทึก</i>\n` +
-      `${progress(3)}\n${THIN}\n` +
-      `กำลังจะบันทึกฝาก:\n` +
-      table([
-        ['THB', money(thb)],
-        ['USDT', money(usdt)],
-        ['Rate', money(rate)],
-      ]) +
-      `\n<i>กด</i> <b>ยืนยัน</b> <i>เพื่อบันทึก · หรือพิมพ์เรตใหม่</i>`,
+  return card({
+    kind: 'CONFIRM',
+    status: 'REVIEW',
+    body: metrics([
+      { label: 'THB', value: money(thb) },
+      { label: 'USDT', value: fmtUsdt(usdt) },
+      { label: 'Rate', value: money(rate) },
+    ]),
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '✅ ยืนยัน', callback_data: `confirm:${usdt.toFixed(2)}` },
-          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
+          { text: 'Confirm', callback_data: `confirm:${usdt.toFixed(2)}` },
+          { text: 'Cancel', callback_data: 'cancelop:1' },
         ],
       ],
     },
-  };
+  });
 }
 
 export function confirmSend(usdt: number, holding: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ตรวจก่อนส่ง</i>\n` +
-      `${progress(4)}\n${THIN}\n` +
-      `กำลังจะส่งออก:\n` +
-      table(
-        [
-          ['USDT', money(usdt)],
-          ['คงเหลือ', money(holding - usdt)],
-        ],
-        17,
-      ) +
-      `\n<i>กด</i> <b>ยืนยัน</b> <i>เพื่อส่ง</i>`,
+  return card({
+    kind: 'CONFIRM',
+    status: 'REVIEW',
+    body: metrics([
+      { label: 'USDT Out', value: fmtUsdt(usdt) },
+      { label: 'Remaining', value: fmtUsdt(holding - usdt) },
+    ]),
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '✅ ยืนยันส่ง', callback_data: `confirmsend:${usdt.toFixed(2)}` },
-          { text: '✖️ ยกเลิก', callback_data: 'cancelop:1' },
+          { text: 'Confirm', callback_data: `confirmsend:${usdt.toFixed(2)}` },
+          { text: 'Cancel', callback_data: 'cancelop:1' },
         ],
       ],
     },
-  };
+  });
 }
 
-// ═══════════════ Rate ═══════════════
+// ═══════════════ Rates ═══════════════
 export function rateShow(
   sell: number,
   market: number,
   source?: 'binance_th' | 'manual' | 'default',
 ): OutgoingMessage {
   const src =
-    source === 'binance_th'
-      ? '🟢 <b>LIVE</b> Binance TH'
-      : source === 'manual'
-        ? '🟡 ตั้งเอง'
-        : '⚪ ค่าเริ่มต้น';
+    source === 'binance_th' ? 'LIVE · Binance TH' : source === 'manual' ? 'MANUAL' : 'DEFAULT';
   const spread = sell - market;
   const spreadPct = market > 0 ? (spread / market) * 100 : 0;
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· เรตปัจจุบัน</i>\n` +
-      `${GRAD_INDIGO}\n` +
-      `💱 เรตขาย <i>(Sell Rate)</i>  <b>${money(sell)} THB / USDT</b>\n` +
-      `🌐 เรตตลาด <i>(Market)</i>  <b>${money(market)} THB / USDT</b>\n` +
-      `      ${src}\n` +
-      `${THIN}\n` +
-      `📐 ส่วนต่าง <i>(Spread)</i>  <b>${money(spread)} THB</b>  <i>(${pct(spreadPct)})</i>\n` +
-      `${THIN}\n` +
-      `<i>ตั้งเรตขาย:</i> <code>/rate 35.5</code>\n` +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'RATES',
+    body:
+      metrics([
+        { label: 'Sell Rate', value: money(sell) },
+        { label: 'Market', value: `${money(market)}  (${src})` },
+        { label: 'Spread', value: `${money(spread)}  (${pct(spreadPct)})` },
+      ]) + `\n\nSet sell  <code>/rate 35.5</code>`,
+  });
 }
 
 export function rateSet(
@@ -784,19 +738,28 @@ export function rateSet(
   sell: number,
   market: number,
 ): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GREEN}\n` +
-      `✅ <b>ตั้งเรตใหม่สำเร็จ</b>\n` +
-      `${GRAD_GREEN}\n` +
-      `💱 เรตขาย   <b>${money(sell)} ฿</b>\n` +
-      `🌐 เรตตลาด  <b>${money(market)} ฿</b>\n` +
-      `${THIN}\n` +
-      `<i>โดย ${name || 'แอดมิน'} · ${MARK} CE VAULT</i>`,
-  };
+  return card({
+    kind: 'RATES',
+    status: 'SETTLED',
+    body: metrics([
+      { label: 'Sell Rate', value: money(sell) },
+      { label: 'Market', value: money(market) },
+      { label: 'Operator', value: name || 'admin' },
+    ]),
+  });
 }
 
-// ═══════════════ Transaction success (headline card) ═══════════════
+export function chatRateSet(rate: number): OutgoingMessage {
+  return card({
+    kind: 'RATES',
+    status: 'SETTLED',
+    body:
+      metrics([{ label: 'Room Sell Rate', value: money(rate) }]) +
+      `\n\nApplied to slip auto-calc in this room`,
+  });
+}
+
+// ═══════════════ Legacy success shapes ═══════════════
 export interface ThbSuccessData {
   transactionId: string;
   adminName: string;
@@ -808,32 +771,27 @@ export interface ThbSuccessData {
   feePercent: number;
   holdingUsdt: number;
 }
-export function thbSuccess(d: ThbSuccessData): OutgoingMessage {
-  const up = d.netProfitThb >= 0;
-  const feeHot = d.feePercent > FEE_WARN;
-  const grad = up ? GRAD_GREEN : GRAD_RED;
-  const tier = profitTier(d.profitPercent);
-  const rate = d.usdt > 0 ? d.thb / d.usdt : 0;
 
-  return {
-    text:
-      `${grad}\n` +
-      `${BRAND}  <i>· ฝากสำเร็จ</i>\n` +
-      `${progress(5)}\n${THIN}\n` +
-      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
-      `👤 <b>${d.adminName}</b>   ${tier}\n` +
-      table([
-        ['THB', money(d.thb)],
-        ['USDT', money(d.usdt)],
-        ['Rate', money(rate)],
-      ]) +
-      `${up ? '📈' : '📉'} กำไรสุทธิ   <b>${up ? '+' : ''}${money(d.netProfitThb)} ฿</b>  <i>(${pct(d.profitPercent)})</i>\n` +
-      `${feeHot ? '🔴' : '🟢'} ค่าธรรมเนียม  <b>${money(d.feeUsdt)} USDT</b>  <i>(${pct(d.feePercent)})</i>\n` +
-      `${THIN}\n` +
-      `💼 เหรียญตกค้าง · ${d.adminName}  <b>${money(d.holdingUsdt)} USDT</b> 🔒\n` +
-      `${SIG}`,
-    reply_markup: buttons(d.transactionId),
-  };
+export function thbSuccess(d: ThbSuccessData): OutgoingMessage {
+  const rate = d.usdt > 0 ? d.thb / d.usdt : 0;
+  return card({
+    kind: 'SUCCESS',
+    ledgerId: refCode(d.transactionId),
+    status: 'SETTLED',
+    body: metrics([
+      { label: 'THB', value: money(d.thb) },
+      { label: 'USDT', value: fmtUsdt(d.usdt) },
+      { label: 'Buy Rate', value: money(rate) },
+      { label: 'Profit', value: `${pct(d.profitPercent)}  (${money(d.netProfitThb)} THB)` },
+      {
+        label: 'Fee',
+        value: `${fmtUsdt(d.feeUsdt)}  (${pct(d.feePercent)})${d.feePercent > FEE_WARN ? '  HIGH' : ''}`,
+      },
+      { label: 'Holding USDT', value: fmtUsdt(d.holdingUsdt) },
+      { label: 'Operator', value: d.adminName },
+    ]),
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
 export interface UsdtSendData {
@@ -842,39 +800,29 @@ export interface UsdtSendData {
   usdt: number;
   holdingUsdt: number;
 }
+
 export function usdtSendSuccess(d: UsdtSendData): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `${BRAND}  <i>· ส่งออกทุนจีน</i>\n` +
-      `${progress(5)}\n${THIN}\n` +
-      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
-      `👤 <b>${d.adminName}</b>\n` +
-      table(
-        [
-          ['ส่ง', money(d.usdt)],
-          ['คงเหลือ', money(d.holdingUsdt)],
-        ],
-        17,
-      ) +
-      `${SIG}`,
-    reply_markup: buttons(d.transactionId),
-  };
+  return card({
+    kind: 'SETTLE',
+    ledgerId: refCode(d.transactionId),
+    status: 'SETTLED',
+    body: metrics([
+      { label: 'USDT Out', value: fmtUsdt(d.usdt) },
+      { label: 'Holding', value: fmtUsdt(d.holdingUsdt) },
+      { label: 'Operator', value: d.adminName },
+    ]),
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
-// ═══════════════ Edit flow ═══════════════
+// ═══════════════ Edit / Delete ═══════════════
 export function editPrompt(_type?: 'THB_DEPOSIT' | 'USDT_SEND'): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GOLD}\n` +
-      `${MARK} <b>CE VAULT</b>  ⚡ <i>โหมดแก้ไข</i>\n` +
-      `${THIN}\n` +
-      `พิมพ์ค่าใหม่ (ระบุสกุลเสมอ):\n` +
-      FORMAT_HINT +
-      `\n` +
-      `${THIN}\n` +
-      `<i>ใส่เฉพาะตัวที่จะแก้ก็ได้ · พิมพ์ </i><code>/cancel</code><i> เพื่อยกเลิก</i>`,
-  };
+  return card({
+    kind: 'EDIT',
+    status: 'REVIEW',
+    body: `Edit mode\n\n${FORMAT_HINT}\n\n<code>/cancel</code>  abort`,
+    note: 'Send only the legs you want to change',
+  });
 }
 
 export interface EditSuccessData {
@@ -889,64 +837,52 @@ export interface EditSuccessData {
   feePercent?: number;
   holdingUsdt: number;
 }
+
 export function editSuccess(d: EditSuccessData): OutgoingMessage {
   const isDep = d.type === 'THB_DEPOSIT';
-  const up = (d.netProfitThb ?? 0) >= 0;
-  const grad = isDep ? (up ? GRAD_GREEN : GRAD_RED) : GRAD_GOLD;
-  const body = isDep
-    ? `💵 THB    <code>${money(d.thb ?? 0)}</code>\n` +
-      `🪙 USDT   <code>${money(d.usdt)}</code>\n` +
-      `${THIN}\n` +
-      `${up ? '📈' : '📉'} กำไรสุทธิ  <b>${money(d.netProfitThb ?? 0)} ฿</b>  <i>(${pct(d.profitPercent ?? 0)})</i>\n` +
-      `🧾 ค่าธรรมเนียม  <b>${money(d.feeUsdt ?? 0)} USDT</b>  <i>(${pct(d.feePercent ?? 0)})</i>\n`
-    : `🚀 ส่งออก   <b>${money(d.usdt)} USDT</b>\n${THIN}\n`;
+  const rows: { label: string; value: string }[] = isDep
+    ? [
+        { label: 'THB', value: money(d.thb ?? 0) },
+        { label: 'USDT', value: fmtUsdt(d.usdt) },
+        {
+          label: 'Profit',
+          value: `${pct(d.profitPercent ?? 0)}  (${money(d.netProfitThb ?? 0)} THB)`,
+        },
+        { label: 'Fee', value: `${fmtUsdt(d.feeUsdt ?? 0)}  (${pct(d.feePercent ?? 0)})` },
+      ]
+    : [{ label: 'USDT Out', value: fmtUsdt(d.usdt) }];
+  rows.push({ label: 'Holding USDT', value: fmtUsdt(d.holdingUsdt) });
+  rows.push({ label: 'Operator', value: d.adminName });
 
-  return {
-    text:
-      `${grad}\n` +
-      `✏️ <b>แก้ไขสำเร็จ</b>  <i>· ${isDep ? 'THB → USDT' : 'ส่ง USDT'}</i>\n` +
-      `${THIN}\n` +
-      `🧾 <code>#${refCode(d.transactionId)}</code>\n` +
-      `👤 <b>${d.adminName}</b>\n` +
-      body +
-      `${THIN}\n` +
-      `💼 <i>เหรียญตกค้าง · ${d.adminName}</i>\n` +
-      `      <b>${money(d.holdingUsdt)} USDT</b>  🔒\n` +
-      `${SIG}`,
-    reply_markup: buttons(d.transactionId),
-  };
+  return card({
+    kind: 'EDIT',
+    ledgerId: refCode(d.transactionId),
+    status: 'SETTLED',
+    body: metrics(rows),
+    reply_markup: actionButtons(d.transactionId),
+  });
 }
 
 export function deleteSuccess(name: string, holding: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_RED}\n` +
-      `🗑️ <b>ลบธุรกรรมแล้ว</b>\n` +
-      `${GRAD_RED}\n` +
-      `👤 <b>${name}</b>\n` +
-      `💼 เหรียญตกค้างคงเหลือ  <b>${money(holding)} USDT</b>  🔒\n` +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'DELETE',
+    status: 'SETTLED',
+    body: metrics([
+      { label: 'Operator', value: name },
+      { label: 'Holding USDT', value: fmtUsdt(holding) },
+    ]),
+    note: 'Transaction removed from ledger',
+  });
 }
 
 export function cancelled(): OutgoingMessage {
-  return { text: `${MARK} ⚪ <i>ยกเลิกการแก้ไขแล้ว</i>` };
+  return card({
+    kind: 'CANCEL',
+    body: `Operation cancelled`,
+  });
 }
 
-// ═══════════════ Chat rate ═══════════════
-export function chatRateSet(rate: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GREEN}\n` +
-      `✅ <b>ตั้งเรตของห้องนี้แล้ว</b>\n` +
-      `${GRAD_GREEN}\n` +
-      `💱 เรตแลกในห้องนี้  <b>${money(rate)} ฿ / USDT</b>\n` +
-      `${THIN}\n` +
-      `<i>ตั้งแต่ตอนนี้ ระบบจะคำนวณ USDT ให้อัตโนมัติทุกครั้งที่ส่งสลิป</i>`,
-  };
-}
-
-// ═══════════════ Ledger summary (สไตล์ Chinese calc bot) ═══════════════
+// ═══════════════ History / ledger ═══════════════
 export interface LedgerEntry {
   time: string;
   thb: number;
@@ -959,13 +895,12 @@ export interface LedgerData {
   totalIncomingUsdt: number;
   totalOutgoingUsdt: number;
   fixedRate: number | null;
-  feePercent: number; // ค่าธรรมเนียมรวม (%) — คิดจากเฉลี่ย tx
+  feePercent: number;
   netProfitThb: number;
   lastAdminName: string | null;
-  roomName?: string | null; // ชื่อห้อง (กลุ่ม)
-  staff?: { name: string; count: number; profitThb: number }[]; // Top Staff
-  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[]; // 5 รายการล่าสุด
-  /** เกณฑ์แสดงผลข้อมูลจริงของบอท */
+  roomName?: string | null;
+  staff?: { name: string; count: number; profitThb: number }[];
+  recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[];
   nowLabel?: string | null;
   pinnedBanks?: { bank_name: string; last4: string; balance: number }[] | null;
   lastCustomer?: {
@@ -977,183 +912,156 @@ export interface LedgerData {
 }
 
 export function ledgerCard(d: LedgerData): OutgoingMessage {
-  const incoming = d.incomingList
-    .slice(0, 10)
-    .map(
-      (e) =>
-        `<code>${e.time}</code>  ${money(e.thb)}${d.fixedRate ? ` / ${money(d.fixedRate)} = ${money(e.usdt)}` : ` → ${money(e.usdt)}u`}`,
-    )
-    .join('\n');
-  const outgoing = d.outgoingList
-    .slice(0, 10)
-    .map((e) => `<code>${e.time}</code>  <b>${money(e.usdt)}</b>`)
-    .join('\n');
-
   const shouldSendUsdt = d.fixedRate ? d.totalThb / d.fixedRate : d.totalIncomingUsdt;
   const notSent = shouldSendUsdt - d.totalOutgoingUsdt;
-  const notSentThb = notSent * (d.fixedRate ?? 0);
 
-  const pinBlock =
+  const inLines = d.incomingList
+    .slice(0, 8)
+    .map((e) => `${e.time}  ${money(e.thb).padStart(10)}  ${fmtUsdt(e.usdt).padStart(10)}`)
+    .join('\n');
+  const outLines = d.outgoingList
+    .slice(0, 8)
+    .map((e) => `${e.time}  ${fmtUsdt(e.usdt).padStart(10)}`)
+    .join('\n');
+
+  const pin =
     d.pinnedBanks && d.pinnedBanks.length
-      ? `📌 บชรับวันนี้  ` +
-        d.pinnedBanks
-          .map((b) => `<b>${b.bank_name}</b> <code>••••${b.last4}</code> (${money(b.balance)})`)
-          .join(' · ') +
-        `\n`
-      : '';
-  const cust = d.lastCustomer;
-  const custBlock = cust
-    ? `👤 ลูกค้าล่าสุด  ${cust.name ?? '-'} · ${cust.bank ?? ''} <code>••••${cust.last4 ?? '????'}</code> · <b>${money(cust.thb)} THB</b>\n`
-    : '';
+      ? d.pinnedBanks
+          .map((b) => `${b.bank_name} ••••${b.last4}`)
+          .join(' · ')
+      : null;
 
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
-      `${GRAD_INDIGO}\n` +
-      (d.nowLabel ? `🕐 ${d.nowLabel}\n` : '') +
-      pinBlock +
-      custBlock +
-      (d.nowLabel || pinBlock || custBlock ? `${THIN}\n` : '') +
-      `🟢 <b>เข้าบัญชี</b> <i>(Incoming)</i> · ${d.incomingList.length} รายการ\n` +
-      (incoming || '<i>— ยังไม่มี —</i>') +
-      `\n${THIN}\n` +
-      `🔴 <b>ส่งออก</b> <i>(Outgoing)</i> · ${d.outgoingList.length} รายการ\n` +
-      (outgoing || '<i>— ยังไม่มี —</i>') +
-      `\n${THIN}\n` +
-      `📊 ยอดรับรวม <i>(Total In)</i>  <b>${money(d.totalThb)} THB</b>\n` +
-      (d.fixedRate ? `💱 เรตห้อง <i>(Sell Rate)</i>  <b>${money(d.fixedRate)}</b>\n` : '') +
-      `${THIN}\n` +
-      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(shouldSendUsdt)} USDT</b>\n` +
-      `✅ ส่งไปแล้ว <i>(Sent)</i>  <b>${money(d.totalOutgoingUsdt)} USDT</b>\n` +
-      `${notSent >= 0 ? '⏳' : '⚠️'} คงเหลือ <i>(Remaining)</i>  <b>${money(notSent)} USDT</b>` +
-      (d.fixedRate ? `  <i>(${money(notSentThb)} THB)</i>` : '') +
-      `\n${THIN}\n` +
-      `💰 กำไรสุทธิ <i>(Net Profit)</i>  <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} THB</b>\n` +
-      (d.lastAdminName
-        ? `👤 ผู้รับผิดชอบล่าสุด <i>(Last Staff)</i>  <b>${d.lastAdminName}</b>\n`
-        : '') +
-      (d.staff && d.staff.length
-        ? `${THIN}\n👷 <b>Top Staff</b>\n` +
+  const body =
+    (d.nowLabel ? `<i>${esc(d.nowLabel)}</i>\n\n` : '') +
+    (pin ? `Pinned\n<code>${esc(pin)}</code>\n\n` : '') +
+    `IN  <code>${d.incomingList.length}</code>\n` +
+    (inLines ? `<pre>${esc(inLines)}</pre>\n` : `<i>— empty —</i>\n`) +
+    `\nOUT  <code>${d.outgoingList.length}</code>\n` +
+    (outLines ? `<pre>${esc(outLines)}</pre>\n` : `<i>— empty —</i>\n`) +
+    `\n` +
+    metrics([
+      { label: 'Total THB', value: money(d.totalThb) },
+      ...(d.fixedRate ? [{ label: 'Sell Rate', value: money(d.fixedRate) }] : []),
+      { label: 'Should Send USDT', value: fmtUsdt(shouldSendUsdt) },
+      { label: 'Sent USDT', value: fmtUsdt(d.totalOutgoingUsdt) },
+      { label: 'Remaining USDT', value: fmtUsdt(notSent) },
+      {
+        label: 'Net Profit',
+        value: `${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} THB`,
+      },
+      ...(d.lastAdminName ? [{ label: 'Last Operator', value: d.lastAdminName }] : []),
+    ]) +
+    (d.staff?.length
+      ? `\n\nStaff\n` +
+        monoRows(
           d.staff
             .slice(0, 5)
             .map(
-              (s, i) =>
-                `${['🥇', '🥈', '🥉', '4.', '5.'][i]} ${s.name}  <b>${s.count}</b> ดีล · <b>${s.profitThb >= 0 ? '+' : ''}${money(s.profitThb)} THB</b>`,
-            )
-            .join('\n') +
-          '\n'
-        : '') +
-      (d.recent && d.recent.length ? formatRecentBlock(d.recent) + '\n' : '') +
-      `${SIG}`,
+              (s) =>
+                [s.name.slice(0, 10), `${s.count} · ${money(s.profitThb)}`] as [string, string],
+            ),
+        )
+      : '') +
+    formatRecentBlock(d.recent);
+
+  // Keep under Telegram 4096
+  const msg = card({
+    kind: 'HISTORY',
+    subtitle: d.roomName ? `Secure Ledger · ${d.roomName}` : 'Secure Ledger',
+    body,
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' },
-          { text: '🗑 ล้างยอดห้องนี้', callback_data: 'resetask:1' },
+          { text: 'New day', callback_data: 'newday:1' },
+          { text: 'Reset room', callback_data: 'resetask:1' },
         ],
-        ...(APP ? [[{ text: '📊 เปิดแดชบอร์ด CE Vault', url: `${APP}/dashboard` }]] : []),
+        ...(APP ? [[{ text: 'Dashboard', url: `${APP}/dashboard` }]] : []),
       ],
     },
-  };
+  });
+  if (msg.text.length > 3900) {
+    msg.text = msg.text.slice(0, 3890) + '\n…';
+  }
+  return msg;
 }
 
-// ═══════════════ เมนูคำสั่ง ═══════════════
 export function menuCard(): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· เมนูคำสั่ง</i>\n` +
-      `${THIN}\n` +
-      `<b>ทำรายการ</b>\n` +
-      `👁 ส่ง<b>สลิป THB</b> → Vision อ่านยอด/ธนาคาร — ตรงบชที่เซ็ตไว้ = OCR สำเร็จ\n` +
-      `📸 ส่งสกรีนช็อต USDT (หรือพิมพ์ <code>-13.6U</code>)\n` +
-      `${THIN}\n` +
-      `<b>พิมพ์ยอด (ต้องระบุสกุลเสมอ)</b>\n` +
-      FORMAT_HINT +
-      `\n` +
-      `${THIN}\n` +
-      `<b>คำสั่ง</b>\n` +
-      `📊 <code>/today</code>  ยอดห้องนี้วันนี้\n` +
-      `📌 <code>/pin kbank 1234567890</code>  เซ็ตบชรับวันนี้ (สูงสุด 3)\n` +
-      `   <i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
-      `📌 <code>/unpin 1</code>  ลบบชที่เซ็ตไว้\n` +
-      `🔄 <code>/newday</code>  เริ่มวันใหม่\n` +
-      `🗑 <code>/reset</code>  ล้างยอดห้องนี้\n` +
-      `🏷 <code>/setrate 40</code>  ตั้งเรตขายห้องนี้\n` +
-      `💱 <code>/rate</code>  เรตตลาด Binance\n` +
-      `🏦 <code>/receiver 6578</code>  ประวัติผู้รับ\n` +
-      `✖️ <code>/cancel</code>  ยกเลิกรายการค้าง\n` +
-      `${SIG}`,
+  return card({
+    kind: 'MENU',
+    body:
+      `<b>Operations</b>\n` +
+      `THB slip → OCR verify\n` +
+      `USDT proof or <code>-13.6U</code>\n\n` +
+      `<b>Input</b>\n${FORMAT_HINT}\n\n` +
+      `<b>Commands</b>\n` +
+      `<code>/admin NAME</code>  identity\n` +
+      `<code>/today</code>  room ledger\n` +
+      `<code>/pin kbank 1234</code>  receive acct\n` +
+      `<code>/unpin 1</code>  remove pin\n` +
+      `<code>/newday</code>  day cut\n` +
+      `<code>/setrate 40</code>  room sell\n` +
+      `<code>/rate</code>  market\n` +
+      `<code>/receiver 6578</code>  history\n` +
+      `<code>/cancel</code>  abort`,
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '📊 ยอดวันนี้', callback_data: 'menu_today:1' },
-          { text: '📌 บัญชีรับ', callback_data: 'pin_status:1' },
+          { text: 'Today', callback_data: 'menu_today:1' },
+          { text: 'Pins', callback_data: 'pin_status:1' },
         ],
-        [{ text: '🔄 เริ่มวันใหม่', callback_data: 'newday:1' }],
-        ...(APP ? [[{ text: '📊 แดชบอร์ด', url: `${APP}/dashboard` }]] : []),
+        [{ text: 'New day', callback_data: 'newday:1' }],
+        ...(APP ? [[{ text: 'Dashboard', url: `${APP}/dashboard` }]] : []),
       ],
     },
-  };
+  });
 }
 
-// ═══════════════ Reset (hard) ═══════════════
 export function resetAsk(roomName?: string | null): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_RED}\n` +
-      `🗑 <b>ล้างยอดห้องนี้${roomName ? ` · ${roomName}` : ''}?</b>\n` +
-      `${THIN}\n` +
-      `<b>ลบธุรกรรมทั้งหมดของห้องนี้ถาวร</b> (ย้อนกลับไม่ได้)\n` +
-      `<i>ห้องอื่นไม่กระทบ · ประวัติผู้รับยังอยู่</i>`,
+  return card({
+    kind: 'DELETE',
+    status: 'REVIEW',
+    body:
+      `Reset room ledger` +
+      (roomName ? `\n<code>${esc(roomName)}</code>` : '') +
+      `\n\nDeletes all transactions in this room\nIrreversible · other rooms untouched`,
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '⚠️ ยืนยันล้าง', callback_data: 'resetgo:1' },
-          { text: '✖️ ไม่ล้าง', callback_data: 'cancelop:1' },
+          { text: 'Confirm reset', callback_data: 'resetgo:1' },
+          { text: 'Cancel', callback_data: 'cancelop:1' },
         ],
       ],
     },
-  };
+  });
 }
+
 export function resetDone(count: number): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GREEN}\n` +
-      `✅ <b>ล้างยอดห้องนี้แล้ว</b>\n` +
-      `${THIN}\n` +
-      `ลบไป <b>${count} รายการ</b> · ยอดเริ่มนับใหม่จาก 0\n` +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'DELETE',
+    status: 'SETTLED',
+    body: metrics([{ label: 'Removed', value: String(count) }]),
+    note: 'Room counters reset to zero',
+  });
 }
 
-/** ยืนยันตั้งชื่อห้อง */
 export function roomNameSet(name: string): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_GREEN}\n` +
-      `✅ <b>ตั้งชื่อห้องแล้ว</b>\n` +
-      `${THIN}\n` +
-      `🏠 ห้องนี้คือ  <b>${name}</b>\n` +
-      `<i>แสดงในแดชบอร์ด/สรุปแทนเลขห้อง</i>`,
-  };
+  return card({
+    kind: 'ROOM',
+    status: 'SETTLED',
+    body: metrics([{ label: 'Room', value: name }]),
+  });
 }
 
-/** ยืนยันเริ่มวันใหม่ (day-cut) */
 export function newDayStarted(atLabel: string): OutgoingMessage {
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `🔄 <b>เริ่มวันใหม่แล้ว</b>\n` +
-      `${THIN}\n` +
-      `<i>ยอดสรุปเริ่มนับใหม่ตั้งแต่</i>  <b>${atLabel}</b>\n` +
-      `<i>ยอดก่อนหน้ายังอยู่ในแดชบอร์ด/ประวัติครบ</i>\n` +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'DAY',
+    status: 'SETTLED',
+    body: metrics([{ label: 'Day cut', value: atLabel }]),
+    note: 'Prior volume remains in history',
+  });
 }
 
-// ═══════════════ Receiver History ═══════════════
+// ═══════════════ Receiver history ═══════════════
 export interface ReceiverCardData {
   bank: string | null;
   last4: string;
@@ -1164,7 +1072,7 @@ export interface ReceiverCardData {
   totalUsdt?: number;
   maxThb?: number;
   lastThb?: number;
-  lastAt?: string | null; // ISO
+  lastAt?: string | null;
   lastRef?: string | null;
   todayCount?: number;
   todayThb?: number;
@@ -1172,8 +1080,8 @@ export interface ReceiverCardData {
 
 const fmtDT = (iso?: string | null) =>
   iso
-    ? new Date(iso).toLocaleString('th-TH', {
-        day: 'numeric',
+    ? new Date(iso).toLocaleString('en-GB', {
+        day: '2-digit',
         month: 'short',
         year: 'numeric',
         hour: '2-digit',
@@ -1183,86 +1091,67 @@ const fmtDT = (iso?: string | null) =>
       })
     : '-';
 
-/** บรรทัดสรุปผู้รับ แทรกในการ์ดสลิป: เคยรับแล้ว n รายการ / บัญชีใหม่ */
 export function receiverBrief(
   r: ReceiverCardData | null,
   bank: string | null,
   last4: string,
 ): string {
   if (!r) {
-    return (
-      `${THIN}\n` +
-      `⚠️ <b>บัญชีใหม่</b> <i>(New Receiver)</i>  ${bank ?? '-'} <code>••••${last4}</code>\n` +
-      `<i>ยังไม่เคยมีประวัติในระบบ</i>`
-    );
+    return `New receiver\n<code>${esc(bank ?? '-')} ••••${esc(last4)}</code>`;
   }
-  const star =
-    r.status === 'trusted'
-      ? '  ⭐ <b>Trusted</b>'
-      : r.status === 'blacklist'
-        ? '  🚫 <b>BLACKLIST</b>'
-        : '';
+  const tag =
+    r.status === 'trusted' ? 'TRUSTED' : r.status === 'blacklist' ? 'BLACKLIST' : 'KNOWN';
   return (
-    `${THIN}\n` +
-    `🏦 <b>${r.bank ?? '-'} ••••${r.last4}</b>${r.name ? `  👤 ${r.name}` : ''}${star}\n` +
-    `📊 เคยรับแล้ว <i>(History)</i>  <b>${r.totalTx ?? 0} รายการ</b> · รวม <b>${money(r.totalThb ?? 0)} THB</b>\n` +
-    (r.todayCount
-      ? `📅 วันนี้ <i>(Today)</i>  <b>${r.todayCount} รายการ</b> · <b>${money(r.todayThb ?? 0)} THB</b>\n`
-      : '') +
-    `⏱ ล่าสุด <i>(Last)</i>  ${fmtDT(r.lastAt)}${r.lastRef ? `  <code>#${r.lastRef}</code>` : ''}`
+    `Receiver  <code>${tag}</code>\n` +
+    `<code>${esc(r.bank ?? '-')} ••••${esc(r.last4)}</code>` +
+    (r.name ? `\n${esc(r.name)}` : '') +
+    `\nDeals <code>${r.totalTx ?? 0}</code> · THB <code>${money(r.totalThb ?? 0)}</code>`
   );
 }
 
-/** การ์ดเต็มสำหรับ /receiver 6578 */
 export function receiverCard(r: ReceiverCardData): OutgoingMessage {
-  const star =
-    r.status === 'trusted' ? '⭐ Trusted Receiver' : r.status === 'blacklist' ? '🚫 BLACKLIST' : '';
+  const tag =
+    r.status === 'trusted' ? 'TRUSTED' : r.status === 'blacklist' ? 'BLACKLIST' : 'RECEIVER';
   const avg = r.totalTx ? (r.totalThb ?? 0) / r.totalTx : 0;
-  return {
-    text:
-      `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· Receiver</i>\n${THIN}\n` +
-      `🏦 <b>${r.bank ?? '-'}</b>  <code>••••${r.last4}</code>\n` +
-      (r.name ? `👤 <b>${r.name}</b>\n` : '') +
-      (star ? `${star}\n` : '') +
-      table(
-        [
-          ['Deals', String(r.totalTx ?? 0)],
-          ['Total', money(r.totalThb ?? 0)],
-          ['Max', money(r.maxThb ?? 0)],
-          ['Last', money(r.lastThb ?? 0)],
-          ['USDT', money(r.totalUsdt ?? 0)],
-          ['Avg', money(avg)],
-        ],
-        17,
-      ) +
-      `⏱ ล่าสุด <i>(Last)</i>  ${fmtDT(r.lastAt)}\n` +
-      (r.lastRef ? `🧾 <code>#${r.lastRef}</code>\n` : '') +
-      `${SIG}`,
-  };
+  return card({
+    kind: 'HISTORY',
+    subtitle: tag,
+    body:
+      metrics([
+        { label: 'Account', value: `${r.bank ?? '-'} ••••${r.last4}` },
+        ...(r.name ? [{ label: 'Name', value: r.name }] : []),
+        { label: 'Deals', value: String(r.totalTx ?? 0) },
+        { label: 'Total THB', value: money(r.totalThb ?? 0) },
+        { label: 'Max THB', value: money(r.maxThb ?? 0) },
+        { label: 'Last THB', value: money(r.lastThb ?? 0) },
+        { label: 'Total USDT', value: fmtUsdt(r.totalUsdt ?? 0) },
+        { label: 'Average', value: money(avg) },
+        { label: 'Last seen', value: fmtDT(r.lastAt) },
+      ]) + (r.lastRef ? `\n\nLedger  <code>#${esc(r.lastRef)}</code>` : ''),
+  });
 }
 
 export function receiverNotFound(last4: string): OutgoingMessage {
-  return {
-    text: `${MARK} ไม่พบประวัติผู้รับ <code>••••${last4}</code>\n<i>บัญชีนี้ยังไม่เคยมีธุรกรรมในระบบ</i>`,
-  };
+  return card({
+    kind: 'HISTORY',
+    status: 'ERROR',
+    body: `No receiver history\n<code>••••${esc(last4)}</code>`,
+  });
 }
 
 // ═══════════════ Error ═══════════════
-/** ตัดข้อความ error ยาว/ลิงก์ index ของ Firebase ให้อ่านง่ายในแชท */
 export function sanitizeErrorDetail(raw: string): string {
   const s = String(raw || '').trim();
-  if (!s) return 'เกิดข้อผิดพลาดไม่ทราบสาเหตุ';
+  if (!s) return 'Unknown error';
   if (/requires an index|FAILED_PRECONDITION|create_composite/i.test(s)) {
-    return 'ระบบกำลังอัปเดตฐานข้อมูล (index) — ลองใหม่ในอีกสักครู่ หรือแจ้งแอดมิน';
+    return 'Database index updating — retry shortly';
   }
   if (/permission denied|PERMISSION_DENIED/i.test(s)) {
-    return 'ไม่มีสิทธิ์เข้าถึงข้อมูล — แจ้งแอดมินตรวจสอบ Firebase';
+    return 'Permission denied — contact admin';
   }
   if (/ADMIN_NOT_FOUND/i.test(s)) {
-    return 'ยังไม่ได้ลงทะเบียนแอดมินในระบบ — ให้เจ้าของเพิ่ม telegram id ของคุณ';
+    return 'Admin not registered — use /admin NAME';
   }
-  // ตัด URL ยาว ๆ ออกจากข้อความที่โชว์ใน Telegram
   return s
     .replace(/https?:\/\/\S+/g, '')
     .replace(/\s+/g, ' ')
@@ -1271,13 +1160,10 @@ export function sanitizeErrorDetail(raw: string): string {
 }
 
 export function error(detail: string): OutgoingMessage {
-  const clean = sanitizeErrorDetail(detail);
-  return {
-    text:
-      `${GRAD_RED}\n` +
-      `⚠️ <b>ทำรายการไม่สำเร็จ</b>\n` +
-      `${GRAD_RED}\n` +
-      `${clean}\n` +
-      `<i>ลองใหม่อีกครั้ง หรือแจ้งแอดมินระบบ</i>`,
-  };
+  return card({
+    kind: 'ERROR',
+    status: 'ERROR',
+    body: `Operation failed\n\n<code>${esc(sanitizeErrorDetail(detail))}</code>`,
+    note: 'Retry or escalate to system admin',
+  });
 }

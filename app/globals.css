@@ -3,26 +3,25 @@
 @tailwind utilities;
 
 /* ============================================================
-   CE VAULT — Premium AI-grade theme (dark glass + aurora)
-   inspired by Linear / Claude / Perplexity
+   CE VAULT — FinTech Operations Console
+   OLED · Bloomberg × Stripe × Linear × Apple Wallet
    ============================================================ */
 :root {
-  /* ── CE VAULT brand palette (NOVA) — ตาม brandkit-test.html ── */
-  --bg: #0b0f14;
-  --bg-2: #111620;
-  --surface: rgba(255, 255, 255, 0.045);
-  --surface-2: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --text: #e8f4f8;
-  --muted: #5e7c86;
-  --brand-1: #00e676; /* green */
-  --brand-2: #00d8ff; /* cyan */
-  --accent: #00d8ff;
-  --gold: #f4c542;
-  --good: #00e676;
-  --bad: #ff5a6e;
-  --warn: #f4c542;
+  --bg: #05050a;
+  --bg-2: #101114;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #f2f2f5;
+  --muted: #8b8b96;
+  --brand-1: #00d26a; /* success */
+  --brand-2: #00f0ff; /* cyan */
+  --accent: #00f0ff;
+  --gold: #e5c04a;
+  --good: #00d26a;
+  --bad: #ff4d4f;
+  --warn: #ffb800;
 }
 
 html {
