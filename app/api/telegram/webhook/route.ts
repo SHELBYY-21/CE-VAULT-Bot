@@ -54,6 +54,7 @@ import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary, notifyReady } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
+import { convertThbUsdt, parseConvertQuery } from '@/lib/convert';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
 import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
 import {
@@ -331,6 +332,20 @@ async function handleUpdate(update: any): Promise<void> {
     } else {
       await sendMessage(chatId, UI.rateShow(r.sellRate, r.marketUsdtRate, r.marketSource));
     }
+    return;
+  }
+
+  // ----- /convert <ยอด> [thb|usdt] : เครื่องคำนวณแปลงหน่วย (ไม่บันทึกธุรกรรม) -----
+  if (text && (text.startsWith('/convert') || text.startsWith('/แปลง'))) {
+    const query = parseConvertQuery(text.replace('/convert', '').replace('/แปลง', ''));
+    if (!query) {
+      await sendMessage(chatId, UI.convertUsage());
+      return;
+    }
+    const r = await getLatestRates();
+    const rate = r.sellRate;
+    const result = convertThbUsdt(query.amount, query.currency, rate);
+    await sendMessage(chatId, UI.convertResult(result));
     return;
   }
 
