@@ -170,6 +170,8 @@ https://your-domain/api/telegram/set-webhook?secret=<API_SECRET>
 | `/rate` | ดูเรตปัจจุบัน (เรตตลาด = Binance TH real-time) |
 | `/rate 35.5` | ตั้ง**เรตขายของเรา** (เรตตลาดอิง Binance TH อัตโนมัติ) |
 | `/rate 35.5 34.8` | ตั้งเรตขาย + เรตตลาดเอง (override) |
+| `/convert 5000` | แปลง 5,000 บาท → USDT ที่เรตขายปัจจุบัน (ไม่บันทึกธุรกรรม) |
+| `/convert 100 usdt` | แปลง 100 USDT → บาท ที่เรตขายปัจจุบัน |
 
 **เรตตลาดจริง (market rate):** ดึงสดจาก **Binance TH** `GET https://api.binance.th/api/v1/ticker/price?symbol=USDTTHB` (public, cache 30 วิ) — ใช้คำนวณ Expected USDT / ค่าธรรมเนียม และโชว์บนแดชบอร์ด (`/api/market-rate`, อัปเดตทุก 30 วิ). ถ้า Binance TH ล่ม → fallback เรตในตาราง `rates` → ค่า ENV
 

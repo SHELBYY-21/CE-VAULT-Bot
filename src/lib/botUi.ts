@@ -796,6 +796,38 @@ export function rateSet(
   };
 }
 
+// ═══════════════ Conversion calculator ═══════════════
+export function convertResult(d: {
+  inputAmount: number;
+  inputCurrency: 'THB' | 'USDT';
+  outputAmount: number;
+  outputCurrency: 'THB' | 'USDT';
+  rate: number;
+}): OutgoingMessage {
+  const inUnit = d.inputCurrency === 'THB' ? '฿' : 'USDT';
+  const outUnit = d.outputCurrency === 'THB' ? '฿' : 'USDT';
+  return {
+    text:
+      `${GRAD_INDIGO}\n` +
+      `${BRAND}  <i>· แปลงหน่วย</i>\n` +
+      `${GRAD_INDIGO}\n` +
+      `${money(d.inputAmount)} ${inUnit}  ➜  <b>${money(d.outputAmount)} ${outUnit}</b>\n` +
+      `${THIN}\n` +
+      `💱 เรทที่ใช้  <b>${money(d.rate)} THB / USDT</b>\n` +
+      `${THIN}\n` +
+      `<i>ลองยอดอื่น:</i> <code>/convert 5000</code> · <code>/convert 100 usdt</code>\n` +
+      `${SIG}`,
+  };
+}
+
+export function convertUsage(): OutgoingMessage {
+  return {
+    text:
+      `พิมพ์ <code>/convert 5000</code> (บาท → USDT)\n` +
+      `หรือ <code>/convert 100 usdt</code> (USDT → บาท)`,
+  };
+}
+
 // ═══════════════ Transaction success (headline card) ═══════════════
 export interface ThbSuccessData {
   transactionId: string;
@@ -1082,6 +1114,7 @@ export function menuCard(): OutgoingMessage {
       `🗑 <code>/reset</code>  ล้างยอดห้องนี้\n` +
       `🏷 <code>/setrate 40</code>  ตั้งเรตขายห้องนี้\n` +
       `💱 <code>/rate</code>  เรตตลาด Binance\n` +
+      `🧮 <code>/convert 5000</code>  แปลงหน่วย THB ⇄ USDT\n` +
       `🏦 <code>/receiver 6578</code>  ประวัติผู้รับ\n` +
       `✖️ <code>/cancel</code>  ยกเลิกรายการค้าง\n` +
       `${SIG}`,
