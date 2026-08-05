@@ -60,6 +60,18 @@ npm run prod:24h
 1. เปิดบิลลิ่ง: https://console.firebase.google.com/project/ce88-95911/overview?purchaseBillingPlan=metered  
 2. ตั้ง secrets ตาม `apphosting.yaml` แล้ว deploy จาก Console / CLI
 
+## Autopilot (Cursor SDK)
+
+รัน cloud agent จากเครื่องหรือ GitHub Actions เพื่อ triage PR / แก้ CI / polish slip UI โดยไม่ต้องนั่งเฝ้าใน IDE:
+
+```bash
+export CURSOR_API_KEY=...   # https://cursor.com/dashboard/api
+npm run autopilot -- list
+npm run autopilot -- triage
+```
+
+รายละเอียด playbooks + workflow: [`docs/AUTOPILOT.md`](docs/AUTOPILOT.md)
+
 ## โครงสร้างโปรเจกต์
 
 ```

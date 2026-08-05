@@ -54,3 +54,15 @@ profit calc needs `marketUsdtRate` (and `sellRate`) too. When calling the route 
 ### External services
 Market rate is fetched live from Binance TH (public, no key) and degrades to `rates` /
 ENV defaults if unreachable. OCR (Grok/OCR.space) and Circle on-chain are optional.
+
+### Autopilot (Cursor SDK)
+Launch cloud agents for PR triage / CI fix / slip UI / hosting / bot smoke:
+
+```bash
+export CURSOR_API_KEY=...   # https://cursor.com/dashboard/api
+npm run autopilot -- list
+npm run autopilot -- triage --dry-run
+npm run autopilot -- triage
+```
+
+See `docs/AUTOPILOT.md`. Manual GitHub Action: **Autopilot** workflow (secret `CURSOR_API_KEY`).

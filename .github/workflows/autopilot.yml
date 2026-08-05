@@ -1,0 +1,82 @@
+name: Autopilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      playbook:
+        description: Playbook id (triage, ci-fix, slip-ui, hosting, bot-smoke, freeform)
+        required: true
+        default: triage
+        type: choice
+        options:
+          - triage
+          - ci-fix
+          - slip-ui
+          - hosting
+          - bot-smoke
+          - freeform
+      prompt:
+        description: Extra / freeform prompt (required for freeform)
+        required: false
+        default: ""
+        type: string
+      model:
+        description: Cursor model id
+        required: false
+        default: composer-2.5
+        type: string
+      starting_ref:
+        description: Git starting ref for the cloud agent
+        required: false
+        default: main
+        type: string
+      wait:
+        description: Wait for the cloud run to finish
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Require CURSOR_API_KEY
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          if [ -z "$CURSOR_API_KEY" ]; then
+            echo "::error::Set repository secret CURSOR_API_KEY (https://cursor.com/dashboard/api)"
+            exit 1
+          fi
+
+      - name: Launch Autopilot
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_AUTOPILOT_MODEL: ${{ inputs.model }}
+          CURSOR_AUTOPILOT_STARTING_REF: ${{ inputs.starting_ref }}
+          PLAYBOOK: ${{ inputs.playbook }}
+          EXTRA_PROMPT: ${{ inputs.prompt }}
+          WAIT: ${{ inputs.wait }}
+          MODEL: ${{ inputs.model }}
+          REF: ${{ inputs.starting_ref }}
+        run: |
+          set -euo pipefail
+          ARGS=("$PLAYBOOK" --model "$MODEL" --ref "$REF")
+          if [ "$WAIT" = "true" ]; then
+            ARGS+=(--wait)
+          fi
+          if [ -n "$EXTRA_PROMPT" ]; then
+            ARGS+=(-- "$EXTRA_PROMPT")
+          fi
+          npm run autopilot -- "${ARGS[@]}"
