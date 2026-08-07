@@ -5,8 +5,33 @@ import { adminStorage, storageBucketName } from './firebaseAdmin';
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const API = `https://api.telegram.org/bot${TOKEN}`;
+/** เมื่อ TELEGRAM_DRY_RUN=1 ไม่เรียก api.telegram.org — เขียนข้อความลง stdout + /tmp/ce-vault-tg-outbox.jsonl */
+const DRY_RUN = process.env.TELEGRAM_DRY_RUN === '1' || process.env.TELEGRAM_DRY_RUN === 'true';
+let dryRunMsgSeq = 1000;
+
+function dryRunLog(method: string, payload: Record<string, unknown>): void {
+  const line = JSON.stringify({ at: new Date().toISOString(), method, payload });
+  console.log(`[tg-dry-run] ${line}`);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    fs.appendFileSync('/tmp/ce-vault-tg-outbox.jsonl', line + '\n');
+  } catch {
+    /* ignore outbox write errors in constrained envs */
+  }
+}
 
 async function tg<T = any>(method: string, payload: Record<string, any>): Promise<T> {
+  if (DRY_RUN) {
+    dryRunLog(method, payload);
+    if (method === 'sendMessage') {
+      return { message_id: ++dryRunMsgSeq } as T;
+    }
+    if (method === 'getFile') {
+      return { file_path: 'photos/dry-run.jpg' } as T;
+    }
+    return {} as T;
+  }
   const res = await fetch(`${API}/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
