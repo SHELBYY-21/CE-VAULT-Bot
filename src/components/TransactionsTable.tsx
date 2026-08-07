@@ -1,10 +1,14 @@
+'use client';
+
 // ตารางธุรกรรม — glass + row glow + badge/pill (ธีม CE Vault)
-import Link from 'next/link';
 import type { Transaction } from '@/types/transactions';
+import { normalizeTransactionStatus } from '@/types/transactions';
+import TransactionActions from '@/components/TransactionActions';
 
 interface TransactionsTableProps {
   transactions: Transaction[];
   feeWarningThreshold: number;
+  onChanged?: () => void;
 }
 
 function TypeBadge({ type }: { type: Transaction['type'] }) {
@@ -22,9 +26,33 @@ function TypeBadge({ type }: { type: Transaction['type'] }) {
   );
 }
 
+function StatusBadge({ status }: { status: Transaction['status'] }) {
+  const s = normalizeTransactionStatus(status);
+  if (s === 'completed') {
+    return (
+      <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-400/25">
+        ส่งแล้ว
+      </span>
+    );
+  }
+  if (s === 'ocr_success') {
+    return (
+      <span className="inline-flex rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 ring-1 ring-cyan-400/25">
+        OCR สำเร็จ
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-400/25">
+      รอแอดมิน
+    </span>
+  );
+}
+
 export default function TransactionsTable({
   transactions,
   feeWarningThreshold,
+  onChanged,
 }: TransactionsTableProps) {
   const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 
@@ -45,11 +73,12 @@ export default function TransactionsTable({
               <th className="px-5 py-3 font-medium">เวลา</th>
               <th className="px-3 py-3 font-medium">แอดมิน</th>
               <th className="px-3 py-3 font-medium">ประเภท</th>
+              <th className="px-3 py-3 font-medium">สถานะ</th>
               <th className="px-3 py-3 text-right font-medium">THB</th>
               <th className="px-3 py-3 text-right font-medium">USDT</th>
               <th className="px-3 py-3 text-right font-medium">ค่าธรรมเนียม</th>
               <th className="px-3 py-3 font-medium">หมายเหตุ</th>
-              <th className="px-5 py-3" />
+              <th className="px-5 py-3 text-right font-medium">จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -72,6 +101,9 @@ export default function TransactionsTable({
                   <td className="px-3 py-3">
                     <TypeBadge type={t.type} />
                   </td>
+                  <td className="px-3 py-3">
+                    <StatusBadge status={t.status} />
+                  </td>
                   <td className="px-3 py-3 text-right text-[color:var(--text)]">
                     {nf.format(Number(t.thb_amount))}
                   </td>
@@ -93,19 +125,19 @@ export default function TransactionsTable({
                     {t.note ?? '-'}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/dashboard/transactions/${t.id}`}
-                      className="inline-flex items-center rounded-lg border border-[color:var(--border)] bg-white/5 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white"
-                    >
-                      ดูรายละเอียด →
-                    </Link>
+                    <TransactionActions
+                      transaction={t}
+                      layout="row"
+                      showDetailLink
+                      onChanged={onChanged}
+                    />
                   </td>
                 </tr>
               );
             })}
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-5 py-12 text-center text-[color:var(--muted)]">
+                <td colSpan={9} className="px-5 py-12 text-center text-[color:var(--muted)]">
                   ยังไม่มีธุรกรรม — ส่งสลิปเข้า @CEboi88bot เพื่อเริ่มบันทึก
                 </td>
               </tr>

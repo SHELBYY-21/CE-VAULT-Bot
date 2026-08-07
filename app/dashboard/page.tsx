@@ -79,7 +79,10 @@ export default function DashboardPage() {
 
   // กำไรแยกห้อง (group by chat_id) — เรียงกำไรมากสุดก่อน
   const rooms = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; count: number; thb: number; usdt: number; profit: number }>();
+    const map = new Map<
+      string,
+      { key: string; name: string; count: number; thb: number; usdt: number; profit: number }
+    >();
     for (const t of transactions) {
       if (t.type !== 'THB_DEPOSIT') continue;
       const key = roomKeyOf(t);
@@ -114,7 +117,7 @@ export default function DashboardPage() {
   const selectedRoomName =
     selectedRoom === 'all'
       ? 'ทุกห้อง'
-      : rooms.find((r) => r.key === selectedRoom)?.name ?? 'ห้องที่เลือก';
+      : (rooms.find((r) => r.key === selectedRoom)?.name ?? 'ห้องที่เลือก');
 
   const stats = useMemo(() => {
     const deposits = filteredTransactions.filter((t) => t.type === 'THB_DEPOSIT');
@@ -125,14 +128,31 @@ export default function DashboardPage() {
       withFee.length === 0
         ? 0
         : withFee.reduce((s, t) => s + Number(t.fee_percent), 0) / withFee.length;
-    return { totalNetProfitThb, totalFeeUsdt, averageFeePercent, txCount: filteredTransactions.length };
+    return {
+      totalNetProfitThb,
+      totalFeeUsdt,
+      averageFeePercent,
+      txCount: filteredTransactions.length,
+    };
   }, [filteredTransactions]);
 
   const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 
   // Export CSV จากข้อมูลที่โหลดแล้ว (client-side — ไม่แตะ secret/endpoint)
   function exportCsv() {
-    const cols = ['ledger_ref', 'created_at', 'room_name', 'thb_amount', 'usdt_amount', 'buy_rate', 'sell_rate', 'net_profit_thb', 'receiver_name', 'receiver_bank', 'receiver_last4'];
+    const cols = [
+      'ledger_ref',
+      'created_at',
+      'room_name',
+      'thb_amount',
+      'usdt_amount',
+      'buy_rate',
+      'sell_rate',
+      'net_profit_thb',
+      'receiver_name',
+      'receiver_bank',
+      'receiver_last4',
+    ];
     const cell = (v: any) => {
       if (v == null) return '';
       const s = String(v);
@@ -140,7 +160,9 @@ export default function DashboardPage() {
     };
     const rows = filteredTransactions
       .filter((t) => t.type === 'THB_DEPOSIT')
-      .map((t) => [cell((t as any).admins?.name), ...cols.map((c) => cell((t as any)[c]))].join(','));
+      .map((t) =>
+        [cell((t as any).admins?.name), ...cols.map((c) => cell((t as any)[c]))].join(','),
+      );
     const csv = '﻿' + [['staff', ...cols].join(','), ...rows].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
@@ -190,7 +212,9 @@ export default function DashboardPage() {
                 </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute right-3 text-[10px] text-[color:var(--muted)]">▼</span>
+            <span className="pointer-events-none absolute right-3 text-[10px] text-[color:var(--muted)]">
+              ▼
+            </span>
           </label>
           <button
             onClick={exportCsv}
@@ -240,7 +264,9 @@ export default function DashboardPage() {
             <h2 className="text-sm font-semibold tracking-wide text-[color:var(--text)]">
               🏠 กำไรแยกห้อง <span className="text-[color:var(--muted)]">({rooms.length})</span>
             </h2>
-            <span className="text-xs text-[color:var(--muted)]">คลิกห้องเพื่อกรอง · เรียงกำไรมากสุด</span>
+            <span className="text-xs text-[color:var(--muted)]">
+              คลิกห้องเพื่อกรอง · เรียงกำไรมากสุด
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[440px] text-sm">
@@ -274,8 +300,11 @@ export default function DashboardPage() {
                       <td className="py-2 text-right tabular-nums">{r.count}</td>
                       <td className="py-2 text-right tabular-nums">{nf.format(r.thb)}</td>
                       <td className="py-2 text-right tabular-nums">{nf.format(r.usdt)}</td>
-                      <td className={`py-2 text-right font-semibold tabular-nums ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {r.profit >= 0 ? '+' : ''}{nf.format(r.profit)}
+                      <td
+                        className={`py-2 text-right font-semibold tabular-nums ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+                      >
+                        {r.profit >= 0 ? '+' : ''}
+                        {nf.format(r.profit)}
                       </td>
                     </tr>
                   );
@@ -299,6 +328,7 @@ export default function DashboardPage() {
             <TransactionsTable
               transactions={filteredTransactions}
               feeWarningThreshold={FEE_WARNING_THRESHOLD}
+              onChanged={loadDashboard}
             />
           )}
         </div>

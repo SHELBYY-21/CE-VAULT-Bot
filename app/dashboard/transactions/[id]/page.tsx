@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { adminDb } from '@/lib/firebaseAdmin';
 import type { Transaction } from '@/types/transactions';
-import MarkCompletedButton from '@/components/MarkCompletedButton';
+import TransactionDetailActions from '@/components/TransactionDetailActions';
 
 const FEE_WARNING_THRESHOLD = 3;
 
@@ -70,10 +70,7 @@ export default async function TransactionDetailPage({
       <p className="reveal text-xs text-[color:var(--muted)]">{t.id}</p>
 
       <div className="mt-6 grid gap-5 md:grid-cols-2">
-        <div
-          className="glass accent-top reveal space-y-3 p-6"
-          style={{ animationDelay: '80ms' }}
-        >
+        <div className="glass accent-top reveal space-y-3 p-6" style={{ animationDelay: '80ms' }}>
           <Row label="แอดมิน" value={t.admins?.name ?? '-'} strong />
           <Row label="เวลา" value={new Date(t.created_at).toLocaleString('th-TH')} />
           <Row label="ยอด THB" value={`${Number(t.thb_amount).toLocaleString('th-TH')} ฿`} />
@@ -103,8 +100,8 @@ export default async function TransactionDetailPage({
             </span>
           </div>
 
-          <div className="pt-2">
-            <MarkCompletedButton id={t.id} currentStatus={t.status} />
+          <div className="pt-3">
+            <TransactionDetailActions transaction={t} />
           </div>
         </div>
 
@@ -137,7 +134,8 @@ function Row({
   strong?: boolean;
   tone?: 'good' | 'bad';
 }) {
-  const toneCls = tone === 'good' ? 'text-emerald-400' : tone === 'bad' ? 'text-rose-400' : 'text-white';
+  const toneCls =
+    tone === 'good' ? 'text-emerald-400' : tone === 'bad' ? 'text-rose-400' : 'text-white';
   return (
     <div className="flex items-center justify-between">
       <span className="text-[color:var(--muted)]">{label}</span>
