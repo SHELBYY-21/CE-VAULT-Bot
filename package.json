@@ -6,25 +6,36 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node -r ts-node/register test/run-test.ts",
+    "migrate:help": "echo \"Uses STAGING_DATABASE_URL environment variable. Example: STAGING_DATABASE_URL='******host:5432/db' npm run migrate:staging-node\"",
+    "migrate:staging": "psql \"$STAGING_DATABASE_URL\" -f db/migrations/20260807_add_live_message_fields.sql",
+    "migrate:staging-node": "node scripts/run-migration.js"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
     "@circle-fin/smart-contract-platform": "^10.8.0",
     "@supabase/supabase-js": "^2.45.4",
     "next": "^16.2.10",
+    "pg": "^8.22.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "telegraf": "^4.16.3",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@netlify/functions": "^5.3.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.16.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
     "ffmpeg-static": "^5.3.0",
+    "jest": "^30.4.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
     "typescript": "^5.6.2"
   }
 }

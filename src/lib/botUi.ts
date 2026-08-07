@@ -24,6 +24,23 @@ const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 const money = (n: number) => nf.format(Number(n) || 0);
 const pct = (n: number) => `${(Number(n) || 0).toFixed(2)}%`;
 
+// Unified UI helpers (design system primitives)
+const SEP = '\n' + THIN + '\n';
+// monospace wrapper for numbers/ids
+function mono(s: string | number | null | undefined): string {
+  if (s == null) return '<code>—</code>';
+  return `<code>${String(s)}</code>`;
+}
+// big number display (amounts)
+function bigAmount(n: number | null | undefined, currency = 'THB'): string {
+  if (n == null) return `<b><code>—</code></b>`;
+  return `<b><code>${money(n)} ${currency}</code></b>`;
+}
+// small meta row (label + value)
+function metaRow(label: string, value: string): string {
+  return `<b>${label}</b> ${value}`;
+}
+
 // ตาราง monospace จัดคอลัมน์ตัวเลขให้ตรงกัน (label ASCII, value ชิดขวา)
 function table(rows: [string, string][], width = 15): string {
   const body = rows.map(([k, v]) => k.padEnd(6) + v.padStart(width - 6)).join('\n');
@@ -90,15 +107,14 @@ export function welcomeRegistered(name: string): OutgoingMessage {
   return {
     text:
       `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· secure USDT ledger</i>\n` +
+      `⬢ <b>CE VAULT</b> · บัญชีแยกประเภท USDT ที่ปลอดภัย\n` +
       `${GRAD_INDIGO}\n` +
-      `🔐 ยินดีต้อนรับกลับ <b>${name}</b>\n` +
+      `🔐 ต่อผู้ดูแลระบบ (<b>@${name}</b>) สำเร็จ\n` +
       `${THIN}\n` +
       `<b>①  ฝาก THB → USDT</b>\n` +
-      `<blockquote>ส่งรูปสลิป แล้วพิมพ์ USDT ที่ได้จริง\n` +
-      `<code>11</code>  หรือ  <code>5000 11 35.5 34.8</code></blockquote>\n` +
-      `<b>②  ส่ง USDT ให้ทุนจีน</b>\n` +
-      `<blockquote>ส่งรูปสลิป + แคปชัน <code>ส่ง usdt</code> แล้วพิมพ์จำนวน</blockquote>\n` +
+      `<blockquote>ส่งรูปสลิปแล้วพิมพ์ USDT ที่มีจริง <code>11</code> หรือ <code>5000 11 35.5 34.8</code></blockquote>\n` +
+      `<b>②  ส่ง USDT ลูกค้า</b>\n` +
+      `<blockquote>ส่งรูปสลิป + แคปชัน <code>ส่ง usdt</code> ส่งตรวจสอบแล้วพิมพ์จำนวน</blockquote>\n` +
       `<b>③  เรตตลาด</b>  <code>/rate</code> ดู · <code>/rate 35.5</code> ตั้งเรตขาย\n` +
       `${THIN}\n` +
       `${SIG}`,
@@ -283,6 +299,72 @@ export function needThb(): OutgoingMessage {
 }
 
 // ═══════════════ v8: บันทึกทันที (การ์ดสั้น ไม่รกแชท) ═══════════════
+
+/** สร้างเทมเพลตรายการล่าสุด (ready-to-send) จาก RecentPair[] */
+export function recentListTemplate(pairs: any[], adminMentions?: string): OutgoingMessage {
+  if (!pairs || pairs.length === 0) return { text: `${GRAD_INDIGO}\n⬢ CE VAULT · รายการล่าสุด\n\nยังไม่มีรายการ` };
+  const header = `${GRAD_INDIGO}\n${BRAND} · <b>Recent Pairs</b> (${pairs.length})\n${THIN}\n`;
+  const lines = pairs.map((p, i) => {
+    const status = p.gapMin == null ? '<i>Pending</i>' : `<i>Settled · ${p.gapMin}m</i>`;
+    return `\n${i + 1}. ${mono(p.time)}  •  ${bigAmount(p.thb, 'THB')}  →  <b><code>${p.usdt} USDT</code></b>  ${status}`;
+  });
+  const footer = `${SEP}ผู้ดูแล: ${adminMentions || '<i>Unassigned</i>'}`;
+  const hint = `${SEP}ตัวอย่าง: <code>/confirm 1 119.05</code> — Reply to post to take action`;
+  return { text: header + lines.join('') + footer + hint };
+}
+
+/** Live workflow cards (single live message lifecycle) */
+export function liveInitial(ledgerRef: string, adminName?: string): OutgoingMessage {
+  return {
+    text:
+      `${BRAND}\n${THIN}\n` +
+      `<b>Status</b> <code>Processing</code>  ·  <b>Ref</b> ${mono(ledgerRef)}\n` +
+      `${SEP}` +
+      `${adminName ? `<b>Operator</b> ${mono(adminName)}` : ''}`,
+  };
+}
+
+export function liveOcrUpdate(opts: {
+  ledgerRef: string;
+  thb?: number | null;
+  receiver?: string | null;
+  bank?: string | null;
+  time?: string | null;
+  confidence?: number | null;
+  sellRate?: number | null;
+  marketRate?: number | null;
+  shouldSend?: number | null;
+}): OutgoingMessage {
+  const parts: string[] = [];
+  parts.push(`${BRAND} · <b>Waiting USDT</b>`);
+  parts.push(THIN);
+  parts.push(`<b>Ref</b> ${mono(opts.ledgerRef)}`);
+  parts.push(`<b>Amount</b> ${opts.thb != null ? bigAmount(opts.thb, 'THB') : mono('—')}`);
+  if (opts.receiver) parts.push(`<b>Receiver</b> ${mono(opts.receiver)}`);
+  if (opts.bank) parts.push(`<b>Bank</b> ${mono(opts.bank)}`);
+  if (opts.time) parts.push(`<b>Time</b> ${mono(opts.time)}`);
+  if (opts.confidence != null) parts.push(`<b>Confidence</b> ${mono(opts.confidence.toFixed(1) + '%')}`);
+  if (opts.sellRate != null) parts.push(`<b>Sell Rate</b> ${mono(opts.sellRate)}  •  <b>Market</b> ${mono(opts.marketRate ?? '—')}`);
+  if (opts.shouldSend != null) parts.push(`<b>Should Send</b> <b><code>${opts.shouldSend.toFixed(2)} USDT</code></b>`);
+  return { text: parts.join('\n') };
+}
+
+export function liveCompleted(opts: {
+  ledgerRef: string;
+  thb: number;
+  usdt: number;
+  profitThb: number;
+  remaining: number;
+  todayTotalThb?: number;
+}): OutgoingMessage {
+  const s = `${BRAND} · <b>Completed</b>\n${THIN}\n` +
+    `<b>Ref</b> ${mono(opts.ledgerRef)}\n` +
+    `<b>THB</b> ${bigAmount(opts.thb, 'THB')}  •  <b>USDT</b> <b><code>${opts.usdt.toFixed(2)} USDT</code></b>\n` +
+    `<b>Profit</b> ${mono(opts.profitThb.toFixed(2) + ' THB')}  •  <b>Remaining</b> ${mono(opts.remaining.toFixed(2) + ' USDT')}\n` +
+    `${opts.todayTotalThb != null ? `<b>Today</b> ${bigAmount(opts.todayTotalThb, 'THB')}` : ''}`;
+  return { text: s };
+}
+
 export function incomingRecorded(d: {
   transactionId: string;
   ledgerRef: string;
@@ -360,37 +442,41 @@ export interface WaitUsdtData {
   historyLine?: string | null;
   roomRate?: number | null;
   roomName?: string | null;
+  marketRate?: number | null;
 }
 
-/** การ์ดหลัง OCR สลิป THB → รอ USDT (step ③) */
+/** การ์ดหลัง OCR สลิป THB → รอ USDT (step ② หอคอยสลิป) */
 export function waitUsdt(d: WaitUsdtData): OutgoingMessage {
   const conf = d.confidence ?? null;
   const gotAmount = d.thb != null && d.thb > 0;
   const lowConf = conf != null && conf < 90;
-  const header = !gotAmount ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>' : lowConf ? '⚠️ <b>ตรวจสอบสลิป</b>' : '✅ <b>OCR สำเร็จ</b>';
+  const header = !gotAmount ? '⚠️ อ่านยอดไม่สำเร็จ' : lowConf ? '⚠️ ตรวจสอบสลิป' : '✅ OCR สำเร็จ';
 
   const detail: string[] = [];
-  if (gotAmount) detail.push(`💵 ยอดเงิน <i>(Amount)</i>  <b>${money(d.thb!)} THB</b>`);
-  if (d.receiverName) detail.push(`👤 ผู้รับ <i>(Receiver)</i>  <b>${d.receiverName}</b>`);
-  if (d.bank || d.last4) detail.push(`🏦 ธนาคาร <i>(Bank)</i>  <b>${d.bank ?? '-'}</b>${d.last4 ? `  <code>••••${d.last4}</code>` : ''}`);
-  if (d.date || d.time) detail.push(`📅 เวลา <i>(Date/Time)</i>  <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
+  if (gotAmount) detail.push(`💵 THB <b>${money(d.thb!)}</b>`);
+  if (d.receiverName) detail.push(`👤 <b>${d.receiverName}</b>`);
+  if (d.bank || d.last4) detail.push(`🏦 Bank <b>${d.bank ?? '-'}</b> <code>••••${d.last4 ?? '----'}</code>`);
+  if (d.date || d.time) detail.push(`📅 เวลา <b>${d.date ?? ''} ${d.time ?? ''}</b>`.trimEnd());
   const cLine = confidenceLine(conf);
   if (cLine) detail.push(cLine);
+
+  const shouldSendUsdt = d.roomRate && gotAmount ? d.thb! / d.roomRate : null;
 
   return {
     text:
       `${!gotAmount || lowConf ? GRAD_RED : GRAD_GREEN}\n` +
-      `${MARK} <b>CE VAULT</b>  ${header}  <tg-spoiler>Grok</tg-spoiler>\n` +
+      `⬢ <b>CE VAULT</b>\n` +
+      `<b>${header}</b>\n` +
       `${progress(3)}\n${THIN}\n` +
-      `🧾 <b>Ledger ID</b>  <code>#${d.ledgerRef}</code>\n` +
+      `🧾 <code>#${d.ledgerRef}</code>\n` +
       (detail.length ? detail.join('\n') + `\n` : '') +
-      (d.roomRate ? `🏷 เรตขาย <i>(Sell Rate)</i>${d.roomName ? ` · ${d.roomName}` : ''}  <b>${money(d.roomRate)}</b>\n` : '') +
-      (gotAmount && lowConf ? `<i>ความมั่นใจต่ำกว่า 90% — โปรดตรวจยอด (verify before confirm)</i>\n` : '') +
-      (d.historyLine ? `${d.historyLine}\n` : '') +
-      `${THIN}\n` +
-      `⏳ <b>รอยืนยัน USDT</b> <i>(Awaiting USDT)</i>\n` +
-      `ส่ง <b>สกรีนช็อตโอน USDT</b> หรือพิมพ์:\n` +
-      FORMAT_HINT,
+      (d.roomRate ? `🏷 เรตขาย (Sell Rate) · ห้องละ <b>${money(d.roomRate)} THB / USDT</b>\n` : '') +
+      (shouldSendUsdt != null && d.roomRate
+        ? `🎯 หลังคาส่ง (ควรส่ง) <b>${money(shouldSendUsdt)} USDT</b>\n` +
+          `🧮 <code>${money(d.thb!)} ÷ ${money(d.roomRate)} = ${money(shouldSendUsdt)} USDT</code>\n`
+        : '') +
+      (d.marketRate ? `เรทตลาด BINANCE : <b>${money(d.marketRate)}</b>\n` : '') +
+      (d.historyLine ? `${d.historyLine}\n` : ''),
   };
 }
 
@@ -827,26 +913,26 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
   return {
     text:
       `${GRAD_INDIGO}\n` +
-      `${MARK} <b>CE VAULT</b>  <i>· ยอดวันนี้${d.roomName ? ` · ${d.roomName}` : ''}</i>\n` +
+      `⬢ <b>CE VAULT</b> · โพสต์วันนี้${d.roomName ? ` · ${d.roomName}` : ''}\n` +
       `${GRAD_INDIGO}\n` +
       `🕐 ${bangkokNowLabel()}\n` +
       `${THIN}\n` +
-      `🟢 <b>เข้าบัญชี</b> <i>(Incoming)</i> · ${d.incomingList.length} รายการ\n` +
-      (incoming || '<i>— ยังไม่มี —</i>') +
+      `🟢 <b>เข้าสู่ระบบบัญชี (Incoming)</b> · ${d.incomingList.length} รายการ\n` +
+      (incoming || '— รายการที่ได้รับล่าสุด —') +
       `\n${THIN}\n` +
-      `🔴 <b>ส่งออก</b> <i>(Outgoing)</i> · ${d.outgoingList.length} รายการ\n` +
-      (outgoing || '<i>— ยังไม่มี —</i>') +
+      `🔴 <b>ส่งออก (Outgoing)</b> · ${d.outgoingList.length} รายการ\n` +
+      (outgoing || '— ค้าง — ยอด usdt ที่กลับ') +
       `\n${THIN}\n` +
-      `📊 ยอดรับรวม <i>(Total In)</i>  <b>${money(d.totalThb)} THB</b>\n` +
-      (d.fixedRate ? `💱 เรตห้อง <i>(Sell Rate)</i>  <b>${money(d.fixedRate)}</b>\n` : '') +
+      `📊 <b>เพียงรับรวม (Total In)</b>  <b>${money(d.totalThb)} THB</b>\n` +
+      (d.fixedRate ? `💱 <b>เรตห้อง (Sell Rate)</b>  <b>${money(d.fixedRate)}</b>\n` : '') +
       `${THIN}\n` +
-      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(shouldSendUsdt)} USDT</b>\n` +
-      `✅ ส่งไปแล้ว <i>(Sent)</i>  <b>${money(d.totalOutgoingUsdt)} USDT</b>\n` +
-      `${notSent >= 0 ? '⏳' : '⚠️'} คงเหลือ <i>(Remaining)</i>  <b>${money(notSent)} USDT</b>` +
-      (d.fixedRate ? `  <i>(${money(notSentThb)} THB)</i>` : '') +
+      `🎯 <b>ส่งแล้ว (ควรส่ง)</b>  <b>${money(shouldSendUsdt)} USDT</b>\n` +
+      `✅ <b>ส่งไปแล้ว (ส่งไปแล้ว)</b>  <b>${money(d.totalOutgoingUsdt)} USDT</b>\n` +
+      `⏳ <b>รักษาเหลือ (คงเหลือ)</b>  <b>${money(notSent)} USDT</b>` +
+      (d.fixedRate ? `  <i>(${money(notSentThb)} บาท)</i>` : '') +
       `\n${THIN}\n` +
-      `💰 กำไรสุทธิ <i>(Net Profit)</i>  <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} THB</b>\n` +
-      (d.lastAdminName ? `👤 ผู้รับผิดชอบล่าสุด <i>(Last Staff)</i>  <b>${d.lastAdminName}</b>\n` : '') +
+      `💰 <b>กำไรสุทธิ (กำไรสุทธิ)</b>  <b>${d.netProfitThb >= 0 ? '+' : ''}${money(d.netProfitThb)} บาท</b>\n` +
+      (d.lastAdminName ? `👤 <b>ผู้รับผิดชอบล่าสุด</b>  <b>${d.lastAdminName}</b>\n` : '') +
       (d.staff && d.staff.length
         ? `${THIN}\n👷 <b>Top Staff</b>\n` +
           d.staff
@@ -863,7 +949,7 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
             })
             .join('\n')}</pre>`
         : '') +
-      `${SIG}`,
+      `⬢ <b>CE VAULT</b> · บัญชีแยกประเภทที่ปลอดภัย`,
     reply_markup: {
       inline_keyboard: [
         [

@@ -1,0 +1,6 @@
+Summary:
+- Adds auto-read slip flow: image -> OCR -> Grok parsing -> structured fields
+- Adds /register for admins (map telegram id -> username)
+- Adds persistence via SQLite (slips, admins, actions)
+- Adds inline buttons and callback handling (confirm, view, report, send)
+- Adds CI workflow and basic unit test

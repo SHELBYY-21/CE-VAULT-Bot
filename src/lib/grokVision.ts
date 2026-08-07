@@ -15,20 +15,24 @@ export interface SlipExtract {
   raw?: string;               // ข้อความดิบ (debug)
 }
 
-const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
+const PROMPT = `You are an expert Thai bank slip parser specializing in mobile banking apps (KPlus, SCB Easy, Krungthai NEXT, Bualuang, ttb touch, GSB, TrueMoney Kiosk, PromptPay).
+Analyze this slip image carefully and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
 {
-  "thbAmount": number,           // amount transferred in THB (the main highlighted number)
-  "time": "HH:MM",               // 24-hour transfer time
-  "date": "DD/MM/YY",            // transfer date, Buddhist year → subtract 543 to Gregorian, output as YY (2-digit Gregorian)
-  "receiverLast4": "XXXX",       // last 4 digits of RECEIVER (payee) account number
-  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|KEB|CITI|other-uppercase",
-  "receiverName": "name or null",// RECEIVER (payee) full name — Thai or English as shown
+  "thbAmount": number,           // exact net transfer amount in THB (main highlighted transfer figure, ignore fee or remaining balance)
+  "time": "HH:MM",               // 24-hour transfer time (e.g. "17:18")
+  "date": "DD/MM/YY",            // transfer date. Convert Buddhist year (B.E. e.g. 2569) to 2-digit Gregorian year (A.D. e.g. 26). Output format DD/MM/YY
+  "receiverLast4": "XXXX",       // last 4 digits of RECEIVER (payee/destination) account number (do NOT pick sender's account)
+  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TRUEMONEY|PROMPTPAY|other-uppercase",
+  "receiverName": "name or null",// RECEIVER (payee) full name in Thai or English as displayed
   "senderName": "name or null",  // sender full name if visible
-  "confidence": number           // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
+  "confidence": number           // 0-100 score indicating confidence in image clarity and amount correctness
 }
-If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
+Rules:
+- Output raw JSON only.
+- Convert 2567 -> 24, 2568 -> 25, 2569 -> 26 for 2-digit Gregorian year.
+- If a field is unreadable, use null (confidence must always be a number).`;
 
-// ─── USDT transfer screenshot (Binance/OKX/TronScan ฯลฯ) ───
+// ─── USDT transfer screenshot (Binance/OKX/Bitkub/Bybit/TronScan ฯลฯ) ───
 export interface UsdtExtract {
   amount: number | null;   // จำนวน USDT ที่โอน
   network: string | null;  // TRC20 | ERC20 | BEP20 | SOL | ...
@@ -38,15 +42,16 @@ export interface UsdtExtract {
   raw?: string;
 }
 
-const USDT_PROMPT = `You are a crypto (USDT) transfer screenshot parser. Reply with ONLY a JSON object (no prose, no markdown fence):
+const USDT_PROMPT = `You are an expert crypto transfer screenshot parser for exchanges and wallets (Binance, OKX, Bitkub, Bybit, HTX, Gate.io, TronScan, Trust Wallet, MetaMask).
+Analyze this screenshot and reply with ONLY a JSON object (no prose, no markdown fence):
 {
-  "amount": number,              // USDT amount transferred (the main figure)
-  "network": "TRC20|ERC20|BEP20|SOL|POLYGON|null",  // blockchain network if shown
+  "amount": number,              // net USDT amount transferred (main figure)
+  "network": "TRC20|ERC20|BEP20|SOL|POLYGON|null",  // blockchain network if displayed
   "txid": "transaction hash or null",
   "time": "HH:MM or null",       // 24-hour transfer time
-  "confidence": number           // 0-100 how confident this is a real USDT transfer screenshot with a legible amount
+  "confidence": number           // 0-100 score indicating confidence
 }
-If a field is unreadable use null (except confidence — always a number). Do not invent values. Output raw JSON only.`;
+Rules: Output raw JSON only. Do not invent values. If unreadable use null.`;
 
 // เลือก model: default = grok-4.20-non-reasoning (เร็วสุดสำหรับ OCR ~1.2s)
 // self-heal: รุ่นที่ถูกถอด (grok-2-vision) หรือรุ่น reasoning ที่ช้า (4.3/4.5) → ใช้รุ่นเร็วแทน

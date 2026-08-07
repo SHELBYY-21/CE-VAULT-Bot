@@ -126,3 +126,48 @@ on conflict (id) do nothing;
 insert into public.bank_accounts (label, bank_name, account_number, current_balance)
 select 'กสิกร - หลัก', 'KBANK', 'xxx-x-xxxxx-x', 0
 where not exists (select 1 from public.bank_accounts);
+
+-- 11) Live message fields + audit log for live workflow
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'live_message_id'
+  ) THEN
+    ALTER TABLE public.transactions ADD COLUMN live_message_id BIGINT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'live_chat_id'
+  ) THEN
+    ALTER TABLE public.transactions ADD COLUMN live_chat_id BIGINT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'live_status'
+  ) THEN
+    ALTER TABLE public.transactions ADD COLUMN live_status TEXT;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'updated_at'
+  ) THEN
+    ALTER TABLE public.transactions ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'transaction_status_logs'
+  ) THEN
+    CREATE TABLE public.transaction_status_logs (
+      id BIGSERIAL PRIMARY KEY,
+      transaction_id UUID NOT NULL,
+      status TEXT NOT NULL,
+      meta JSONB,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX ON public.transaction_status_logs (transaction_id);
+  END IF;
+END$$;

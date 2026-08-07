@@ -13,6 +13,7 @@ import {
   sendSticker,
 } from '@/lib/telegram';
 import { getSession, setSession, clearSession } from '@/lib/botSessions';
+import LiveMessageService from '@/lib/liveMessage';
 import {
   getAdminByTelegramId,
   upsertAdmin,
@@ -262,6 +263,119 @@ async function handleUpdate(update: any): Promise<void> {
     return;
   }
 
+  // ----- /recent_slips : ส่งรายการสลิปล่าสุดเป็นเทมเพลตข้อความ พร้อม mention ผู้ดูแล -----
+  if (text && text.startsWith('/recent_slips')) {
+    const parts = text.split(/\s+/);
+    const limit = Math.min(20, Math.max(1, Number(parts[1]) || 5));
+    try {
+      const pairs = await getRecentPairs(chatId, undefined, limit);
+      // Fetch admin list for mentions (best-effort)
+      let adminMentions = '';
+      try {
+        const { data: admins } = await supabaseAdmin.from('admins').select('name, telegram_user_id');
+        if (Array.isArray(admins) && admins.length > 0) {
+          adminMentions = admins
+            .map((a: any) => (a.telegram_user_id ? `<a href="tg://user?id=${a.telegram_user_id}">${a.name || 'admin'}</a>` : `${a.name}`))
+            .join(' ');
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      if (pairs.length === 0) {
+        await sendMessage(chatId, { text: `🔷 ━━━━━━━━━━━━━\n⬢ CE VAULT · รายการล่าสุด\n\nไม่มีสลิปล่าสุดในห้องนี้` });
+        return;
+      }
+
+      const lines = pairs.map((p, i) => {
+        const status = p.gapMin == null ? 'รอส่ง' : `ส่งแล้ว (${p.gapMin} นาที)`;
+        return `${i + 1}. • ${p.time} • ${p.thb} THB → ${p.usdt} USDT • ${status}`;
+      });
+      const header = `🔷 ━━━━━━━━━━━━━\n⬢ CE VAULT · รายการล่าสุด (${pairs.length})\n\n`;
+      const footer = `\n\nผู้ดูแล: ${adminMentions || 'ยังไม่ระบุผู้ดูแล'}\n/confirm_<id> เพื่อยืนยันหรือแก้ไข`;
+      await sendMessage(chatId, { text: header + lines.join('\n') + footer });
+    } catch (e: any) {
+      await sendMessage(chatId, { text: UI.error(e?.message ?? 'ไม่สามารถดึงรายการล่าสุดได้') });
+    }
+    return;
+  }
+
+  // ----- /save_slip : บันทึกรูปสลิป (ส่งคำสั่งโดย reply ถึงรูป) -----
+  if (text && text.startsWith('/save_slip')) {
+    // ต้อง reply ถึงข้อความที่มีรูป
+    if (!msg.reply_to_message || !msg.reply_to_message.photo) {
+      await sendMessage(chatId, { text: 'โปรดตอบกลับ (reply) ไปยังรูปสลิปที่ต้องการบันทึก' });
+      return;
+    }
+    if (!admin) {
+      await sendMessage(chatId, { text: 'คำสั่งนี้ต้องใช้โดยผู้ดูแลระบบเท่านั้น' });
+      return;
+    }
+
+    const fileId = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1].file_id;
+    sticker(chatId, 'PROCESSING');
+    try {
+      const imgUrl = await uploadSlipFromTelegram(fileId);
+      const slip = await analyzeSlip(imgUrl);
+      if (slip?.thbAmount && slip.thbAmount > 0) {
+        await clearSession(chatId, userId);
+        const res = await commitIncoming(chatId, userId, slip.thbAmount, {
+          slipUrl: imgUrl,
+          bank: slip.bank ?? null,
+          last4: slip.receiverLast4 ?? null,
+          receiverName: slip.receiverName ?? null,
+          confidence: slip.confidence ?? null,
+        });
+        sticker(chatId, 'OCR_DONE');
+        // If we created a live message, edit it to show OCR details; otherwise send a regular incoming card
+        if (res.liveMessageId) {
+          await LiveMessageService.update(res.transactionId, chatId, res.liveMessageId, 'OCR', UI.liveOcrUpdate({
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            receiver: res.adminName,
+            bank: res.bank ?? null,
+            confidence: res.confidence ?? null,
+            sellRate: res.sellRate,
+            marketRate: null,
+            shouldSend: Number(res.usdtOwed),
+          }));
+        } else {
+          await sendMessage(chatId, UI.incomingRecorded({
+            transactionId: res.transactionId,
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            usdtOwed: res.usdtOwed,
+            sellRate: res.sellRate,
+            adminName: res.adminName,
+            bank: res.bank ?? null,
+            last4: res.last4 ?? null,
+            confidence: res.confidence ?? null,
+            todayIncoming: res.todayIncoming,
+            todayTotalThb: res.todayTotalThb,
+          }));
+        }
+      } else {
+        await setSession(chatId, userId, {
+          state: 'WAITING_USDT',
+          pending_type: 'THB_DEPOSIT',
+          slip_url: imgUrl,
+          ocr_thb: slip?.thbAmount ?? null,
+          slip_last4: slip?.receiverLast4 ?? null,
+          slip_bank: slip?.bank ?? null,
+          slip_receiver_name: slip?.receiverName ?? null,
+          ocr_conf: slip?.confidence ?? null,
+          ledger_ref: UI.newLedgerRef(),
+          admin_id: admin.id,
+          admin_name: admin.name,
+        });
+        await sendMessage(chatId, { text: 'อ่านสลิปไม่ชัดเจน — กรุณาระบุจำนวนที่ส่งด้วยข้อความ (เช่น 5000)' });
+      }
+    } catch (e: any) {
+      await sendMessage(chatId, { text: UI.error(e?.message ?? 'upload failed') });
+    }
+    return;
+  }
+
   // ----- รูปภาพ: สลิป THB → บันทึกทันที / สกรีนช็อต USDT → บันทึกขาออก -----
   if (msg.photo) {
     if (!admin) {
@@ -278,7 +392,7 @@ async function handleUpdate(update: any): Promise<void> {
       // (A) อ่านยอดบาทได้ + มั่นใจพอ → บันทึกขาเข้าเลย ไม่ถาม
       if (slip?.thbAmount && slip.thbAmount > 0 && (slip.confidence == null || slip.confidence >= OCR_AUTO_MIN)) {
         await clearSession(chatId, userId);
-        await commitIncoming(chatId, userId, slip.thbAmount, {
+        const res = await commitIncoming(chatId, userId, slip.thbAmount, {
           slipUrl: imgUrl,
           bank: slip.bank ?? null,
           last4: slip.receiverLast4 ?? null,
@@ -286,15 +400,66 @@ async function handleUpdate(update: any): Promise<void> {
           confidence: slip.confidence ?? null,
         });
         sticker(chatId, 'OCR_DONE');
+        if (res.liveMessageId) {
+          await LiveMessageService.update(res.transactionId, chatId, res.liveMessageId, 'OCR', UI.liveOcrUpdate({
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            receiver: res.adminName,
+            bank: res.bank ?? null,
+            confidence: res.confidence ?? null,
+            sellRate: res.sellRate,
+            marketRate: null,
+            shouldSend: Number(res.usdtOwed),
+          }));
+        } else {
+          await sendMessage(chatId, UI.incomingRecorded({
+            transactionId: res.transactionId,
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            usdtOwed: res.usdtOwed,
+            sellRate: res.sellRate,
+            adminName: res.adminName,
+            bank: res.bank ?? null,
+            last4: res.last4 ?? null,
+            confidence: res.confidence ?? null,
+            todayIncoming: res.todayIncoming,
+            todayTotalThb: res.todayTotalThb,
+          }));
+        }
         return;
       }
 
       // (B) ไม่ใช่สลิปบาท → ลองอ่านเป็นสกรีนช็อตโอน USDT → บันทึกขาออก
       const u = await analyzeUsdtScreenshot(imgUrl);
       if (u?.amount && u.amount > 0) {
-        await commitOutgoing(chatId, userId, u.amount, {
+        const res = await commitOutgoing(chatId, userId, u.amount, {
           slipUrl: imgUrl, network: u.network ?? null, txid: u.txid ?? null,
         });
+        // If live message exists, commitOutgoing attempted to edit it — avoid duplicate posting
+        try {
+          const s = await getSession(chatId, userId);
+          if (!s?.live_message_id) {
+            await sendMessage(chatId, UI.outgoingRecorded({
+              transactionId: res.transactionId,
+              ledgerRef: res.ledgerRef,
+              usdt: res.usdt,
+              adminName: res.adminName,
+              shouldSendUsdt: res.shouldSendUsdt,
+              remainingUsdt: res.remainingUsdt,
+            }));
+          }
+        } catch (e) {
+          await sendMessage(chatId, UI.outgoingRecorded({
+            transactionId: res.transactionId,
+            ledgerRef: res.ledgerRef,
+            usdt: res.usdt,
+            adminName: res.adminName,
+            shouldSendUsdt: res.shouldSendUsdt,
+            remainingUsdt: res.remainingUsdt,
+          }));
+        }
+        sticker(chatId, 'SUCCESS');
+        await sendLedger(chatId);
         return;
       }
 
@@ -387,7 +552,34 @@ async function handleUpdate(update: any): Promise<void> {
         : {};
       if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
       try {
-        await commitIncoming(chatId, userId, amt.thb.value, meta);
+        const res = await commitIncoming(chatId, userId, amt.thb.value, meta);
+        // If commitIncoming created/returned a live message, update it to OCR view; otherwise send a normal incoming card
+        if (res.liveMessageId) {
+          await LiveMessageService.update(res.transactionId, chatId, res.liveMessageId, 'OCR', UI.liveOcrUpdate({
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            receiver: res.adminName,
+            bank: res.bank ?? null,
+            confidence: res.confidence ?? null,
+            sellRate: res.sellRate,
+            marketRate: null,
+            shouldSend: Number(res.usdtOwed),
+          }));
+        } else {
+          await sendMessage(chatId, UI.incomingRecorded({
+            transactionId: res.transactionId,
+            ledgerRef: res.ledgerRef,
+            thb: res.thb,
+            usdtOwed: res.usdtOwed,
+            sellRate: res.sellRate,
+            adminName: res.adminName,
+            bank: res.bank ?? null,
+            last4: res.last4 ?? null,
+            confidence: res.confidence ?? null,
+            todayIncoming: res.todayIncoming,
+            todayTotalThb: res.todayTotalThb,
+          }));
+        }
         sticker(chatId, 'SUCCESS');
       } catch (e: any) {
         await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
@@ -396,7 +588,30 @@ async function handleUpdate(update: any): Promise<void> {
     }
     if (amt.usdt && amt.usdt.sign < 0) {
       try {
-        await commitOutgoing(chatId, userId, amt.usdt.value, {});
+        const res = await commitOutgoing(chatId, userId, amt.usdt.value, {});
+        // If there's a live message for this session, commitOutgoing already edited it — skip duplicate post
+        try {
+          const s = await getSession(chatId, userId);
+          if (!s?.live_message_id) {
+            await sendMessage(chatId, UI.outgoingRecorded({
+              transactionId: res.transactionId,
+              ledgerRef: res.ledgerRef,
+              usdt: res.usdt,
+              adminName: res.adminName,
+              shouldSendUsdt: res.shouldSendUsdt,
+              remainingUsdt: res.remainingUsdt,
+            }));
+          }
+        } catch (e) {
+          await sendMessage(chatId, UI.outgoingRecorded({
+            transactionId: res.transactionId,
+            ledgerRef: res.ledgerRef,
+            usdt: res.usdt,
+            adminName: res.adminName,
+            shouldSendUsdt: res.shouldSendUsdt,
+            remainingUsdt: res.remainingUsdt,
+          }));
+        }
         sticker(chatId, 'SUCCESS');
       } catch (e: any) {
         await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
@@ -420,7 +635,7 @@ async function commitIncoming(
   userId: number,
   thb: number,
   meta: { slipUrl?: string | null; bank?: string | null; last4?: string | null; receiverName?: string | null; confidence?: number | null },
-): Promise<void> {
+): Promise<any> {
   const [room, rates] = await Promise.all([getRoom(chatId), getLatestRates()]);
   const sellRate = room.rate ?? rates.sellRate;
   const ledgerRef = UI.newLedgerRef();
@@ -457,22 +672,31 @@ async function commitIncoming(
   }
 
   const led = await getTodayLedger(room.dayCutAt, chatId);
-  await sendMessage(
+
+  // Create a single live message via LiveMessageService (centralized)
+  const { liveMessageId } = await LiveMessageService.create({
+    transactionId: r.transactionId,
     chatId,
-    UI.incomingRecorded({
-      transactionId: r.transactionId,
-      ledgerRef,
-      thb,
-      usdtOwed: r.usdtOwed,
-      sellRate,
-      adminName: r.adminName,
-      bank: meta.bank ?? null,
-      last4: meta.last4 ?? null,
-      confidence: meta.confidence ?? null,
-      todayIncoming: led.incomingList.map((e) => ({ time: e.time, date: e.date, thb: e.thb })),
-      todayTotalThb: led.totalThb,
-    }),
-  );
+    userId,
+    ledgerRef,
+    adminName: r.adminName,
+  });
+
+  // Return data for caller to decide how to render or further edit the live message
+  return {
+    transactionId: r.transactionId,
+    ledgerRef,
+    thb,
+    usdtOwed: r.usdtOwed,
+    sellRate,
+    adminName: r.adminName,
+    bank: meta.bank ?? null,
+    last4: meta.last4 ?? null,
+    confidence: meta.confidence ?? null,
+    todayIncoming: led.incomingList.map((e) => ({ time: e.time, date: e.date, thb: e.thb })),
+    todayTotalThb: led.totalThb,
+    liveMessageId,
+  };
 }
 
 /** บันทึกขาออก (ส่ง USDT) ทันที */
@@ -481,7 +705,7 @@ async function commitOutgoing(
   userId: number,
   usdt: number,
   meta: { slipUrl?: string | null; network?: string | null; txid?: string | null },
-): Promise<void> {
+): Promise<any> {
   const room = await getRoom(chatId);
   const ledgerRef = UI.newLedgerRef();
   const r = await recordOutgoing({
@@ -499,20 +723,33 @@ async function commitOutgoing(
   const shouldSend = room.rate ? led.totalThb / room.rate : led.totalIncomingUsdt;
   const remaining = shouldSend - led.totalOutgoingUsdt;
 
-  await sendMessage(
-    chatId,
-    UI.outgoingRecorded({
-      transactionId: r.transactionId,
-      ledgerRef,
-      usdt,
-      adminName: r.adminName,
-      shouldSendUsdt: shouldSend,
-      remainingUsdt: remaining,
-    }),
-  );
-  sticker(chatId, 'SUCCESS');
-  // ปิดท้ายด้วยสรุป vault ของห้อง
-  await sendLedger(chatId);
+  // Try to update live message (if any) with completed outgoing info via LiveMessageService
+  try {
+    const s = await getSession(chatId, userId);
+    const liveId = s?.live_message_id ?? null;
+    if (liveId) {
+      await LiveMessageService.complete(r.transactionId, chatId, liveId, {
+        ledgerRef,
+        thb: led.totalThb,
+        usdt,
+        profitThb: Number((led.netProfitThb ?? 0)),
+        remaining: remaining,
+        todayTotalThb: led.totalThb,
+      });
+    }
+  } catch (e) {
+    // ignore edit failures
+  }
+
+  // Return data for caller to render/update a live message
+  return {
+    transactionId: r.transactionId,
+    ledgerRef,
+    usdt,
+    adminName: r.adminName,
+    shouldSendUsdt: shouldSend,
+    remainingUsdt: remaining,
+  };
 }
 
 /** เริ่มวันใหม่: โพสต์สรุปวันเก่าก่อน → ตั้ง day-cut → ยืนยัน */
@@ -720,10 +957,103 @@ async function handleCallback(cb: any): Promise<void> {
   if (!chatId || !userId) return await answerCallback(id);
 
   const [action, arg] = data.split(':');
-  if (!arg) return await answerCallback(id);
+  if (!action) return await answerCallback(id);
 
-  // ----- dealok:<ledgerRef> : ยืนยันดีล → บันทึกจริง -----
-  if (action === 'dealok') {
+  // helper: check role
+  async function hasRole(required: ('SuperAdmin'|'Admin'|'Operator'|'Viewer')[]) {
+    try {
+      const adm = await getAdminByTelegramId(userId);
+      const role = adm?.role ?? 'Operator';
+      return required.includes(role as any);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ----- quick no-arg actions -----
+  if (action === 'cancelop') {
+    await clearSession(chatId, userId);
+    await answerCallback(id, 'ยกเลิกแล้ว');
+    await sendMessage(chatId, UI.cancelled());
+    return;
+  }
+
+  if (action === 'refresh') {
+    // Refresh live daily summary or a live message — permission: Viewer+
+    await answerCallback(id, '🔄 Refreshing...');
+    // If button is bound to a tx id, refresh that tx's live message
+    if (arg) {
+      const txId = arg;
+      const { data: tx } = await supabaseAdmin.from('transactions').select('id, live_message_id, live_chat_id').eq('id', txId).maybeSingle();
+      if (tx?.live_message_id && tx.live_chat_id) {
+        // re-render liveCompleted minimal placeholder to force-update
+        await LiveMessageService.update(txId, tx.live_chat_id, tx.live_message_id, 'Refresh', { text: UI.liveRefreshPlaceholder(txId).text });
+      }
+    } else {
+      // fallback: send ledger
+      await sendLedger(chatId);
+    }
+    return;
+  }
+
+  // ----- newday / menu_today / reset actions (permission Admin+ required) -----
+  if (action === 'newday') {
+    if (!await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
+    await answerCallback(id, '🔄 เริ่มวันใหม่');
+    await doNewDay(chatId);
+    return;
+  }
+  if (action === 'menu_today') {
+    await answerCallback(id);
+    await sendLedger(chatId);
+    return;
+  }
+
+  if (action === 'resetask') {
+    if (!await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
+    await answerCallback(id);
+    const room = await getRoom(chatId);
+    await sendMessage(chatId, UI.resetAsk(room.name));
+    return;
+  }
+  if (action === 'resetgo') {
+    if (!await hasRole(['SuperAdmin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
+    await answerCallback(id, '🗑 กำลังล้าง...');
+    try {
+      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
+      await sendLedger(chatId);
+      const n = await resetRoom(chatId);
+      await startNewDay(chatId);
+      await sendMessage(chatId, UI.resetDone(n));
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
+    }
+    return;
+  }
+
+  // ----- actions that target a transaction id -----
+  if (!arg) return await answerCallback(id);
+  const txId = arg;
+
+  // load transaction and verify minimal permissions
+  const { data: tx } = await supabaseAdmin
+    .from('transactions')
+    .select('id, type, admin_id, live_message_id, live_chat_id')
+    .eq('id', txId)
+    .maybeSingle();
+
+  if (!tx) return await answerCallback(id, 'รายการไม่พบ');
+
+  // load actor admin record
+  const actor = await getAdminByTelegramId(userId);
+  if (!actor) return await answerCallback(id, 'เฉพาะผู้ดูแลระบบเท่านั้น');
+
+  // permission: owner or higher roles for edit/delete
+  const isOwner = Boolean(actor && tx && actor.id === tx.admin_id);
+
+  // ----- confirm / dealok : finalize (requires owner or Admin) -----
+  if (action === 'confirm' || action === 'dealok') {
+    if (!isOwner && !await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
     const session = await getSession(chatId, userId);
     if (!session || session.state !== 'WAITING_USDT' || !session.pending_usdt) {
       return await answerCallback(id, 'รายการหมดอายุ/ต้องตรวจสอบ — ส่งสลิปใหม่');
@@ -742,14 +1072,14 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- dealedit : แก้ USDT (รอรับใหม่) -----
-  if (action === 'dealedit') {
+  // ----- edit / dealedit : allow owner or Admin to modify pending USDT -----
+  if (action === 'edit' || action === 'dealedit') {
+    if (!isOwner && !await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
     const session = await getSession(chatId, userId);
     if (!session || session.state !== 'WAITING_USDT') {
       return await answerCallback(id, 'รายการหมดอายุ');
     }
     await answerCallback(id, '✏️ แก้ USDT');
-    // ล้างค่า USDT เดิม (รวม cross-check state) แล้วรอรับใหม่
     await setSession(chatId, userId, {
       ...dealSessionFields(session),
       state: 'WAITING_USDT',
@@ -760,78 +1090,49 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- cancelop : ยกเลิกก่อนยืนยัน -----
-  if (action === 'cancelop') {
-    await clearSession(chatId, userId);
-    await answerCallback(id, 'ยกเลิกแล้ว');
-    await sendMessage(chatId, UI.cancelled());
-    return;
-  }
-
-  // ----- newday : เริ่มวันใหม่ (day-cut) → โพสต์สรุปวันเก่าก่อน -----
-  if (action === 'newday') {
-    await answerCallback(id, '🔄 เริ่มวันใหม่');
-    await doNewDay(chatId);
-    return;
-  }
-
-  // ----- menu_today : ปุ่มดูยอดจากเมนู -----
-  if (action === 'menu_today') {
-    await answerCallback(id);
-    await sendLedger(chatId);
-    return;
-  }
-
-  // ----- resetask : ถามยืนยันล้างยอดห้อง -----
-  if (action === 'resetask') {
-    await answerCallback(id);
-    const room = await getRoom(chatId);
-    await sendMessage(chatId, UI.resetAsk(room.name));
-    return;
-  }
-
-  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) — โพสต์สรุปเก็บไว้ก่อนลบ -----
-  if (action === 'resetgo') {
-    await answerCallback(id, '🗑 กำลังล้าง...');
-    try {
-      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
-      await sendLedger(chatId);
-      const n = await resetRoom(chatId);
-      await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
-      await sendMessage(chatId, UI.resetDone(n));
-    } catch (e: any) {
-      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
-    }
-    return;
-  }
-
-  const txId = arg;
-
-  // ตรวจว่าคนกดปุ่มเป็นเจ้าของธุรกรรมนี้
-  const { data: tx } = await supabaseAdmin
-    .from('transactions')
-    .select('id, type, admins(telegram_user_id, name)')
-    .eq('id', txId)
-    .single<{ id: string; type: 'THB_DEPOSIT' | 'USDT_SEND'; admins: { telegram_user_id: number; name: string } | null }>();
-  if (!tx || tx.admins?.telegram_user_id !== userId) {
-    return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
-  }
-
-  await answerCallback(id, action === 'edit' ? '⚡ เข้าโหมดแก้ไข' : '🗑 กำลังลบ...');
-
-  if (action === 'edit') {
-    await setSession(chatId, userId, {
-      state: 'EDITING',
-      pending_type: tx.type,
-      caption: txId, // เก็บ tx_id ไว้ในฟิลด์ caption (ไม่ต้องแก้ schema)
-    });
-    await sendMessage(chatId, UI.editPrompt(tx.type));
-  } else if (action === 'del') {
+  // ----- delete / del : allow owner or Admin (or SuperAdmin) -----
+  if (action === 'delete' || action === 'del') {
+    if (!isOwner && !await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
+    await answerCallback(id, '🗑 กำลังลบ...');
     try {
       const r = await deleteTransaction(txId);
       await sendMessage(chatId, UI.deleteSuccess(r.name, r.holdingUsdt));
     } catch (e: any) {
       await sendMessage(chatId, UI.error(e?.message ?? 'delete failed'));
     }
+    return;
   }
+
+  // ----- retry_ocr : re-run OCR for a pending slip (owner/Admin) -----
+  if (action === 'retry_ocr') {
+    if (!isOwner && !await hasRole(['SuperAdmin','Admin'])) return await answerCallback(id, 'สิทธิ์ไม่พอ');
+    await answerCallback(id, '🔁 Re-running OCR...');
+    const session = await getSession(chatId, userId);
+    if (!session || !session.slip_url) return await answerCallback(id, 'ไม่พบสลิปที่ต้องการอ่านใหม่');
+    try {
+      const slip = await analyzeSlip(session.slip_url);
+      // Update live message if exists
+      const liveId = tx.live_message_id ?? session.live_message_id;
+      if (liveId) {
+        await LiveMessageService.update(txId, chatId, liveId, 'OCR', UI.liveOcrUpdate({
+          ledgerRef: session.ledger_ref || '—',
+          thb: slip.thbAmount ?? session.ocr_thb ?? 0,
+          receiver: session.slip_receiver_name ?? undefined,
+          bank: slip.bank ?? session.slip_bank ?? null,
+          confidence: slip.confidence ?? null,
+          sellRate: (await getRoom(chatId)).rate ?? (await getLatestRates()).sellRate,
+          marketRate: null,
+          shouldSend: Number(slip.thbAmount ? (slip.thbAmount / ((await getRoom(chatId)).rate || 1)) : 0),
+        }));
+      }
+      await sendMessage(chatId, UI.info('OCR retried'));
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'OCR failed'));
+    }
+    return;
+  }
+
+  // Unknown action — default reply
+  await answerCallback(id);
 }
+
