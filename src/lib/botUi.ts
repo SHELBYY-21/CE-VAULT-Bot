@@ -11,8 +11,8 @@ const FEE_WARN = Number(process.env.FEE_WARNING_THRESHOLD || 3);
 
 // ═══════════════ Design tokens (Fintech: โทนเข้ม, accent เดียว, ตัวเลข monospace) ═══════════════
 const MARK = '⬢';
-const BRAND = `${MARK} <b>CE VAULT</b>`;
-const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
+export const BRAND = `${MARK} <b>CE VAULT</b>`;
+export const THIN = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
 // accent เส้นเดียว + จุดสีบอกสถานะ (แทนบล็อกเขียวรัวๆ ให้อ่านง่ายขึ้น)
 const GRAD_INDIGO = '🔷 ━━━━━━━━━━━━━';
 const GRAD_GOLD   = '🟡 ━━━━━━━━━━━━━';
@@ -103,6 +103,18 @@ function buttons(transactionId?: string): unknown {
 }
 
 // ═══════════════ Welcome / Onboarding ═══════════════
+export function info(text: string): OutgoingMessage {
+  return {
+    text: `${BRAND}\n${THIN}\n${text}`,
+  };
+}
+
+export function liveRefreshPlaceholder(transactionId: string): OutgoingMessage {
+  return {
+    text: `${BRAND} · <b>Refresh</b>\n${THIN}\n🧭 <code>#${transactionId}</code>`,
+  };
+}
+
 export function welcomeRegistered(name: string): OutgoingMessage {
   return {
     text:

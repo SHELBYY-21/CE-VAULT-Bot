@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node -r ts-node/register test/run-test.ts",
-    "migrate:help": "echo \"Uses STAGING_DATABASE_URL environment variable. Example: STAGING_DATABASE_URL='******host:5432/db' npm run migrate:staging-node\"",
+    "migrate:help": "echo \"Uses STAGING_DATABASE_URL or DATABASE_URL environment variables. Example: STAGING_DATABASE_URL='postgres://user:pass@host:5432/db' npm run migrate:staging-node\"",
     "migrate:staging": "psql \"$STAGING_DATABASE_URL\" -f db/migrations/20260807_add_live_message_fields.sql",
     "migrate:staging-node": "node scripts/run-migration.js"
   },

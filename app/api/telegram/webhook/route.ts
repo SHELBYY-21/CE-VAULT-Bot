@@ -295,7 +295,7 @@ async function handleUpdate(update: any): Promise<void> {
       const footer = `\n\nผู้ดูแล: ${adminMentions || 'ยังไม่ระบุผู้ดูแล'}\n/confirm_<id> เพื่อยืนยันหรือแก้ไข`;
       await sendMessage(chatId, { text: header + lines.join('\n') + footer });
     } catch (e: any) {
-      await sendMessage(chatId, { text: UI.error(e?.message ?? 'ไม่สามารถดึงรายการล่าสุดได้') });
+      await sendMessage(chatId, UI.error(e?.message ?? 'ไม่สามารถดึงรายการล่าสุดได้'));
     }
     return;
   }
@@ -371,7 +371,7 @@ async function handleUpdate(update: any): Promise<void> {
         await sendMessage(chatId, { text: 'อ่านสลิปไม่ชัดเจน — กรุณาระบุจำนวนที่ส่งด้วยข้อความ (เช่น 5000)' });
       }
     } catch (e: any) {
-      await sendMessage(chatId, { text: UI.error(e?.message ?? 'upload failed') });
+      await sendMessage(chatId, UI.error(e?.message ?? 'upload failed'));
     }
     return;
   }

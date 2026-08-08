@@ -12,6 +12,7 @@ export interface Admin {
   id: string;
   name: string;
   telegram_user_id: number;
+  role?: string | null;
   holding_usdt: number;
   created_at?: string;
 }

@@ -2,7 +2,7 @@ import { supabaseAdmin } from './supabaseAdmin';
 import { sendMessage, editMessage, sendSticker } from './telegram';
 import * as UI from './botUi';
 import { setSession, getSession } from './botSessions';
-import { getSticker } from '@/config/stickers';
+import { getSticker, type StickerState } from '@/config/stickers';
 
 type CreateOpts = {
   transactionId: string;
@@ -34,7 +34,7 @@ export default class LiveMessageService {
 
       // Send a sticker for receiving state if configured
       try {
-        const st = getSticker('RECEIVING');
+        const st = getSticker('PROCESSING');
         if (st) await sendSticker(chatId, st);
       } catch (e) {
         // ignore
@@ -63,8 +63,8 @@ export default class LiveMessageService {
     }
     // try sticker by status (map known keys)
     try {
-      const key = (status || '').toUpperCase();
-      const stickerId = getSticker(key as any);
+      const stickerKey = mapStatusToStickerKey(status);
+      const stickerId = stickerKey ? getSticker(stickerKey) : undefined;
       if (stickerId) await sendSticker(chatId, stickerId);
     } catch (e) {
       // ignore
@@ -102,4 +102,29 @@ export default class LiveMessageService {
 function uiSafe(s: any) {
   if (s == null) return '';
   return String(s).slice(0, 4000);
+}
+
+function mapStatusToStickerKey(status: string): StickerState | undefined {
+  const normalized = (status || '').toUpperCase().replace(/\s+/g, '_');
+  switch (normalized) {
+    case 'RECEIVING':
+      return 'PROCESSING';
+    case 'OCR':
+    case 'VERIFIED':
+      return 'OCR_DONE';
+    case 'WAITING_USDT':
+    case 'WAITING':
+      return 'WAITING';
+    case 'PROCESSING':
+      return 'PROCESSING';
+    case 'COMPLETED':
+    case 'SUCCESS':
+      return 'SUCCESS';
+    case 'ERROR':
+      return 'ERROR';
+    case 'RETRY':
+      return 'RETRY';
+    default:
+      return undefined;
+  }
 }

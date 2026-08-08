@@ -20,6 +20,12 @@ export interface BotSession {
   slip_receiver_name?: string | null;
   ocr_conf?: number | null;          // ความมั่นใจ OCR สลิป THB
   ledger_ref?: string | null;        // Ledger ID ของดีลที่กำลังทำ
+  // ── live-message tracking (best-effort audit/restart) ──
+  live_message_id?: number | null;
+  live_chat_id?: number | null;
+  live_status?: string | null;
+  live_tx_id?: string | null;
+  updated_at?: string | null;
   // ── pending USDT (ระหว่างรอ/ยืนยัน) ──
   pending_usdt?: number | null;
   usdt_network?: string | null;
@@ -52,7 +58,11 @@ export async function setSession(
     slip_url: patch.slip_url ?? null,
     caption: patch.caption ?? null,
     ocr_thb: patch.ocr_thb ?? null,
-    updated_at: new Date().toISOString(),
+    live_message_id: patch.live_message_id ?? null,
+    live_chat_id: patch.live_chat_id ?? null,
+    live_status: patch.live_status ?? null,
+    live_tx_id: patch.live_tx_id ?? null,
+    updated_at: patch.updated_at ?? new Date().toISOString(),
   };
   const full = {
     ...base,

@@ -7,7 +7,7 @@ const path = require('path');
 const { Client } = require('pg');
 
 async function main() {
-  const url = process.env.STAGING_DATABASE_URL;
+  const url = process.env.STAGING_DATABASE_URL || process.env.DATABASE_URL;
   if (!url) {
     console.error('ERROR: STAGING_DATABASE_URL is not set. Example: postgres://user:pass@host:5432/db');
     process.exit(2);
