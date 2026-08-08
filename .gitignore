@@ -33,12 +33,9 @@ yarn-error.log*
 # OS
 Thumbs.db
 
-<<<<<<< HEAD
 # Netlify
 .netlify
 
-=======
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 # Local dev
 .supabase/
 

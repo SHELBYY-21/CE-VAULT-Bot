@@ -126,11 +126,7 @@ npm run dev
 2. เพิ่มบอทเข้ากลุ่ม และปิด Privacy Mode ให้บอทเห็นทุกข้อความในกลุ่ม:
    `/setprivacy` → เลือกบอท → **Disable**
 
-<<<<<<< HEAD
 > **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`) = ออนไลน์ 24/7 บน Netlify
-=======
-> **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`)
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 > ไม่มีโปรเซสแยก · ทุกคนในกลุ่มใช้ได้ · ผู้ใช้ใหม่จะถูกถามชื่อก่อนใช้งาน (auto-register)
 
 ### Step 8 — รันในเครื่อง (dev)
@@ -142,37 +138,26 @@ cd bot && npm install
 npm run dev                 # terminal 2 — dev bridge (เห็น "🌉 CE VAULT dev bridge")
 ```
 
-<<<<<<< HEAD
-### Step 9 — Deploy ขึ้น Netlify (โปรดักชัน 24/7)
+### Step 9 — Deploy โปรดักชัน
+รัน Next.js บนโฮสต์ที่รองรับ Node (เช่น VPS / Docker / Cloud Run) แล้วตั้ง env อย่างน้อย:
+`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT_JSON` (หรือ `GOOGLE_APPLICATION_CREDENTIALS`),
+`BOT_TOKEN`, `API_SECRET`, `APP_URL=https://your-domain`
+
+หรือ deploy ขึ้น **Netlify** (มี `netlify.toml` + cron `netlify/functions/day-cut-cron.ts` ให้แล้ว):
 ```bash
 npm i -g netlify-cli
 netlify login
 netlify init                # หรือ netlify link ถ้ามี site อยู่แล้ว
-netlify env:set NEXT_PUBLIC_SUPABASE_URL "..."
-netlify env:set NEXT_PUBLIC_SUPABASE_ANON_KEY "..."
-netlify env:set SUPABASE_SERVICE_ROLE_KEY "..." --secret
 netlify env:set API_SECRET "..." --secret
 netlify env:set BOT_TOKEN "..." --secret
 netlify env:set APP_URL "https://<site>.netlify.app"
-# push ไป production branch หรือ:
 netlify deploy --prod
 ```
-ตั้งค่า build ใน `netlify.toml` แล้ว (Next.js Runtime ติดตั้งอัตโนมัติ) · cron ปิดวัน = `netlify/functions/day-cut-cron.ts` (22:00 เวลาไทย)
-=======
-### Step 9 — Deploy โปรดักชัน (โฮสต์ Next.js ของคุณ)
-รัน Next.js บนโฮสต์ที่รองรับ Node (เช่น VPS / Docker / Cloud Run) แล้วตั้ง env อย่างน้อย:
-`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT_JSON` (หรือ `GOOGLE_APPLICATION_CREDENTIALS`),
-`BOT_TOKEN`, `API_SECRET`, `APP_URL=https://your-domain`
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 
 ### Step 10 — เปิด webhook (ครั้งเดียว)
 หลังมี HTTPS สาธารณะแล้ว เปิด URL นี้ (แทนค่า secret ด้วย `API_SECRET`):
 ```
-<<<<<<< HEAD
-https://<site>.netlify.app/api/telegram/set-webhook?secret=<API_SECRET>
-=======
 https://your-domain/api/telegram/set-webhook?secret=<API_SECRET>
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 ```
 เห็น `{ "telegram": { "ok": true } }` = บอทออนไลน์แล้ว ✅ (ปิด dev bridge ได้)
 
@@ -214,11 +199,7 @@ API route ที่เขียนข้อมูล (`thb-deposit`, `usdt-send`
 2. ใส่ค่าเดียวกันทั้ง 2 ที่:
    - `.env.local` (Next.js) → `API_SECRET=...`
    - `bot/.env` (บอท) → `API_SECRET=...`  ← บอทจะแนบ header ให้อัตโนมัติ
-<<<<<<< HEAD
-3. ตอน deploy Netlify: `netlify env:set API_SECRET "..." --secret`
-=======
-3. ตอน deploy: ตั้ง `API_SECRET` ใน env ของโฮสต์ให้ตรงกับค่าในเครื่อง
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
+3. ตอน deploy: ตั้ง `API_SECRET` ใน env ของโฮสต์ให้ตรงกับค่าในเครื่อง (เช่น Netlify: `netlify env:set API_SECRET "..." --secret`)
 > ถ้าเว้น `API_SECRET` ว่าง = ปิดการตรวจ (ใช้เฉพาะ dev). โปรดักชันควรตั้งเสมอ
 
 ## 🧪 ทดสอบ API โดยไม่ต้องเปิด Telegram
@@ -234,24 +215,7 @@ npm run test:api      # ยิง health + thb-deposit + usdt-send แล้ว�
 npm run dev                 # terminal 1
 npx ngrok http 3000         # terminal 2 -> ได้ https://xxxx.ngrok-free.app
 ```
-<<<<<<< HEAD
-เอา URL ใส่ `API_BASE_URL` + `DASHBOARD_URL` ใน `bot/.env`
-
-**B) ขึ้น Netlify ถาวร**
-```bash
-npm i -g netlify-cli
-netlify login
-netlify init
-netlify env:set NEXT_PUBLIC_SUPABASE_URL "..."
-netlify env:set NEXT_PUBLIC_SUPABASE_ANON_KEY "..."
-netlify env:set SUPABASE_SERVICE_ROLE_KEY "..." --secret
-netlify env:set API_SECRET "..." --secret
-netlify deploy --prod
-```
-API จะอยู่ที่ `https://<site>.netlify.app/api/transactions/thb-deposit`
-=======
 ตั้ง `APP_URL` / `API_BASE_URL` เป็น URL นั้น แล้วเรียก `/api/telegram/set-webhook?secret=<API_SECRET>`
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 
 ---
 

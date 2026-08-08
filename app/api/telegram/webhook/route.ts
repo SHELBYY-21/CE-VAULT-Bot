@@ -1,9 +1,5 @@
 // ============================================================
-<<<<<<< HEAD
-// POST /api/telegram/webhook — ตัวรับ update จาก Telegram (ออนไลน์ 24/7 บน Netlify)
-=======
 // POST /api/telegram/webhook — ตัวรับ update จาก Telegram (รันใน Next.js โปรดักชัน)
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 // รวม logic ทั้งหมด: onboarding (ถามชื่อ) + อัปโหลดสลิป + บันทึกธุรกรรม + ธีม CE Vault
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
@@ -88,11 +84,7 @@ function sticker(chatId: number, key: StickerState): void {
 }
 
 export const runtime = 'nodejs';
-<<<<<<< HEAD
-export const maxDuration = 30; // serverless function timeout budget (seconds)
-=======
 export const maxDuration = 30; // request timeout hint (platform-dependent)
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 
 // Validate sticker config at cold-start (logs warning, never crashes the webhook)
 try {
@@ -127,11 +119,7 @@ export async function POST(req: NextRequest) {
     const updateId = update?.update_id || '?';
     log(`📨 incoming update #${updateId}`);
 
-<<<<<<< HEAD
-    // Timeout protection: 25s (function budget ~30s, buffer 5s)
-=======
     // Timeout protection: 25s (under maxDuration 30s)
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
     await Promise.race([
       handleUpdate(update),
       new Promise((_, reject) => setTimeout(() => reject(new Error('WEBHOOK_TIMEOUT')), 25000)),

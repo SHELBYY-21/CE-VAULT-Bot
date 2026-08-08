@@ -1,10 +1,6 @@
 // ============================================================
 // CE VAULT — Dev Bridge (ใช้เฉพาะตอนพัฒนาในเครื่อง)
-<<<<<<< HEAD
-// โปรดักชันใช้ Webhook บน Netlify — logic ทั้งหมดอยู่ที่ app/api/telegram/webhook
-=======
 // โปรดักชันใช้ Webhook ที่ app/api/telegram/webhook — สคริปต์นี้ใช้เฉพาะ dev
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 // สคริปต์นี้แค่ long-poll getUpdates แล้ว forward เข้า webhook local
 // (จะได้ทดสอบบอทในเครื่องโดยไม่ต้องมี public URL / ngrok)
 // ============================================================
