@@ -1,0 +1,14 @@
+{
+  "name": "CE VAULT (Next.js + Firebase Emulator)",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "emulators",
+      "command": "npm run emulators"
+    },
+    {
+      "name": "dev",
+      "command": "bash .cursor/dev.sh"
+    }
+  ]
+}
