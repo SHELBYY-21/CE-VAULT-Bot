@@ -1,0 +1,49 @@
+# Firebase App Hosting (ต้องเปิด Blaze ก่อน)
+# Console: https://console.firebase.google.com/project/ce88-95911/apphosting
+runConfig:
+  cpu: 1
+  memoryMiB: 1024
+  minInstances: 1
+  maxInstances: 4
+  concurrency: 80
+
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: ce88-95911
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: ce88-95911.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: ce88-95911.firebasestorage.app
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: '1061212552362'
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:1061212552362:web:178ee63516a172826164d3
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_USE_FIREBASE_EMULATOR
+    value: '0'
+    availability: [BUILD, RUNTIME]
+  - variable: FIREBASE_PROJECT_ID
+    value: ce88-95911
+    availability: [RUNTIME]
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: ce88-95911.firebasestorage.app
+    availability: [RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+    availability: [BUILD, RUNTIME]
+  - variable: FIREBASE_SERVICE_ACCOUNT_JSON
+    secret: FIREBASE_SERVICE_ACCOUNT_JSON
+    availability: [RUNTIME]
+  - variable: BOT_TOKEN
+    secret: BOT_TOKEN
+    availability: [RUNTIME]
+  - variable: API_SECRET
+    secret: API_SECRET
+    availability: [RUNTIME]
+  - variable: APP_URL
+    secret: APP_URL
+    availability: [RUNTIME]

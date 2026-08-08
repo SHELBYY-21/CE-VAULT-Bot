@@ -1,0 +1,148 @@
+# เปิดแดชบอร์ดสาธารณะผ่าน Cloudflare quick tunnel
+# (แยกจาก Bot 24h — ไม่ cancel บอท)
+#
+# ใช้: Actions → "Dashboard 24h" → Run workflow
+# ดู URL ใน Job Summary / artifact `dashboard-url` / issue "CE VAULT Dashboard URL"
+name: Dashboard 24h
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 */5 * * *'
+
+concurrency:
+  group: ce-vault-dashboard-24h
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '1061212552362'
+          NEXT_PUBLIC_FIREBASE_APP_ID: 1:1061212552362:web:178ee63516a172826164d3
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: '0'
+        run: npm run build
+
+      - name: Resolve credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret"; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_SERVICE_ACCOUNT_JSON<<EOF" >> "$GITHUB_ENV"
+          printf '%s\n' "$FIREBASE_SERVICE_ACCOUNT_JSON" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o /tmp/cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x /tmp/cloudflared
+          /tmp/cloudflared --version
+
+      - name: Start Next.js + public tunnel
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
+          NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '1061212552362'
+          NEXT_PUBLIC_FIREBASE_APP_ID: 1:1061212552362:web:178ee63516a172826164d3
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: '0'
+          FIREBASE_PROJECT_ID: ce88-95911
+          FIREBASE_STORAGE_BUCKET: ce88-95911.firebasestorage.app
+          APP_URL: http://127.0.0.1:3000
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          npm run start -- --hostname 127.0.0.1 --port 3000 &
+          NEXT_PID=$!
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "Next.js healthy"
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/api/health
+          echo
+          curl -fsS http://127.0.0.1:3000/api/dashboard/data | head -c 400
+          echo
+
+          rm -f /tmp/cf.log
+          /tmp/cloudflared tunnel --url http://127.0.0.1:3000 --no-autoupdate > /tmp/cf.log 2>&1 &
+          CF_PID=$!
+
+          URL=""
+          for i in $(seq 1 60); do
+            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1 || true)
+            if [ -n "$URL" ]; then break; fi
+            sleep 2
+          done
+          if [ -z "$URL" ]; then
+            echo "Failed to get Cloudflare tunnel URL"
+            cat /tmp/cf.log || true
+            exit 1
+          fi
+
+          DASH="${URL}/dashboard"
+          echo "Public dashboard: $DASH"
+          echo "$DASH" > /tmp/dashboard-url.txt
+          {
+            echo "## CE VAULT Dashboard"
+            echo ""
+            echo "- Open: [$DASH]($DASH)"
+            echo "- API: \`${URL}/api/dashboard/data\`"
+            echo "- Tunnel URL rotates each run (~5h)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Publish / update a single tracking issue with the live URL
+          TITLE='CE VAULT Dashboard URL'
+          EXISTING=$(gh issue list --search "in:title \"$TITLE\"" --state open --json number,title --jq ".[] | select(.title==\"$TITLE\") | .number" | head -1)
+          BODY=$(printf '## Live dashboard\n\n%s\n\nUpdated: %s\nRun: %s\n\n> URL rotates when the Actions job restarts (~every 5 hours).\n' "$DASH" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi
+
+          while kill -0 "$NEXT_PID" 2>/dev/null && kill -0 "$CF_PID" 2>/dev/null; do
+            sleep 30
+          done
+          echo "Process exited — failing so schedule restarts"
+          kill "$NEXT_PID" "$CF_PID" 2>/dev/null || true
+          exit 1
+
+      - name: Upload dashboard URL
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-url
+          path: /tmp/dashboard-url.txt
+          if-no-files-found: ignore
+          retention-days: 2

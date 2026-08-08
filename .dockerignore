@@ -1,0 +1,20 @@
+# dependencies / build
+node_modules
+.next
+.git
+.github
+.firebase
+.firebase-sa.json
+.env
+.env.*
+!.env.local.example
+bot/node_modules
+supabase
+docs
+assets
+*.md
+Dockerfile
+docker-compose.yml
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

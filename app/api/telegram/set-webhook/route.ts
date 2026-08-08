@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({
       url: webhookUrl,
       secret_token: secret || undefined,
-      allowed_updates: ['message', 'edited_message'],
+      allowed_updates: ['message', 'edited_message', 'callback_query'],
       drop_pending_updates: true,
     }),
   });

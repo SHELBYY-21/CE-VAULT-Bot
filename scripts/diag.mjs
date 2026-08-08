@@ -1,14 +1,31 @@
-import { readFileSync } from 'fs';
-import { createClient } from '@supabase/supabase-js';
-const env = Object.fromEntries(
-  readFileSync('.env.local', 'utf8').split(/\r?\n/).filter((l) => l && !l.startsWith('#') && l.includes('=')).map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }),
-);
-const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+import { readFileSync, existsSync } from 'fs';
+import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
-for (const t of ['admins', 'zzz_definitely_not_a_table']) {
-  const head = await sb.from(t).select('id', { count: 'exact', head: true });
-  const real = await sb.from(t).select('*').limit(1);
-  console.log(`[${t}]`);
-  console.log('  head:', head.error ? 'ERR ' + head.error.message : `ok count=${head.count}`);
-  console.log('  real:', real.error ? 'ERR ' + real.error.message : `ok rows=${JSON.stringify(real.data)}`);
+function loadEnv() {
+  if (!existsSync('.env.local')) return {};
+  return Object.fromEntries(
+    readFileSync('.env.local', 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => l && !l.startsWith('#') && l.includes('='))
+      .map((l) => {
+        const i = l.indexOf('=');
+        return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+      }),
+  );
 }
+const env = loadEnv();
+for (const [k, v] of Object.entries(env)) if (!process.env[k]) process.env[k] = v;
+const projectId =
+  process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'demo-ce-vault';
+if (!getApps().length) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)), projectId });
+  } else initializeApp({ projectId });
+}
+const db = getFirestore();
+const snap = await db.collection('admins').limit(3).get();
+console.log(
+  'admins sample:',
+  snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+);

@@ -1,11 +1,10 @@
 // ============================================================
 // Telegram Bot API helper (ฝั่ง server, ใช้ fetch — เหมาะกับ webhook/serverless)
 // ============================================================
-import { supabaseAdmin } from './supabaseAdmin';
+import { adminStorage, storageBucketName } from './firebaseAdmin';
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const API = `https://api.telegram.org/bot${TOKEN}`;
-const BUCKET = process.env.SUPABASE_BUCKET || 'slips';
 
 async function tg<T = any>(method: string, payload: Record<string, any>): Promise<T> {
   const res = await fetch(`${API}/${method}`, {
@@ -52,8 +51,12 @@ export async function sendDocument(
   await fetch(`${API}/sendDocument`, { method: 'POST', body: form }).catch(() => undefined);
 }
 
-/** แก้ไขข้อความในที่เดิม (เอฟเฟกต์ progress) */
-export async function editMessage(chatId: number, messageId: number, m: OutgoingMessage): Promise<void> {
+/** แก้ไขข้อความในที่เดิม (Live Message) — true ถ้าสำเร็จ */
+export async function editMessage(
+  chatId: number,
+  messageId: number,
+  m: OutgoingMessage,
+): Promise<boolean> {
   try {
     await tg('editMessageText', {
       chat_id: chatId,
@@ -63,8 +66,13 @@ export async function editMessage(chatId: number, messageId: number, m: Outgoing
       disable_web_page_preview: true,
       reply_markup: m.reply_markup,
     });
+    return true;
   } catch (e) {
-    console.warn(`editMessage failed (chat=${chatId}, msg=${messageId}):`, e instanceof Error ? e.message : e);
+    console.warn(
+      `editMessage failed (chat=${chatId}, msg=${messageId}):`,
+      e instanceof Error ? e.message : e,
+    );
+    return false;
   }
 }
 
@@ -94,18 +102,44 @@ export async function sendSticker(chatId: number, fileId: string): Promise<void>
   }
 }
 
-/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Supabase Storage → คืน public URL */
+/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Firebase Storage → คืน public URL
+ *  ถ้า Storage/Billing ยังไม่พร้อม → fallback เป็น Telegram file URL (ชั่วคราว สำหรับ OCR)
+ */
 export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const file = await tg<{ file_path: string }>('getFile', { file_id: fileId });
-  const fileRes = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`);
+  const telegramUrl = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`;
+  const fileRes = await fetch(telegramUrl);
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
   const path = `slips/${Date.now()}_${fileId}.jpg`;
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, buffer, {
-    contentType: 'image/jpeg',
-    upsert: true,
-  });
-  if (error) throw error;
+  try {
+    const bucket = adminStorage.bucket(storageBucketName());
+    const f = bucket.file(path);
+    await f.save(buffer, {
+      contentType: 'image/jpeg',
+      resumable: false,
+      metadata: { cacheControl: 'public,max-age=31536000' },
+    });
 
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+      const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+      return `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
+    }
+    await f.makePublic().catch(() => undefined);
+    return `https://storage.googleapis.com/${bucket.name}/${path}`;
+  } catch (e) {
+    // OR_BACR2_44 / billing absent / bucket missing — อย่าให้ทั้งดีลพัง
+    console.warn(
+      '[uploadSlip] Firebase Storage unavailable, using Telegram file URL:',
+      e instanceof Error ? e.message : e,
+    );
+    return telegramUrl;
+  }
+}
+
+/** URL ที่ปลอดภัยสำหรับเก็บใน DB — ไม่เก็บ bot token ของ Telegram */
+export function toPersistedSlipUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.includes('api.telegram.org/file/bot')) return '';
+  return url;
 }

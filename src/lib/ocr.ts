@@ -1,7 +1,8 @@
 // ============================================================
-// อ่านสลิป — ลำดับความสำคัญ:
-//   1) Grok Vision (ถ้ามี GROK_API_KEY) — คืนข้อมูล structured ทั้งชุด
-//   2) OCR.space (fallback) — คืนแค่ยอด THB
+// อ่านสลิป — ลำดับความสำคัญ (ทดแทน slipApi เสียเงิน):
+//   1) Grok Vision — ยอด / เวลา / ธนาคาร / เลขท้าย / ชื่อ
+//   2) OCR.space (fallback) — แค่ยอด THB
+// แอดมิน /pin บัญชีวันนี้ → Vision มั่นใจ + เลขตรง = ตีสำเร็จอัตโนมัติ
 // ============================================================
 import { analyzeSlipWithGrok, analyzeUsdtWithGrok, SlipExtract, UsdtExtract } from './grokVision';
 
@@ -19,7 +20,9 @@ export async function analyzeUsdtScreenshot(imageUrl: string): Promise<UsdtExtra
 }
 
 function pickAmount(text: string): number | null {
-  const withDecimals = (text.match(/\d[\d,]*\.\d{2}/g) || []).map((m) => parseFloat(m.replace(/,/g, '')));
+  const withDecimals = (text.match(/\d[\d,]*\.\d{2}/g) || []).map((m) =>
+    parseFloat(m.replace(/,/g, '')),
+  );
   const allInts = (text.match(/\d[\d,]{2,}/g) || []).map((m) => parseFloat(m.replace(/,/g, '')));
   const pool = (withDecimals.length ? withDecimals : allInts).filter(
     (n) => Number.isFinite(n) && n >= 10 && n <= 10_000_000,
@@ -34,9 +37,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
   try {
     const grok = await Promise.race([
       analyzeSlipWithGrok(imageUrl),
-      new Promise<SlipExtract | null>((resolve) =>
-        setTimeout(() => resolve(null), 10000)
-      ),
+      new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 10000)),
     ]);
     if (grok && grok.thbAmount !== null) return grok;
   } catch (e) {
@@ -47,9 +48,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
   try {
     const thb = await Promise.race([
       extractThbAmountFromOcrSpace(imageUrl),
-      new Promise<number | null>((resolve) =>
-        setTimeout(() => resolve(null), 8000)
-      ),
+      new Promise<number | null>((resolve) => setTimeout(() => resolve(null), 8000)),
     ]);
     return {
       thbAmount: thb,

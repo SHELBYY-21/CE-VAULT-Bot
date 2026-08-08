@@ -1,6 +1,64 @@
 # USDT Arbitrage — Telegram Bot + Next.js Dashboard
 
-ระบบบันทึกสลิปโอน THB → แลก USDT ผ่าน Telegram พร้อมแดชบอร์ด Next.js + Supabase (Realtime)
+ระบบบันทึกสลิปโอน THB → แลก USDT ผ่าน Telegram พร้อมแดชบอร์ด Next.js + Firebase (Firestore Realtime)
+
+> **Backend:** Cloud Firestore + Firebase Storage (local = Firebase Emulator Suite / `demo-ce-vault`). โฟลเดอร์ `supabase/` เหลือเป็น legacy schema เท่านั้น
+
+---
+
+## แดชบอร์ดออนไลน์
+
+Firebase App Hosting ต้องเปิด Blaze ก่อน — ระหว่างนี้ใช้ GitHub Actions + Cloudflare tunnel:
+
+1. **Actions → Dashboard 24h → Run workflow** (secrets เดียวกับ Bot 24h)
+2. เปิด issue **[CE VAULT Dashboard URL](https://github.com/SHELBYY-21/CE-VAULT-Bot/issues?q=is%3Aissue+CE+VAULT+Dashboard+URL)** — มีลิงก์ `/dashboard` ล่าสุด
+3. URL หมุนใหม่ทุกครั้งที่ job รีสตาร์ท (~5 ชม.)
+
+## บอทรัน 24 ชั่วโมง (แนะนำ)
+
+Cloud Agent / เครื่องที่บล็อก `api.telegram.org` **รันบอทตอบแชทไม่ได้** — ใช้หนึ่งในวิธีนี้:
+
+### A) GitHub Actions (ไม่ต้องมี VPS / ไม่ใช้ Vercel)
+
+**เร็วสุด (ไม่ต้องตั้ง Secrets):** หลัง merge เข้า `main`
+
+1. เปิด https://github.com/SHELBYY-21/CE-VAULT-Bot/actions/workflows/bot-24h.yml  
+2. **Run workflow** → วาง `bot_token` + `firebase_sa_json` (JSON หนึ่งบรรทัด)  
+3. ทักบอทใน Telegram (`/start`) — ควรตอบทันที  
+
+คัดลอกค่าสำหรับวาง (จากเครื่องที่มี `.env.local` + `.firebase-sa.json`):
+
+```bash
+bash scripts/print-bot-24h-inputs.sh
+```
+
+**ให้ schedule ทุก 5 ชม. รันเอง:** ตั้ง Repository secrets แล้ว merge เข้า `main`
+
+- `BOT_TOKEN`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `GROK_API_KEY` (ถ้ามี)
+- `API_SECRET` (แนะนำ)
+
+หรือรัน `bash scripts/push-bot-secrets.sh` บนเครื่องที่มี `gh` + สิทธิ์ secrets
+
+Workflow จะ long-poll Telegram แล้ว forward เข้า webhook ในเครื่อง runner (~รอบละ 6 ชม. แล้วสลับรอบอัตโนมัติ)
+
+### B) VPS + Docker (รันจริงตลอด)
+
+```bash
+# บนเซิร์ฟเวอร์ที่มี .env.local ครบ
+docker compose up -d --build
+# หรือ
+npm run prod:24h
+```
+
+ถ้ามีโดเมน HTTPS สาธารณะ: ตั้ง `APP_URL=https://your-domain` แล้วเปิด  
+`https://your-domain/api/telegram/set-webhook?secret=<API_SECRET>`
+
+### C) Firebase App Hosting (ต้องเปิด Blaze)
+
+1. เปิดบิลลิ่ง: https://console.firebase.google.com/project/ce88-95911/overview?purchaseBillingPlan=metered  
+2. ตั้ง secrets ตาม `apphosting.yaml` แล้ว deploy จาก Console / CLI
 
 ## โครงสร้างโปรเจกต์
 
@@ -36,7 +94,7 @@ BOT/
 ### Step 2 — Tailwind
 ไฟล์ `tailwind.config.ts`, `postcss.config.js`, `app/globals.css` เตรียมไว้แล้ว (ไม่ต้องตั้งค่าเพิ่ม)
 
-### Step 3 — ตั้งค่า Supabase
+### Step 3 — ตั้งค่า Firebase
 1. สร้างโปรเจกต์ที่ https://supabase.com → New project
 2. เปิด **SQL Editor → New query** วางเนื้อหาไฟล์ [`supabase/schema.sql`](supabase/schema.sql) แล้วกด **Run**
    - จะได้ตาราง `admins`, `bank_accounts`, `transactions`, RPC, เปิด Realtime, สร้าง bucket `slips` และ seed แอดมินตัวอย่าง
@@ -45,7 +103,7 @@ BOT/
    update admins set telegram_user_id = 123456789 where name = 'ADMIN A';
    ```
 
-### Step 4 — ENV ของ Next.js
+### Step 4 — ENV ของ Next.js (Firebase)
 คัดลอก `.env.local.example` เป็น `.env.local` แล้วกรอกค่าจาก **Supabase → Project Settings → API**
 ```
 NEXT_PUBLIC_SUPABASE_URL=...
@@ -68,7 +126,11 @@ npm run dev
 2. เพิ่มบอทเข้ากลุ่ม และปิด Privacy Mode ให้บอทเห็นทุกข้อความในกลุ่ม:
    `/setprivacy` → เลือกบอท → **Disable**
 
+<<<<<<< HEAD
 > **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`) = ออนไลน์ 24/7 บน Netlify
+=======
+> **สถาปัตยกรรม v2:** บอทรันเป็น **Webhook ในตัว Next.js** (`app/api/telegram/webhook`)
+>>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 > ไม่มีโปรเซสแยก · ทุกคนในกลุ่มใช้ได้ · ผู้ใช้ใหม่จะถูกถามชื่อก่อนใช้งาน (auto-register)
 
 ### Step 8 — รันในเครื่อง (dev)
@@ -80,6 +142,7 @@ cd bot && npm install
 npm run dev                 # terminal 2 — dev bridge (เห็น "🌉 CE VAULT dev bridge")
 ```
 
+<<<<<<< HEAD
 ### Step 9 — Deploy ขึ้น Netlify (โปรดักชัน 24/7)
 ```bash
 npm i -g netlify-cli
@@ -95,13 +158,23 @@ netlify env:set APP_URL "https://<site>.netlify.app"
 netlify deploy --prod
 ```
 ตั้งค่า build ใน `netlify.toml` แล้ว (Next.js Runtime ติดตั้งอัตโนมัติ) · cron ปิดวัน = `netlify/functions/day-cut-cron.ts` (22:00 เวลาไทย)
+=======
+### Step 9 — Deploy โปรดักชัน (โฮสต์ Next.js ของคุณ)
+รัน Next.js บนโฮสต์ที่รองรับ Node (เช่น VPS / Docker / Cloud Run) แล้วตั้ง env อย่างน้อย:
+`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT_JSON` (หรือ `GOOGLE_APPLICATION_CREDENTIALS`),
+`BOT_TOKEN`, `API_SECRET`, `APP_URL=https://your-domain`
+>>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 
 ### Step 10 — เปิด webhook (ครั้งเดียว)
-เปิด URL นี้ในเบราว์เซอร์ (แทนค่า secret ด้วย `API_SECRET`):
+หลังมี HTTPS สาธารณะแล้ว เปิด URL นี้ (แทนค่า secret ด้วย `API_SECRET`):
 ```
+<<<<<<< HEAD
 https://<site>.netlify.app/api/telegram/set-webhook?secret=<API_SECRET>
+=======
+https://your-domain/api/telegram/set-webhook?secret=<API_SECRET>
+>>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 ```
-เห็น `{ "telegram": { "ok": true } }` = บอทออนไลน์ตลอดแล้ว ✅ (ปิด dev bridge ได้)
+เห็น `{ "telegram": { "ok": true } }` = บอทออนไลน์แล้ว ✅ (ปิด dev bridge ได้)
 
 ---
 
@@ -123,6 +196,8 @@ https://<site>.netlify.app/api/telegram/set-webhook?secret=<API_SECRET>
 | `/rate` | ดูเรตปัจจุบัน (เรตตลาด = Binance TH real-time) |
 | `/rate 35.5` | ตั้ง**เรตขายของเรา** (เรตตลาดอิง Binance TH อัตโนมัติ) |
 | `/rate 35.5 34.8` | ตั้งเรตขาย + เรตตลาดเอง (override) |
+| `/convert 5000` | แปลง 5,000 บาท → USDT ที่เรตขายปัจจุบัน (ไม่บันทึกธุรกรรม) |
+| `/convert 100 usdt` | แปลง 100 USDT → บาท ที่เรตขายปัจจุบัน |
 
 **เรตตลาดจริง (market rate):** ดึงสดจาก **Binance TH** `GET https://api.binance.th/api/v1/ticker/price?symbol=USDTTHB` (public, cache 30 วิ) — ใช้คำนวณ Expected USDT / ค่าธรรมเนียม และโชว์บนแดชบอร์ด (`/api/market-rate`, อัปเดตทุก 30 วิ). ถ้า Binance TH ล่ม → fallback เรตในตาราง `rates` → ค่า ENV
 
@@ -139,7 +214,11 @@ API route ที่เขียนข้อมูล (`thb-deposit`, `usdt-send`
 2. ใส่ค่าเดียวกันทั้ง 2 ที่:
    - `.env.local` (Next.js) → `API_SECRET=...`
    - `bot/.env` (บอท) → `API_SECRET=...`  ← บอทจะแนบ header ให้อัตโนมัติ
+<<<<<<< HEAD
 3. ตอน deploy Netlify: `netlify env:set API_SECRET "..." --secret`
+=======
+3. ตอน deploy: ตั้ง `API_SECRET` ใน env ของโฮสต์ให้ตรงกับค่าในเครื่อง
+>>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 > ถ้าเว้น `API_SECRET` ว่าง = ปิดการตรวจ (ใช้เฉพาะ dev). โปรดักชันควรตั้งเสมอ
 
 ## 🧪 ทดสอบ API โดยไม่ต้องเปิด Telegram
@@ -149,12 +228,13 @@ npm run test:api      # ยิง health + thb-deposit + usdt-send แล้ว�
 ```
 > ตั้ง `TEST_TELEGRAM_ID` ใน `bot/.env` ให้ตรงกับแอดมินในตาราง `admins`
 
-## ⚡ Deploy เร็วสุด (ได้ลิงก์จริง)
-**A) เปิด localhost เป็นลิงก์สาธารณะทันที** (เทสบอทจริงใน ~30 วิ)
+## ⚡ ได้ลิงก์สาธารณะตอน dev
+เปิด localhost เป็น HTTPS สาธารณะ (เทส webhook จริง):
 ```bash
 npm run dev                 # terminal 1
 npx ngrok http 3000         # terminal 2 -> ได้ https://xxxx.ngrok-free.app
 ```
+<<<<<<< HEAD
 เอา URL ใส่ `API_BASE_URL` + `DASHBOARD_URL` ใน `bot/.env`
 
 **B) ขึ้น Netlify ถาวร**
@@ -169,6 +249,9 @@ netlify env:set API_SECRET "..." --secret
 netlify deploy --prod
 ```
 API จะอยู่ที่ `https://<site>.netlify.app/api/transactions/thb-deposit`
+=======
+ตั้ง `APP_URL` / `API_BASE_URL` เป็น URL นั้น แล้วเรียก `/api/telegram/set-webhook?secret=<API_SECRET>`
+>>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 
 ---
 
