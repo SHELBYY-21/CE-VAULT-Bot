@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-// GET /api/cron/day-cut — Netlify Scheduled Function ยิงตอน 22:00 เวลาไทย/4 ทุ่ม (15:00 UTC)
-// ดู netlify/functions/day-cut-cron.ts
-// ทุกห้อง: โพสต์สรุปวันเก่าเข้าห้อง → ตั้ง day_cut_at = ตอนนี้ (เริ่มวันใหม่อัตโนมัติ)
-=======
 // GET /api/cron/day-cut — cron endpoint (ยิงตอน 22:00 เวลาไทย)
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
+// Netlify Scheduled Function (netlify/functions/day-cut-cron.ts) ยิงตอน 22:00 เวลาไทย (15:00 UTC)
+// ทุกห้อง: โพสต์สรุปวันเก่าเข้าห้อง → ตั้ง day_cut_at = ตอนนี้ (เริ่มวันใหม่อัตโนมัติ)
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { sendMessage } from '@/lib/telegram';

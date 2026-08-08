@@ -4,11 +4,7 @@
 // SCP client  → deploy, import, read queries, event monitors
 // Wallets client → write txs (createContractExecutionTransaction), gas wallets
 //
-<<<<<<< HEAD
-// Env (set in .env.local / Netlify — never commit real values):
-=======
 // Env (set in .env.local / host env — never commit real values):
->>>>>>> cfa23290a5cf77efa8f4c162b717d220380337d3
 //   CIRCLE_API_KEY   TEST_API_KEY:... or LIVE_API_KEY:...
 //   ENTITY_SECRET    32-byte hex entity secret (registered in Circle console)
 
