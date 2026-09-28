@@ -209,28 +209,15 @@ async function handleUpdate(update: any): Promise<void> {
       await sendMessage(chatId, UI.chatRateSet(nums[0]));
     } else {
       const cur = await getChatRate(chatId);
-      await sendMessage(chatId, UI.chatRateSet(cur ?? 0));
+      await sendMessage(chatId, { text: cur != null && cur > 0 ? `💱 เรตห้องนี้: <b>${cur} THB/USDT</b>\nตั้งใหม่: <code>/setrate 32.49</code>` : '💱 ห้องนี้ยังไม่ตั้งเรต\nตั้งค่า: <code>/setrate 32.49</code>' });
     }
     return;
   }
 
-  // ----- /ce : compact per-room control panel -----
-  if (text && /^\/ce(?:@\w+)?$/i.test(text)) {
+  // ----- /ce, /menu, /help: one compact room-scoped entrypoint -----
+  if (text && /^\/(?:ce|menu|help)(?:@\w+)?$/i.test(text)) {
     const room = await getRoom(chatId);
-    const rate = room.rate != null ? `${room.rate} THB/USDT` : 'ยังไม่ตั้งค่า';
-    await sendMessage(chatId, {
-      text: `◈ <b>CE VAULT · ${ceEscape(room.name || 'ROOM CONTROL')}</b>\nอัตราแลกเปลี่ยน: <b>${rate}</b>\nเลือกเมนูด้านล่าง`,
-      reply_markup: { inline_keyboard: [
-        [{ text: '💱 อัตราแลกเปลี่ยน', callback_data: 'ce:rate' }, { text: '🏦 ธนาคาร', callback_data: 'ce:bank' }],
-        [{ text: '🔐 เงินประกัน', callback_data: 'ce:deposit' }, { text: '📊 รายงาน', callback_data: 'ce:report' }],
-      ] },
-    });
-    return;
-  }
-
-  // ----- /menu : เมนูคำสั่งทั้งหมด -----
-  if (text && text.startsWith('/menu')) {
-    await sendMessage(chatId, UI.menuCard());
+    await sendMessage(chatId, UI.roomControlCard({ roomName: room.name, rate: room.rate }));
     return;
   }
 
@@ -312,7 +299,7 @@ async function handleUpdate(update: any): Promise<void> {
   // ----- /start , /help , /register -----
   if (
     text &&
-    (text.startsWith('/start') || text.startsWith('/help') || text.startsWith('/register'))
+    (text.startsWith('/start') || text.startsWith('/register'))
   ) {
     const existing = await getAdminByTelegramId(userId);
     if (existing) {
@@ -1312,18 +1299,33 @@ async function handleCallback(cb: any): Promise<void> {
   const [action, arg] = data.split(':');
   if (!arg) return await answerCallback(id);
 
-  // ----- CE compact room menu: keep callbacks scoped to originating chat -----
+  // ----- CE compact room menu: read-only navigation, no financial writes -----
   if (action === 'ce') {
     await answerCallback(id);
-    if (arg === 'report') return await sendLedger(chatId);
-    if (arg === 'bank') return await handlePinCommand(chatId, '/pin');
+    if (arg === 'home') {
+      const room = await getRoom(chatId);
+      await sendMessage(chatId, UI.roomControlCard({ roomName: room.name, rate: room.rate }));
+      return;
+    }
+    if (arg === 'report') {
+      await sendLedger(chatId);
+      return;
+    }
+    if (arg === 'bank') {
+      await sendMessage(chatId, {
+        text: '🏦 <b>บัญชีรับในระบบเดิม</b>\n<i>รายการนี้ใช้ร่วมกันหลายห้องและยังไม่ซิงก์กับข้อความ Telegram PIN จริง โปรดตรวจสอบข้อความปักหมุดในกลุ่มก่อนรับเงิน</i>',
+      });
+      await handlePinCommand(chatId, '/pin');
+      return;
+    }
     if (arg === 'rate') {
       const room = await getRoom(chatId);
-      await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยน (THB/USDT)</b>\nปัจจุบัน: <b>${room.rate ?? 'ยังไม่ตั้งค่า'}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
+      const rate = room.rate != null && room.rate > 0 ? `${room.rate} THB/USDT` : 'ยังไม่ตั้งค่า';
+      await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยนของห้องนี้</b>\nปัจจุบัน: <b>${rate}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
       return;
     }
     if (arg === 'deposit') {
-      await sendMessage(chatId, { text: '🔐 เงินประกัน: ยังไม่เปิดรับการบันทึกผ่านบอต เพื่อป้องกันการหักยอดผิดหรือซ้ำ' });
+      await sendMessage(chatId, { text: '🔐 <b>เงินประกัน</b>\nยังไม่เปิดรับการบันทึกผ่านบอตชุดนี้ เพื่อป้องกันการหักยอดซ้ำหรือแสดงยอดที่ยังไม่ได้ตรวจสอบ' });
       return;
     }
     return;
