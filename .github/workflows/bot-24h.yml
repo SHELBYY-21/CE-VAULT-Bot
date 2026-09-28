@@ -23,12 +23,12 @@ on:
         required: false
         type: string
   schedule:
-    # เริ่มรอบใหม่ทุก 5 ชม. (job เก่าถูก cancel → ครอบคลุมเกือบตลอดวัน)
+    # เริ่มรอบใหม่ทุก 5 ชม.
     - cron: '0 */5 * * *'
 
 concurrency:
   group: ce-vault-bot-24h
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   bot:
@@ -108,29 +108,61 @@ jobs:
           APP_URL: http://127.0.0.1:3000
           LOCAL_WEBHOOK_URL: http://127.0.0.1:3000/api/telegram/webhook
           API_BASE_URL: http://127.0.0.1:3000
+        shell: bash
         run: |
-          set -e
+          set -Eeuo pipefail
+
+          cleanup() {
+            echo "Stopping bot processes..."
+            kill "${BRIDGE_PID:-}" "${NEXT_PID:-}" 2>/dev/null || true
+            wait "${BRIDGE_PID:-}" "${NEXT_PID:-}" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT INT TERM
+
           # Optional OCR key from Actions secret (name: GROK_API_KEY)
           if [[ -n "${{ secrets.GROK_API_KEY }}" ]]; then
             export GROK_API_KEY="${{ secrets.GROK_API_KEY }}"
           fi
+
           npm run start -- --hostname 127.0.0.1 --port 3000 &
           NEXT_PID=$!
+
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
               echo "Next.js healthy"
               break
             fi
+
+            if ! kill -0 "$NEXT_PID" 2>/dev/null; then
+              echo "Next.js exited before becoming healthy"
+              exit 1
+            fi
+
             sleep 2
           done
+
           curl -fsS http://127.0.0.1:3000/api/health
           echo
+
           (cd bot && npx ts-node src/index.ts) &
           BRIDGE_PID=$!
-          # Keep job alive until cancelled / timeout; exit if either dies
-          while kill -0 "$NEXT_PID" 2>/dev/null && kill -0 "$BRIDGE_PID" 2>/dev/null; do
+
+          # Run for slightly less than the five-hour schedule interval (4h 40min = 16800s)
+          end_time=$((SECONDS + 16800))
+
+          while (( SECONDS < end_time )); do
+            if ! kill -0 "$NEXT_PID" 2>/dev/null; then
+              echo "Next.js exited unexpectedly"
+              exit 1
+            fi
+
+            if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+              echo "Bot bridge exited unexpectedly"
+              exit 1
+            fi
+
             sleep 30
           done
-          echo "Process exited — failing job so schedule restarts"
-          kill "$NEXT_PID" "$BRIDGE_PID" 2>/dev/null || true
-          exit 1
+
+          echo "Scheduled runtime completed successfully"
