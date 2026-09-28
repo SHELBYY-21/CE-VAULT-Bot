@@ -1319,9 +1319,13 @@ async function handleCallback(cb: any): Promise<void> {
     if (arg === 'bank') return await handlePinCommand(chatId, '/pin');
     if (arg === 'rate') {
       const room = await getRoom(chatId);
-      return await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยน (THB/USDT)</b>\nปัจจุบัน: <b>${room.rate ?? 'ยังไม่ตั้งค่า'}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
+      await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยน (THB/USDT)</b>\nปัจจุบัน: <b>${room.rate ?? 'ยังไม่ตั้งค่า'}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
+      return;
     }
-    if (arg === 'deposit') return await sendMessage(chatId, { text: '🔐 เงินประกัน: ยังไม่เปิดรับการบันทึกผ่านบอต เพื่อป้องกันการหักยอดผิดหรือซ้ำ' });
+    if (arg === 'deposit') {
+      await sendMessage(chatId, { text: '🔐 เงินประกัน: ยังไม่เปิดรับการบันทึกผ่านบอต เพื่อป้องกันการหักยอดผิดหรือซ้ำ' });
+      return;
+    }
     return;
   }
 
