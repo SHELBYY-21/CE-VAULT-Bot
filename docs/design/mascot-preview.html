@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CE VAULT · Mascot Motion Preview</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🤖</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--b0:#03070f;--b1:#05090e;--b2:#080e18;--b3:#0c1520;--b4:#101b28;--c:#00d4ff;--ca:rgba(0,212,255,.07);--cb:rgba(0,212,255,.14);--g:#f0b429;--ga:rgba(240,180,41,.08);--gb:rgba(240,180,41,.22);--s:#00e676;--d:#ff5252;--t1:#e4f4fc;--t2:rgba(228,244,252,.6);--t3:rgba(228,244,252,.32);--br:rgba(0,212,255,.1);--bra:rgba(0,212,255,.22)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--b0);color:var(--t1);font-family:'Space Grotesk',system-ui,sans-serif;min-height:100vh}
+.hdr{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(3,7,15,.96);backdrop-filter:blur(20px);border-bottom:1px solid var(--br);height:56px;display:flex;align-items:center;padding:0 20px;gap:10px}
+.hdr-ico{font-size:18px}
+.hdr-title{font-size:14px;font-weight:700;letter-spacing:2px;color:var(--c);text-transform:uppercase}
+.hdr-sep{width:1px;height:14px;background:var(--br)}
+.hdr-sub{font-size:9px;color:var(--t3);letter-spacing:2px;text-transform:uppercase}
+.hdr-tag{margin-left:auto;font-size:9px;font-weight:700;color:var(--g);background:var(--ga);border:1px solid var(--gb);padding:4px 10px;border-radius:9999px;letter-spacing:1px}
+.main{max-width:1100px;margin:0 auto;padding:88px 16px 60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.card{background:var(--b2);border:1px solid var(--br);border-radius:14px;overflow:hidden}
+.card-top{padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--br)}
+.card-name{font-size:13px;font-weight:700}
+.card-th{font-size:10px;color:var(--t3);margin-top:2px;line-height:1.4}
+.card-tag{font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0}
+.stage{background:
+  repeating-conic-gradient(rgba(228,244,252,.045) 0% 25%, transparent 0% 50%) 0 0/22px 22px;
+  display:flex;align-items:center;justify-content:center;padding:8px}
+.stage svg{width:100%;max-width:300px;height:auto;display:block}
+.card-foot{padding:8px 14px;font-size:9px;color:var(--t3);border-top:1px solid var(--br);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mono{font-family:'Space Mono',monospace}
+.note{margin-top:28px;background:var(--b2);border:1px solid var(--br);border-radius:14px;padding:16px;font-size:12px;color:var(--t2);line-height:1.7}
+.note b{color:var(--t1)}
+.note code{font-family:'Space Mono',monospace;color:var(--c);background:var(--ca);border:1px solid var(--cb);padding:2px 6px;border-radius:6px;font-size:11px}
+.btn{background:var(--ca);border:1px solid var(--cb);color:var(--c);font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:9999px;cursor:pointer}
+.btn:hover{background:var(--cb)}
+@media(max-width:600px){.main{padding:88px 12px 60px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <span class="hdr-ico">🤖</span>
+  <div class="hdr-title">CE VAULT</div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-sub">Mascot Motion Preview</div>
+  <div class="hdr-tag">8 STATES · WEBM</div>
+</header>
+
+<main class="main">
+  <div class="grid" id="grid"></div>
+
+  <div class="note">
+    <b>หน้านี้คือ preview ของ official CE EMPIRE mascot</b> — inline port ของ
+    <code>scripts/ce-mascot.mjs</code> + <code>scripts/render-mascot-webm.mjs</code>
+    (แก้ท่า/สีต้องแก้ในสคริปต์แล้ว sync ไฟล์นี้ด้วย)<br>
+    เรนเดอร์ไฟล์จริง: <code>npm i -D sharp</code> → <code>node scripts/render-mascot-webm.mjs</code>
+    → ได้ <code>assets/mascot/*.webm</code> (VP9 + alpha, 512px, 2.4s, ≤256KB ตรวจอัตโนมัติ)
+    → อัปโหลดผ่าน @Stickers → ใส่ <code>file_id</code> ใน <code>WEBM_*_FILE_ID</code>
+    ตามตารางใน <code>docs/mascot-motion-lock.md</code>
+  </div>
+</main>
+
+<script>
+// ═══ Inline port ของ scripts/ce-mascot.mjs — ห้ามแยกสองแบบ ═══
+function ceFace(exp) {
+  let eyes = '';
+  let mouth = '';
+  if (exp === 'happy') {
+    eyes = '<ellipse cx="35" cy="42" rx="5.5" ry="7" fill="#00D4FF"/><ellipse cx="53" cy="42" rx="5.5" ry="7" fill="#00D4FF"/>' +
+      '<circle cx="36.8" cy="39.5" r="1.8" fill="#fff"/><circle cx="54.8" cy="39.5" r="1.8" fill="#fff"/>';
+    mouth = '<path d="M38 50 Q44 54.5 50 50" stroke="#05090E" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
+  } else if (exp === 'focused') {
+    eyes = '<ellipse cx="35" cy="42" rx="5" ry="6" fill="#00D4FF"/><ellipse cx="53" cy="42" rx="5" ry="6" fill="#00D4FF"/>' +
+      '<circle cx="36" cy="40.5" r="1.5" fill="#fff"/><circle cx="54" cy="40.5" r="1.5" fill="#fff"/>' +
+      '<path d="M29 35.5 L40 37.5" stroke="#8B97A5" stroke-width="1.8" stroke-linecap="round"/>' +
+      '<path d="M59 35.5 L48 37.5" stroke="#8B97A5" stroke-width="1.8" stroke-linecap="round"/>';
+    mouth = '<path d="M40 51 L48 51" stroke="#05090E" stroke-width="2.2" stroke-linecap="round"/>';
+  } else if (exp === 'closed') {
+    eyes = '<path d="M29.5 42 Q35 38 40.5 42" stroke="#00D4FF" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+      '<path d="M47.5 42 Q53 38 58.5 42" stroke="#00D4FF" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
+    mouth = '<path d="M38 50 Q44 55 50 50" stroke="#05090E" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
+  } else if (exp === 'sad') {
+    eyes = '<path d="M29.5 41 Q35 45 40.5 41" stroke="#00D4FF" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+      '<path d="M47.5 41 Q53 45 58.5 41" stroke="#00D4FF" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+      '<circle cx="62" cy="48" r="2.2" fill="#00D4FF" opacity=".8"/>';
+    mouth = '<path d="M39 53 Q44 49.5 49 53" stroke="#05090E" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
+  } else if (exp === 'wink') {
+    eyes = '<ellipse cx="35" cy="42" rx="5.5" ry="7" fill="#00D4FF"/><circle cx="36.8" cy="39.5" r="1.8" fill="#fff"/>' +
+      '<path d="M47.5 42 Q53 38.5 58.5 42" stroke="#00D4FF" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
+    mouth = '<path d="M38 50 Q44 54.5 50 50" stroke="#05090E" stroke-width="2.2" fill="none" stroke-linecap="round"/>';
+  } else if (exp === 'wide') {
+    eyes = '<ellipse cx="35" cy="42" rx="6.5" ry="8" fill="#00D4FF"/><ellipse cx="53" cy="42" rx="6.5" ry="8" fill="#00D4FF"/>' +
+      '<circle cx="35" cy="42.5" r="2.6" fill="#05090E"/><circle cx="53" cy="42.5" r="2.6" fill="#05090E"/>';
+    mouth = '<ellipse cx="44" cy="51.5" rx="4" ry="2.6" fill="#05090E"/>';
+  }
+  return { eyes: eyes, mouth: mouth };
+}
+
+function ceRobotSvg(exp, opts) {
+  exp = exp || 'happy'; opts = opts || {};
+  var armL = opts.armL || 0;
+  var armR = opts.armR || 0;
+  var face = ceFace(exp);
+  return '<g>' +
+  '<circle cx="44" cy="38" r="33" fill="none" stroke="#00D4FF" stroke-opacity=".14" stroke-width="2.5"/>' +
+  '<circle cx="44" cy="38" r="30" fill="none" stroke="#00D4FF" stroke-opacity=".10" stroke-width="1.4" stroke-dasharray="5,7"/>' +
+  '<path d="M30 21 L28 8 L36 13 L44 4 L52 13 L60 8 L58 21 Z" fill="#F0B429" stroke="#C58F1A" stroke-width="1.2" stroke-linejoin="round"/>' +
+  '<path d="M31.5 19 L30 10.5" stroke="#FFD766" stroke-width="1.6" stroke-linecap="round"/>' +
+  '<circle cx="28" cy="8" r="2" fill="#FFD766"/><circle cx="44" cy="4" r="2" fill="#FFD766"/><circle cx="60" cy="8" r="2" fill="#FFD766"/>' +
+  '<path d="M16 42 Q16 19 44 19 Q72 19 72 42 L72 53 Q44 61 16 53 Z" fill="#0C1520" stroke="#8B97A5" stroke-width="1.2"/>' +
+  '<path d="M20 30 Q24 22 34 21" stroke="#152030" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".9"/>' +
+  '<rect x="24" y="30" width="40" height="24" rx="11" fill="#C9D2DC"/>' +
+  '<path d="M26 49 Q44 54 62 49 L62 52.5 Q44 57.5 26 52.5 Z" fill="#8B97A5" opacity=".3"/>' +
+  '<rect x="8" y="40" width="8" height="14" rx="4" fill="#05090E" stroke="#00D4FF" stroke-width="1.1"/>' +
+  '<rect x="72" y="40" width="8" height="14" rx="4" fill="#05090E" stroke="#00D4FF" stroke-width="1.1"/>' +
+  '<circle cx="12" cy="47" r="1.9" fill="#00D4FF"/><circle cx="76" cy="47" r="1.9" fill="#00D4FF"/>' +
+  face.eyes + face.mouth +
+  '<rect x="38" y="57" width="12" height="5" rx="1.6" fill="#8B97A5"/>' +
+  '<path d="M26 63 Q44 58 62 63 L65.5 84 Q44 91 22.5 84 Z" fill="#0C1520" stroke="#05090E" stroke-width="1.2"/>' +
+  '<circle cx="23" cy="63" r="5.4" fill="#F0B429" stroke="#C58F1A" stroke-width="1.1"/>' +
+  '<circle cx="65" cy="63" r="5.4" fill="#F0B429" stroke="#C58F1A" stroke-width="1.1"/>' +
+  '<g transform="rotate(' + armL + ' 22 66)"><path d="M22 66 Q16 74 16.5 83" stroke="#C9D2DC" stroke-width="6.5" fill="none" stroke-linecap="round"/><circle cx="16.5" cy="85" r="4.6" fill="#F0B429" stroke="#C58F1A" stroke-width="1"/></g>' +
+  '<g transform="rotate(' + armR + ' 66 66)"><path d="M66 66 Q72 74 71.5 83" stroke="#C9D2DC" stroke-width="6.5" fill="none" stroke-linecap="round"/><circle cx="71.5" cy="85" r="4.6" fill="#F0B429" stroke="#C58F1A" stroke-width="1"/></g>' +
+  '<rect x="33" y="66" width="22" height="15" rx="4.5" fill="#F0B429" stroke="#C58F1A" stroke-width="1.1"/>' +
+  '<text x="44" y="77.5" text-anchor="middle" font-size="10" font-weight="900" fill="#05090E" font-family="Arial, Helvetica, sans-serif">CE</text>' +
+  '<path d="M29 81 H33" stroke="#00D4FF" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>' +
+  '<path d="M55 81 H59" stroke="#00D4FF" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>' +
+  '<rect x="33" y="87" width="9" height="8" rx="3" fill="#05090E"/>' +
+  '<rect x="46" y="87" width="9" height="8" rx="3" fill="#05090E"/>' +
+  '</g>';
+}
+
+function ceRobotSticker(o) {
+  o = o || {};
+  var exp = o.exp || 'happy', ty = o.ty || 0, rot = o.rot || 0;
+  var armL = o.armL || 0, armR = o.armR || 0, propSvg = o.propSvg || '';
+  return '<svg width="512" height="512" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">' +
+  '<g transform="translate(42,' + (32 + ty).toFixed(1) + ') rotate(' + rot.toFixed(2) + ') scale(3.6)">' +
+  ceRobotSvg(exp, { armL: armL, armR: armR }) +
+  '</g>' + propSvg + '</svg>';
+}
+
+// ═══ Inline port ของ STATES ใน scripts/render-mascot-webm.mjs ═══
+function sparkle(t, x, y) {
+  var tt = ((t % 1) + 1) % 1;
+  var op = Math.max(0, Math.sin(tt * Math.PI));
+  var s = 0.6 + op * 0.6;
+  return '<g transform="translate(' + x + ',' + y + ') scale(' + s.toFixed(2) + ')" opacity="' + op.toFixed(2) + '"><path d="M0 -10 L2.4 -2.4 L10 0 L2.4 2.4 L0 10 L-2.4 2.4 L-10 0 L-2.4 -2.4 Z" fill="#FFD766"/></g>';
+}
+
+var STATES = [
+  {
+    key: 'hi', th: 'ทักทาย · WELCOME', tag: 'HI', color: '#00d4ff', bg: 'rgba(0,212,255,.07)', bd: 'rgba(0,212,255,.14)',
+    exp: 'happy', armR: function (t) { return -25 - Math.sin(t * Math.PI * 4) * 35; },
+    prop: function (t) { return sparkle(t, 352, 122) + sparkle(t + 0.4, 58, 205); }
+  },
+  {
+    key: 'scan', th: 'สแกนสลิป · PROCESSING', tag: 'SCAN', color: '#b39ddb', bg: 'rgba(179,157,219,.08)', bd: 'rgba(179,157,219,.2)',
+    exp: 'focused', armL: function () { return -18; }, armR: function () { return 18; },
+    prop: function (t) {
+      var y = 150 + (t % 1) * 130;
+      return '<rect x="292" y="140" width="86" height="160" rx="10" fill="#0F1C2E" stroke="#00D4FF" stroke-opacity=".55" stroke-width="2"/>' +
+        '<rect x="304" y="162" width="62" height="9" rx="4" fill="#00D4FF" opacity=".4"/>' +
+        '<rect x="304" y="182" width="62" height="7" rx="3" fill="#fff" opacity=".16"/>' +
+        '<rect x="304" y="198" width="50" height="7" rx="3" fill="#fff" opacity=".16"/>' +
+        '<rect x="304" y="214" width="56" height="7" rx="3" fill="#fff" opacity=".16"/>' +
+        '<line x1="292" y1="' + y.toFixed(1) + '" x2="378" y2="' + y.toFixed(1) + '" stroke="#00E676" stroke-width="4" opacity=".85"/>';
+    }
+  },
+  {
+    key: 'wait', th: 'รอ USDT · WAITING', tag: 'WAIT', color: '#00d4ff', bg: 'rgba(0,212,255,.07)', bd: 'rgba(0,212,255,.14)',
+    exp: 'happy',
+    prop: function (t) {
+      return '<g transform="translate(335,205)"><circle r="32" fill="#0C161D" stroke="#00D4FF" stroke-width="3"/>' +
+        '<line x1="0" y1="0" x2="0" y2="-22" stroke="#00D4FF" stroke-width="3" stroke-linecap="round" transform="rotate(' + (t * 1080).toFixed(1) + ')"/>' +
+        '<line x1="0" y1="0" x2="0" y2="-14" stroke="#00E676" stroke-width="3" stroke-linecap="round" transform="rotate(' + (t * 360).toFixed(1) + ')"/>' +
+        '<circle r="3" fill="#00D4FF"/></g>';
+    }
+  },
+  {
+    key: 'work', th: 'ประมวลผล · QUEUE', tag: 'WORK', color: '#f0b429', bg: 'rgba(240,180,41,.08)', bd: 'rgba(240,180,41,.22)',
+    exp: 'focused', armR: function () { return 14; },
+    prop: function (t) {
+      return '<rect x="288" y="150" width="100" height="130" rx="10" fill="#0F1C2E" stroke="#F0B429" stroke-opacity=".45" stroke-width="2"/>' +
+        '<rect x="300" y="170" width="76" height="8" rx="4" fill="#F0B429" opacity=".45"/>' +
+        '<rect x="300" y="188" width="60" height="6" rx="3" fill="#fff" opacity=".15"/>' +
+        '<rect x="300" y="202" width="68" height="6" rx="3" fill="#fff" opacity=".15"/>' +
+        '<rect x="300" y="244" width="76" height="10" rx="5" fill="#05090E"/>' +
+        '<rect x="300" y="244" width="' + (t * 76).toFixed(1) + '" height="10" rx="5" fill="#00E676"/>' +
+        '<g transform="translate(338,226) rotate(' + (t * 360).toFixed(1) + ')"><circle r="9" fill="none" stroke="#00D4FF" stroke-width="2.4" stroke-dasharray="4 3"/></g>';
+    }
+  },
+  {
+    key: 'success', th: 'สำเร็จ · SUCCESS', tag: 'SUCCESS', color: '#00e676', bg: 'rgba(0,230,118,.07)', bd: 'rgba(0,230,118,.18)',
+    exp: 'closed',
+    prop: function (t) {
+      var confetti = [0, 1, 2, 3, 4, 5].map(function (i) {
+        var seed = i * 47.3;
+        var fall = (t + i / 6) % 1;
+        var x = 50 + ((seed * 13) % 320);
+        var y = 30 + fall * 340;
+        var colors = ['#00E676', '#00D4FF', '#F0B429', '#FFD766'];
+        return '<rect x="' + x.toFixed(0) + '" y="' + y.toFixed(0) + '" width="7" height="7" fill="' + colors[i % 4] + '" opacity="' + (1 - fall).toFixed(2) + '" transform="rotate(' + (fall * 300).toFixed(0) + ' ' + (x + 3.5) + ' ' + (y + 3.5) + ')"/>';
+      }).join('');
+      return confetti + '<circle cx="335" cy="190" r="30" fill="none" stroke="#00E676" stroke-width="7"/>' +
+        '<path d="M321 190 L332 201 L351 176" fill="none" stroke="#00E676" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+  },
+  {
+    key: 'alert', th: 'แจ้งเตือน · ERROR', tag: 'ALERT', color: '#ff5252', bg: 'rgba(255,82,82,.07)', bd: 'rgba(255,82,82,.18)',
+    exp: 'wide',
+    rot: function (t) { return Math.sin(t * Math.PI * 10) * 2; },
+    prop: function (t) {
+      var shake = Math.sin(t * Math.PI * 10) * 6;
+      return '<g transform="translate(' + (335 + shake).toFixed(1) + ',200)"><path d="M0 -32 L34 28 L-34 28 Z" fill="none" stroke="#FF5252" stroke-width="6" stroke-linejoin="round"/>' +
+        '<line x1="0" y1="-12" x2="0" y2="8" stroke="#FF5252" stroke-width="6" stroke-linecap="round"/><circle cx="0" cy="18" r="3.2" fill="#FF5252"/></g>';
+    }
+  },
+  {
+    key: 'done', th: 'เสร็จสิ้น · DONE', tag: 'DONE', color: '#f0b429', bg: 'rgba(240,180,41,.08)', bd: 'rgba(240,180,41,.22)',
+    exp: 'closed',
+    prop: function (t) {
+      var pulse = 1 + Math.sin(t * Math.PI * 2) * 0.08;
+      return '<g transform="translate(335,190) scale(' + pulse.toFixed(3) + ')"><circle r="34" fill="none" stroke="#F0B429" stroke-width="6"/>' +
+        '<path d="M-15 0 L-4 12 L18 -12" fill="none" stroke="#F0B429" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+        sparkle(t, 372, 122) + sparkle(t + 0.5, 300, 262);
+    }
+  },
+  {
+    key: 'idle', th: 'พัก · ambient loop (ไม่ผูกกับ moment)', tag: 'IDLE', color: '#00d4ff', bg: 'rgba(0,212,255,.07)', bd: 'rgba(0,212,255,.14)',
+    exp: 'happy',
+    prop: function (t) {
+      var op = 0.1 + Math.sin(t * Math.PI * 2) * 0.07;
+      return '<circle cx="200" cy="205" r="98" fill="none" stroke="#00D4FF" stroke-opacity="' + op.toFixed(3) + '" stroke-width="2.5"/>';
+    }
+  }
+];
+
+// ═══ เรนเดอร์ 8 การ์ด + แอนิเมต ~20fps (เทียบเท่าเฟรมจริง 20fps) ═══
+var LOOP_S = 2.4;
+var grid = document.getElementById('grid');
+var stages = [];
+STATES.forEach(function (state) {
+  var card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML =
+    '<div class="card-top"><div><div class="card-name mono">' + state.key + '.webm</div>' +
+    '<div class="card-th">' + state.th + '</div></div>' +
+    '<span class="card-tag" style="color:' + state.color + ';background:' + state.bg + ';border:1px solid ' + state.bd + '">' + state.tag + '</span></div>' +
+    '<div class="stage"></div>' +
+    '<div class="card-foot"><span>512px · VP9 · 2.4s loop</span><span class="mono">' + (state.exp) + '</span></div>';
+  grid.appendChild(card);
+  stages.push({ state: state, el: card.querySelector('.stage') });
+});
+
+var playing = true;
+var btn = document.createElement('button');
+btn.className = 'btn';
+btn.textContent = '⏸ Pause';
+btn.style.marginTop = '16px';
+btn.onclick = function () { playing = !playing; btn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+grid.parentNode.insertBefore(btn, grid.nextSibling);
+
+var last = 0;
+function tick(now) {
+  if (playing && now - last >= 50) {
+    last = now;
+    var t = (now / 1000 % LOOP_S) / LOOP_S;
+    stages.forEach(function (s) {
+      var st = s.state;
+      var bob = Math.sin(t * Math.PI * 2) * (st.key === 'idle' ? 3.5 : 6);
+      var exp = (t % 1 > 0.92 && st.exp === 'happy') ? 'closed' : st.exp;
+      var armL = st.armL ? st.armL(t) : 0;
+      var armR = st.armR ? st.armR(t) : 0;
+      var rot = st.rot ? st.rot(t) : 0;
+      var propSvg = st.prop ? st.prop(t) : '';
+      s.el.innerHTML = ceRobotSticker({ exp: exp, ty: bob, rot: rot, armL: armL, armR: armR, propSvg: propSvg });
+    });
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
