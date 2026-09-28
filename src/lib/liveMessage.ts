@@ -64,7 +64,7 @@ export function liveCard(opts: LiveCardOpts): OutgoingMessage {
     liveRail(opts.stage),
   ];
   if (opts.ledgerRef) {
-    parts.push(RULE, `เลขอ้างอิง / Reference / 交易编号  <code>#${esc(opts.ledgerRef)}</code>`);
+    parts.push(RULE, `เลขอ้างอิง (Reference / 交易编号)  <code>#${esc(opts.ledgerRef)}</code>`);
   }
   if (opts.body) {
     parts.push(RULE, opts.body);
@@ -75,14 +75,14 @@ export function liveCard(opts: LiveCardOpts): OutgoingMessage {
 export function liveReceiving(ledgerRef?: string | null): OutgoingMessage {
   return liveCard({
     stage: 'RECEIVING', ledgerRef,
-    body: '<i>📷 กำลังรับสลิป / Receiving slip / 正在接收凭证...</i>',
+    body: '<i>📷 กำลังรับสลิป (Receiving slip / 正在接收凭证)...</i>',
   });
 }
 
 /** MSG-01 — preserve single-message edit lifecycle during OCR. */
 export function liveOcr(ledgerRef?: string | null): OutgoingMessage {
   return {
-    text: ceMessage('MSG-01', '🔄 กำลังอ่านสลิป / Scanning slip / 正在识别凭证...\n⏳ OCR กำลังประมวลผล') +
+    text: ceMessage('MSG-01', '🔄 กำลังอ่านสลิป (Scanning slip / 正在识别凭证)...\n⏳ OCR กำลังประมวลผล') +
       (ledgerRef ? '\n' + RULE + '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : ''),
   };
 }
@@ -97,10 +97,10 @@ export function liveVerified(d: {
 }): OutgoingMessage {
   const lines: string[] = [];
   lines.push(ceOcrAmount(d.thb, d.confidence));
-  if (d.receiverName) lines.push(`ผู้รับ / Recipient / 收款人  <code>${esc(d.receiverName)}</code>`);
+  if (d.receiverName) lines.push(`ผู้รับ (Recipient / 收款人)  <code>${esc(d.receiverName)}</code>`);
   if (d.bank || d.last4)
     lines.push(
-      `ธนาคาร / Bank / 银行  <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
+      `ธนาคาร (Bank / 银行)  <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
     );
 
   return liveCard({
@@ -169,7 +169,7 @@ export function liveError(_message: string, ledgerRef?: string | null): Outgoing
   // Never claim "nothing was saved": a timeout may happen after a DB commit.
   return {
     text: ceMessage('MSG-29',
-      '⚠️ ระบบขัดข้อง / Processing error / 处理异常\n\nไม่สามารถดำเนินการได้\nตรวจสอบ Ledger ก่อนลองใหม่อีกครั้ง / Check transaction status before retrying' +
+      '⚠️ ระบบขัดข้อง (Processing error / 处理异常)\n\nไม่สามารถดำเนินการได้\nตรวจสอบ Ledger ก่อนลองใหม่อีกครั้ง (Check transaction status before retrying)' +
       (ledgerRef ? '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : '')),
   };
 }
