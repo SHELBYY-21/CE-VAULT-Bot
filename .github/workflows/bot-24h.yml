@@ -85,12 +85,32 @@ jobs:
           printf '%s\n' "$FIREBASE_SA" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
-      - name: Clear Telegram webhook (use long-poll)
+      - name: Validate Telegram token before switching to long-poll
+        shell: bash
         run: |
-          curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=true"
-          echo
-          curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/getMe"
-          echo
+          set -Eeuo pipefail
+          # Never print the token or Telegram response to CI logs.
+          status=$(curl -sS -o /tmp/telegram-getme.json -w '%{http_code}' \
+            --retry 2 --retry-delay 2 \
+            "https://api.telegram.org/bot${BOT_TOKEN}/getMe")
+          if [[ "$status" != "200" ]] || ! node -e 'const r=require("/tmp/telegram-getme.json"); process.exit(r.ok === true ? 0 : 1)'; then
+            echo "::error::Telegram getMe validation failed (HTTP $status). Check BOT_TOKEN in Actions secrets; webhook was NOT changed."
+            exit 1
+          fi
+          echo "Telegram token validated."
+
+      - name: Clear Telegram webhook (preserve pending updates)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Only switch to polling after a successful getMe; retain queued messages.
+          status=$(curl -sS -o /tmp/telegram-delete-webhook.json -w '%{http_code}' \
+            "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook?drop_pending_updates=false")
+          if [[ "$status" != "200" ]] || ! node -e 'const r=require("/tmp/telegram-delete-webhook.json"); process.exit(r.ok === true ? 0 : 1)'; then
+            echo "::error::Telegram deleteWebhook failed (HTTP $status); pending updates were not intentionally dropped."
+            exit 1
+          fi
+          echo "Webhook cleared; pending updates preserved."
 
       - name: Start Next.js + bot bridge
         env:
