@@ -3,6 +3,7 @@
 // ใช้ HTML + emoji + spoiler + gradient-blocks ให้ดูล้ำสมัยที่สุดในขีดจำกัด Telegram
 // ============================================================
 import { randomBytes } from 'crypto';
+import { ceMessage, ceEscape, ceAmount } from './ceReplyTheme';
 import type { OutgoingMessage } from './telegram';
 
 const APP_RAW = (process.env.APP_URL || '').replace(/\/$/, '');
@@ -351,16 +352,14 @@ export function slipBankMismatch(d: {
   confidence?: number | null;
 }): OutgoingMessage {
   return {
-    text:
-      `⚠️ <b>Vision อ่านได้ แต่เลขไม่ตรงบัญชีปักหมุดวันนี้</b>\n` +
-      `${THIN}\n` +
-      (d.thb != null ? `💵 ยอดสลิป  <b>${money(d.thb)} THB</b>\n` : '') +
-      `🧾 จากสลิป  <b>${d.bank ?? '-'}</b> <code>••••${d.last4 ?? '????'}</code>\n` +
-      `📌 ปักหมุดวันนี้  <b>${d.pinBank ?? '-'}</b> <code>••••${d.pinLast4 ?? '????'}</code>\n` +
-      (d.confidence != null ? `<i>ความมั่นใจ ${d.confidence.toFixed(0)}%</i>\n` : '') +
-      `${THIN}\n` +
-      `ถ้าแน่ใจว่าถูกต้อง พิมพ์ <code>+${d.thb != null ? money(d.thb).replace(/,/g, '') : '500'}</code> เพื่อบันทึกเอง\n` +
-      `หรือ <code>/pin ${d.bank ?? 'KBANK'} ${d.last4 ?? '1234'}</code> แล้วส่งสลิปใหม่`,
+    text: ceMessage('MSG-05',
+      '📄 บัญชีในสลิป\n' +
+      '🏦 ' + ceEscape(d.bank ?? '-') + ' · ••••' + ceEscape(d.last4 ?? '????') +
+      '\n\n📌 บัญชี PIN วันนี้\n' +
+      '🏦 ' + ceEscape(d.pinBank ?? '-') + ' · ••••' + ceEscape(d.pinLast4 ?? '????') +
+      '\n\n❌ บัญชีไม่ตรงกัน' +
+      (d.thb != null ? '\n📥 ' + ceAmount(d.thb) + ' THB' : '') +
+      '\n<i>ตรวจสอบข้อมูลก่อนบันทึกเอง</i>'),
   };
 }
 
@@ -492,7 +491,12 @@ export function outgoingRecorded(d: {
 /** สลิปอ่านยอดไม่ชัด → ขอให้พิมพ์ +ยอด (สั้นที่สุด ไม่รก) */
 export function slipUnclear(guess?: number | null): OutgoingMessage {
   return {
-    text: `⚠️ <b>อ่านยอดไม่ชัด</b> — พิมพ์ <code>+${guess ? money(guess).replace(/,/g, '') : '500'}</code> เพื่อบันทึก`,
+    text: ceMessage('MSG-03',
+      '❌ อ่านสลิปไม่สำเร็จ\n\n' +
+      'กรุณาถ่ายรูปใหม่ให้ชัดขึ้น\nหรือกรอกข้อมูลด้วยตนเอง' +
+      (guess != null && guess > 0
+        ? '\n<i>ยอด OCR ที่อ่านได้บางส่วน: ' + ceAmount(guess) + ' THB (ยังไม่ยืนยัน)</i>'
+        : '')),
   };
 }
 
@@ -1306,11 +1310,10 @@ export function sanitizeErrorDetail(raw: string): string {
 export function error(detail: string): OutgoingMessage {
   const clean = sanitizeErrorDetail(detail);
   return {
-    text:
-      `${GRAD_RED}\n` +
-      `⚠️ <b>ทำรายการไม่สำเร็จ</b>\n` +
-      `${GRAD_RED}\n` +
-      `${clean}\n` +
-      `<i>ลองใหม่อีกครั้ง หรือแจ้งแอดมินระบบ</i>`,
+    text: ceMessage('MSG-29',
+      '⚠️ ระบบขัดข้อง\n\nไม่สามารถดำเนินการได้\n' +
+      // The failure could occur after a database write; do not assert rollback.
+      'กรุณาตรวจสอบสถานะรายการก่อนลองใหม่อีกครั้ง\n' +
+      '<i>' + ceEscape(clean) + '</i>'),
   };
 }
