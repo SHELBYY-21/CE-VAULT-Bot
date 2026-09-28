@@ -17,7 +17,7 @@ describe('liveRail', () => {
     expect(rail).toContain('<i>○ OCR</i>');
     expect(rail).toContain('<i>○ Verified</i>');
     expect(rail).toContain('<i>○ Waiting</i>');
-    expect(rail).toContain('<i>○ Settled</i>');
+    expect(rail).toContain('<i>○ Recorded</i>');
     expect(rail.match(/<b>●/g)?.length).toBe(1);
   });
 
@@ -27,12 +27,12 @@ describe('liveRail', () => {
     expect(rail).toContain('✓ OCR');
     expect(rail).toContain('✓ Verified');
     expect(rail).toContain('<b>● Waiting</b>');
-    expect(rail).toContain('<i>○ Settled</i>');
+    expect(rail).toContain('<i>○ Recorded</i>');
   });
 
-  it('ends on Settled', () => {
+  it('ends on Recorded without asserting financial settlement', () => {
     const rail = liveRail('SETTLED');
-    expect(rail).toContain('<b>● Settled</b>');
+    expect(rail).toContain('<b>● Recorded</b>');
     expect(rail).toContain('✓ Waiting');
   });
 });
@@ -40,7 +40,7 @@ describe('liveRail', () => {
 describe('liveCard', () => {
   it('is a single Live Message shell', () => {
     const m = liveCard({ stage: 'OCR', ledgerRef: 'CE-20260726-ABCD', body: 'reading' });
-    expect(m.text).toContain('<b>CE VAULT</b>');
+    expect(m.text).toContain('<b>◈ CE VAULT</b>');
     expect(m.text).toContain('Live Message');
     expect(m.text).toContain('<b>● OCR</b>');
     expect(m.text).toContain('#CE-20260726-ABCD');
@@ -51,8 +51,9 @@ describe('liveCard', () => {
     expect(liveReceiving('CE-1').text).toContain('Receiving...');
     expect(liveWaiting({ ledgerRef: 'CE-1', thb: 500 }).text).toContain('<b>● Waiting</b>');
     expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain(
-      '<b>● Settled</b>',
+      '◈ CE · RECORDED ✓',
     );
+    expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain('ยังไม่ยืนยันว่า Settlement ครบ');
   });
 
   it('renders Receiver Intelligence block', () => {
