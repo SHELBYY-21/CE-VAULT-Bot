@@ -122,12 +122,12 @@ export function liveWaiting(d: {
   if (d.intel) {
     lines.push(intelBlock(d.intel), '');
   }
-  if (d.thb != null) lines.push(`THB     <code>${liveMoney(d.thb)}</code>`);
+  lines.push(ceOcrAmount(d.thb, d.confidence));
   if (!d.intel && (d.bank || d.last4))
     lines.push(
       `Bank    <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
     );
-  if (d.confidence != null) lines.push(`OCR     <code>${d.confidence.toFixed(0)}%</code>`);
+
   lines.push('');
   lines.push(d.hint || `<i>Waiting USDT proof or</i> <code>-13.6U</code>`);
   return liveCard({
