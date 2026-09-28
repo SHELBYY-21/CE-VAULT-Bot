@@ -79,11 +79,6 @@ const USDT_TOLERANCE = 0.0001;
 const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
-function motionSticker(chatId: number, key: StickerState): void {
-  // Optional .WEBM/VP9 Telegram video sticker; only after a real success event.
-  const id = getWebmMotionSticker(key);
-  if (id) sendSticker(chatId, id).catch(() => undefined);
-}
 function sticker(chatId: number, key: StickerState): void {
   const id = getWebmMotionSticker(key) || getSticker(key);
   if (id) sendSticker(chatId, id).catch(() => undefined);
@@ -829,7 +824,6 @@ async function commitIncoming(
       transactionId: r.transactionId,
     }),
   );
-  motionSticker(chatId, 'SUCCESS');
 }
 
 /** บันทึกขาออก — Live Message → Settled */
@@ -866,7 +860,6 @@ async function commitOutgoing(
       transactionId: r.transactionId,
     }),
   );
-  motionSticker(chatId, 'SUCCESS');
 }
 
 async function replyPinOk(
