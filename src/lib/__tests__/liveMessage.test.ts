@@ -51,7 +51,7 @@ describe('liveCard', () => {
     expect(liveReceiving('CE-1').text).toContain('Receiving...');
     expect(liveWaiting({ ledgerRef: 'CE-1', thb: 500 }).text).toContain('<b>● Waiting</b>');
     expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain(
-      '◈ CE · RECORDED / 已记录 ✓',
+      '◈ CE · RECORDED (已记录) ✓',
     );
     expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain('Settlement not verified / 尚未结算确认');
   });
