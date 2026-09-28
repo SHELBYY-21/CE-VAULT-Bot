@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CE VAULT · Message Templates</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💬</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --b0:#03070f;--b1:#05090e;--b2:#080e18;--b3:#0c1520;--b4:#101b28;
+  --c:#00d4ff;--ca:rgba(0,212,255,.07);--cb:rgba(0,212,255,.14);--cc:rgba(0,212,255,.28);
+  --g:#f0b429;--ga:rgba(240,180,41,.08);--gb:rgba(240,180,41,.22);
+  --s:#00e676;--sa:rgba(0,230,118,.07);--sb:rgba(0,230,118,.18);
+  --d:#ff5252;--da:rgba(255,82,82,.07);--db:rgba(255,82,82,.18);
+  --w:#ffca28;--wa:rgba(255,202,40,.07);--wb:rgba(255,202,40,.18);
+  --al:#ff6d35;--ala:rgba(255,109,53,.08);--alb:rgba(255,109,53,.2);
+  --p:#b39ddb;--pa:rgba(179,157,219,.08);--pb:rgba(179,157,219,.2);
+  --t1:#e4f4fc;--t2:rgba(228,244,252,.6);--t3:rgba(228,244,252,.32);
+  --br:rgba(0,212,255,.1);--bra:rgba(0,212,255,.22);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--b0);color:var(--t1);font-family:'Space Grotesk',system-ui,sans-serif;min-height:100vh}
+
+.hdr{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(3,7,15,.96);backdrop-filter:blur(20px);border-bottom:1px solid var(--br);height:56px;display:flex;align-items:center;padding:0 20px;gap:10px}
+.hdr-ico{font-size:18px}
+.hdr-title{font-size:14px;font-weight:700;letter-spacing:2px;color:var(--c);text-transform:uppercase}
+.hdr-sep{width:1px;height:14px;background:var(--br)}
+.hdr-sub{font-size:9px;color:var(--t3);letter-spacing:2px;text-transform:uppercase}
+.hdr-count{margin-left:auto;font-size:9px;font-weight:700;color:var(--c);background:var(--ca);border:1px solid var(--cb);padding:4px 10px;border-radius:9999px;letter-spacing:1px}
+
+.tabs{position:fixed;top:56px;left:0;right:0;z-index:99;background:var(--b1);border-bottom:1px solid var(--br);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab-list{display:flex;padding:0 16px;min-width:max-content}
+.tab{flex-shrink:0;background:none;border:none;border-bottom:2px solid transparent;color:var(--t3);font-family:'Space Grotesk',system-ui;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:12px 14px;cursor:pointer;transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.tab:hover{color:var(--t2)}
+.tab.on{color:var(--c);border-bottom-color:var(--c)}
+.tab-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+.main{max-width:1100px;margin:0 auto;padding:104px 16px 80px}
+
+.group-hd{font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--t3);padding-bottom:10px;border-bottom:1px solid var(--br);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.group-hd::before{content:'';width:3px;height:14px;border-radius:2px;flex-shrink:0}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:32px}
+
+/* Message Card */
+.msg-card{background:var(--b2);border:1px solid var(--br);border-radius:14px;overflow:hidden;transition:border-color .15s}
+.msg-card:hover{border-color:var(--bra)}
+.msg-card-top{padding:12px 14px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;border-bottom:1px solid var(--br)}
+.msg-num{font-size:9px;font-weight:700;color:var(--t4);letter-spacing:1px;font-family:'Space Mono',monospace;flex-shrink:0}
+.msg-name{font-size:12px;font-weight:700;color:var(--t1);line-height:1.2}
+.msg-trigger{font-size:10px;color:var(--t3);margin-top:3px;line-height:1.4}
+.msg-tag{font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0}
+
+/* Telegram preview */
+.tg-preview{padding:12px 14px;background:var(--b3)}
+.tg-bubble{background:#182030;border-radius:12px 12px 12px 4px;padding:10px 12px;max-width:280px;position:relative}
+.tg-bubble::before{content:'';position:absolute;left:-6px;bottom:0;border:6px solid transparent;border-right-color:#182030;border-bottom:0}
+.tg-text{font-family:'Space Mono',monospace;font-size:11px;line-height:1.6;color:#e0e8f0;white-space:pre-wrap;word-break:break-word}
+.tg-btns{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.tg-btn{background:rgba(0,212,255,.12);border:1px solid rgba(0,212,255,.2);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--c);white-space:nowrap}
+
+.msg-foot{padding:8px 14px;display:flex;align-items:center;justify-content:flex-end;gap:8px;border-top:1px solid var(--br)}
+.copy-btn{background:var(--ca);border:1px solid var(--cb);border-radius:9999px;color:var(--c);font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px}
+.copy-btn:hover{background:var(--cb)}
+.copy-btn.copied{background:var(--sa);border-color:var(--sb);color:var(--s)}
+
+.toast{position:fixed;bottom:20px;right:20px;background:var(--b3);border:1px solid var(--sb);border-radius:9999px;padding:8px 16px;font-size:11px;font-weight:600;color:var(--s);opacity:0;transition:all .3s;pointer-events:none;z-index:9999}
+.toast.show{opacity:1}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--b1)}
+::-webkit-scrollbar-thumb{background:var(--b4);border-radius:2px}
+@media(max-width:600px){.main{padding:104px 12px 60px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <span class="hdr-ico">💬</span>
+  <div class="hdr-title">CE VAULT</div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-sub">Message Templates</div>
+  <div class="hdr-count">30 MSGS · 6 GROUPS</div>
+</header>
+
+<nav class="tabs">
+  <div class="tab-list">
+    <button class="tab on" data-group="all">🔷 ทั้งหมด</button>
+    <button class="tab" data-group="intake"><span class="tab-dot" style="background:var(--p)"></span>Intake · OCR</button>
+    <button class="tab" data-group="verify"><span class="tab-dot" style="background:var(--al)"></span>Verify · Check</button>
+    <button class="tab" data-group="tx"><span class="tab-dot" style="background:var(--s)"></span>Transaction</button>
+    <button class="tab" data-group="mismatch"><span class="tab-dot" style="background:var(--al)"></span>Mismatch</button>
+    <button class="tab" data-group="cycle"><span class="tab-dot" style="background:var(--g)"></span>Cycle</button>
+    <button class="tab" data-group="alert"><span class="tab-dot" style="background:var(--d)"></span>Alerts</button>
+  </div>
+</nav>
+
+<main class="main">
+
+<!-- ═══ GROUP 1: INTAKE ═══ -->
+<div data-section="intake">
+<div class="group-hd" style="--before-bg:var(--p)">
+  <span style="width:3px;height:14px;background:var(--p);border-radius:2px;display:inline-block"></span>
+  📷 GROUP 1 — INTAKE · OCR (4 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="intake">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-01</div><div class="msg-name">กำลัง OCR</div><div class="msg-trigger">Trigger: รับรูปสลิป → เริ่มประมวลผล</div></div>
+    <div class="msg-tag" style="background:var(--pa);color:var(--p);border:1px solid var(--pb)">LOADING</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t01">🔄 กำลังอ่านสลิป...
+⏳ OCR กำลังประมวลผล</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t01',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="intake">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-02</div><div class="msg-name">OCR สำเร็จ — พร้อม Confirm</div><div class="msg-trigger">Trigger: OCR ✓, Bank Match ✓, Limit ✓</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">READY</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t02">◈ CE · VERIFY
+━━━━━━━━━━━━━━
+📥 10,000.00 THB
+💎 232.56 USDT
+🏦 KBank · xxx-3855-x
+👤 นาย สมชาย ใจดี
+💱 RATE 43.00
+─────────────
+🟢 OCR 98.7%
+🟢 BANK MATCH
+🟢 LIMIT OK
+─────────────
+STATUS
+🟡 READY TO CONFIRM</div>
+      <div class="tg-btns">
+        <span class="tg-btn">✓ CONFIRM</span>
+        <span class="tg-btn">✏️ EDIT</span>
+        <span class="tg-btn">❌ REJECT</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t02',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="intake">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-03</div><div class="msg-name">OCR ล้มเหลว</div><div class="msg-trigger">Trigger: OCR error / timeout / ความแม่นยำ &lt; 60%</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">ERROR</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t03">◈ CE · OCR ERROR
+━━━━━━━━━━━━━━
+❌ อ่านสลิปไม่สำเร็จ
+
+กรุณาถ่ายรูปใหม่ให้ชัดขึ้น
+หรือกรอกข้อมูลด้วยตนเอง</div>
+      <div class="tg-btns">
+        <span class="tg-btn">🔄 ลองใหม่</span>
+        <span class="tg-btn">✏️ กรอกเอง</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t03',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="intake">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-04</div><div class="msg-name">OCR ความแม่นยำต่ำ — REVIEW</div><div class="msg-trigger">Trigger: OCR confidence 60–80% → ต้องตรวจสอบ</div></div>
+    <div class="msg-tag" style="background:var(--pa);color:var(--p);border:1px solid var(--pb)">REVIEW</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t04">◈ CE · REVIEW ⚠️
+━━━━━━━━━━━━━━
+⚠️ OCR ความแม่นยำต่ำ (72%)
+ตรวจสอบข้อมูลก่อนยืนยัน
+
+📥 10,000.00 THB  ← ตรวจด้วย
+🏦 กสิกรไทย · xxx-3855-x
+👤 นาย สม...ย ใจดี
+💱 RATE 43.00</div>
+      <div class="tg-btns">
+        <span class="tg-btn">✓ ถูกต้อง</span>
+        <span class="tg-btn">✏️ แก้ไข</span>
+        <span class="tg-btn">❌ ปฏิเสธ</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t04',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ GROUP 2: VERIFY ═══ -->
+<div data-section="verify">
+<div class="group-hd">
+  <span style="width:3px;height:14px;background:var(--al);border-radius:2px;display:inline-block"></span>
+  🔍 GROUP 2 — VERIFY · CHECKS (4 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="verify">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-05</div><div class="msg-name">Bank Mismatch</div><div class="msg-trigger">Trigger: บัญชีในสลิป ≠ บัญชีที่ PIN วันนี้</div></div>
+    <div class="msg-tag" style="background:var(--ala);color:var(--al);border:1px solid var(--alb)">MISMATCH</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t05">◈ CE · MISMATCH ⚠️
+━━━━━━━━━━━━━━
+📄 บัญชีในสลิป
+🏦 KTB · xxx-x-x7413-x
+
+📌 บัญชี PIN วันนี้
+🏦 BBL · 097-0-28xxx-x
+
+❌ บัญชีไม่ตรงกัน</div>
+      <div class="tg-btns">
+        <span class="tg-btn">🔁 RECHECK</span>
+        <span class="tg-btn">⚡ OVERRIDE</span>
+        <span class="tg-btn">❌ REJECT</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t05',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="verify">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-06</div><div class="msg-name">Duplicate — สลิปซ้ำ</div><div class="msg-trigger">Trigger: Slip fingerprint / Tx เดิมอยู่ในระบบแล้ว</div></div>
+    <div class="msg-tag" style="background:rgba(90,70,180,.1);color:#9977ee;border:1px solid rgba(90,70,180,.2)">DUPLICATE</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t06">◈ CE · DUPLICATE
+━━━━━━━━━━━━━━
+⚠️ พบสลิปนี้ในระบบแล้ว
+
+💰 10,000.00 THB
+💎 232.56 USDT
+🆔 #CE-20260913-A041
+📅 13 ก.ย. 69 · 14:32 น.
+
+ไม่สร้างรายการใหม่</div>
+      <div class="tg-btns">
+        <span class="tg-btn">🔍 เปิดรายการเดิม</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t06',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="verify">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-07</div><div class="msg-name">Limit เกิน</div><div class="msg-trigger">Trigger: USED + ยอดใหม่ &gt; LIMIT_THB</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">LIMIT</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t07">◈ CE · LIMIT ⚠️
+━━━━━━━━━━━━━━
+⚠️ วงเงินไม่เพียงพอ
+
+รายการนี้  + 10,000 THB
+ใช้ไปแล้ว   495,000 THB
+วงเงิน      500,000 THB
+เกิน         ▼ 5,000 THB</div>
+      <div class="tg-btns">
+        <span class="tg-btn">⚡ LIMIT OVERRIDE</span>
+        <span class="tg-btn">❌ ยกเลิก</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t07',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="verify">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-08</div><div class="msg-name">Rate เปลี่ยนระหว่าง OCR</div><div class="msg-trigger">Trigger: rate_at_ocr_start ≠ current_rate ตอน Confirm</div></div>
+    <div class="msg-tag" style="background:var(--ga);color:var(--g);border:1px solid var(--gb)">RATE CHG</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t08">◈ CE · RATE CHANGED ⚠️
+━━━━━━━━━━━━━━
+⚠️ Rate เปลี่ยนระหว่างสแกน
+
+Rate ตอนสแกน   43.00
+Rate ปัจจุบัน   43.50
+─────────────
+USDT เดิม   232.56
+USDT ใหม่   229.89</div>
+      <div class="tg-btns">
+        <span class="tg-btn">✓ ใช้ Rate ใหม่</span>
+        <span class="tg-btn">✕ ยกเลิก</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t08',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ GROUP 3: TRANSACTION ═══ -->
+<div data-section="tx">
+<div class="group-hd">
+  <span style="width:3px;height:14px;background:var(--s);border-radius:2px;display:inline-block"></span>
+  ✅ GROUP 3 — TRANSACTION STATUS (7 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-09</div><div class="msg-name">Confirm สำเร็จ → READY</div><div class="msg-trigger">Trigger: ผ่านทุก Check + กด Confirm</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">READY</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t09">◈ CE · READY ✅
+━━━━━━━━━━━━━━
+✅ ยืนยันรายการแล้ว
+
+🆔 #CE-20260913-A041
+📥 10,000.00 THB
+💎 232.56 USDT
+💱 43.00 · KBank
+🟡 READY
+
+รอส่งเข้าคิว USDT</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t09',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-10</div><div class="msg-name">เข้าคิว USDT → PENDING</div><div class="msg-trigger">Trigger: READY → เข้าคิวส่ง USDT</div></div>
+    <div class="msg-tag" style="background:var(--ca);color:var(--c);border:1px solid var(--cb)">PENDING</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t10">◈ CE · PENDING ⏳
+━━━━━━━━━━━━━━
+⏳ รายการอยู่ในคิวส่ง USDT
+
+🆔 #CE-20260913-A041
+💎 EXPECTED 232.56 USDT
+🕐 14:32 น.
+🟦 PENDING</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t10',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-11</div><div class="msg-name">Settlement สำเร็จ → SETTLED</div><div class="msg-trigger">Trigger: SENT_USDT = EXPECTED_USDT</div></div>
+    <div class="msg-tag" style="background:var(--sa);color:var(--s);border:1px solid var(--sb)">SETTLED</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t11">◈ CE · DONE ✓
+━━━━━━━━━━━━━━
+✅ Settlement สำเร็จ
+
+📥 IN    10,000.00 THB
+📤 OUT   232.56 USDT
+💱 43.00
+⏱️ 14:35 น.
+🟢 SETTLED
+🆔 #CE-20260913-A041</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t11',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-12</div><div class="msg-name">SHORT — ส่ง USDT ไม่ครบ</div><div class="msg-trigger">Trigger: SENT_USDT &lt; EXPECTED_USDT หลัง Settlement</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">SHORT</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t12">◈ CE · SHORT 🔴
+━━━━━━━━━━━━━━
+🔴 ส่ง USDT ไม่ครบ
+
+EXPECTED   232.56 USDT
+SENT        230.00 USDT
+SHORT       ▼ 2.56 USDT</div>
+      <div class="tg-btns">
+        <span class="tg-btn">🔍 REVIEW</span>
+        <span class="tg-btn">📤 ส่งเพิ่ม</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t12',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-13</div><div class="msg-name">ส่งเพิ่ม SHORT → PENDING</div><div class="msg-trigger">Trigger: กด "ส่งเพิ่ม" → SHORT เปลี่ยนเป็น PENDING</div></div>
+    <div class="msg-tag" style="background:var(--ca);color:var(--c);border:1px solid var(--cb)">PENDING</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t13">◈ CE · PENDING ⏳
+━━━━━━━━━━━━━━
+🔄 กลับเข้าคิว (SHORT Recovery)
+
+🆔 #CE-20260913-A041
+ค้าง SHORT  ▼ 2.56 USDT
+⏳ PENDING — รอส่งเพิ่ม</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t13',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-14</div><div class="msg-name">SHORT Recovery สำเร็จ → SETTLED</div><div class="msg-trigger">Trigger: ส่งเพิ่มครบ → SENT_USDT = EXPECTED</div></div>
+    <div class="msg-tag" style="background:var(--sa);color:var(--s);border:1px solid var(--sb)">SETTLED</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t14">◈ CE · DONE ✓
+━━━━━━━━━━━━━━
+✅ SHORT แก้ไขสำเร็จ
+
+SENT 1   230.00 USDT
+SENT 2  +  2.56 USDT
+TOTAL    232.56 USDT ✓
+
+🟢 SETTLED
+🆔 #CE-20260913-A041</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t14',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="tx">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-15</div><div class="msg-name">Reject รายการ</div><div class="msg-trigger">Trigger: กด REJECT → Transaction = REJECTED</div></div>
+    <div class="msg-tag" style="background:rgba(80,80,100,.1);color:#8899aa;border:1px solid rgba(80,80,100,.2)">REJECTED</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t15">◈ CE · REJECTED
+━━━━━━━━━━━━━━
+❌ ปฏิเสธรายการแล้ว
+
+🆔 #CE-20260913-A041
+📥 10,000.00 THB
+เหตุผล: [REASON]
+
+🔴 REJECTED</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t15',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ GROUP 4: MISMATCH ═══ -->
+<div data-section="mismatch">
+<div class="group-hd">
+  <span style="width:3px;height:14px;background:var(--al);border-radius:2px;display:inline-block"></span>
+  ⚡ GROUP 4 — MISMATCH FLOW (4 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="mismatch">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-16</div><div class="msg-name">Recheck — ยัง Mismatch</div><div class="msg-trigger">Trigger: กด RECHECK → ยังไม่ตรง</div></div>
+    <div class="msg-tag" style="background:var(--ala);color:var(--al);border:1px solid var(--alb)">MISMATCH</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t16">◈ CE · MISMATCH ⚠️
+━━━━━━━━━━━━━━
+🔁 RECHECK แล้ว — ยังไม่ตรง
+
+📄 สลิป: KTB · x7413
+📌 PIN:  BBL · 0283
+
+❌ ยังไม่ตรงกัน</div>
+      <div class="tg-btns">
+        <span class="tg-btn">⚡ OVERRIDE</span>
+        <span class="tg-btn">❌ REJECT</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t16',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="mismatch">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-17</div><div class="msg-name">Recheck — ผ่านแล้ว</div><div class="msg-trigger">Trigger: กด RECHECK → ตรงแล้ว</div></div>
+    <div class="msg-tag" style="background:var(--sa);color:var(--s);border:1px solid var(--sb)">MATCH ✓</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t17">◈ CE · VERIFY ✓
+━━━━━━━━━━━━━━
+✅ RECHECK ผ่านแล้ว
+
+📥 10,000.00 THB
+💎 232.56 USDT
+🏦 BBL · 0283
+🟢 BANK MATCH ✓</div>
+      <div class="tg-btns">
+        <span class="tg-btn">✓ CONFIRM</span>
+        <span class="tg-btn">❌ REJECT</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t17',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="mismatch">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-18</div><div class="msg-name">Override สำเร็จ → READY</div><div class="msg-trigger">Trigger: กด OVERRIDE + ระบุเหตุผล → Confirm ผ่าน</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">OVERRIDE</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t18">◈ CE · OVERRIDE ⚡
+━━━━━━━━━━━━━━
+⚡ Override บันทึกแล้ว
+
+เหตุผล: [REASON]
+โดย: [OPERATOR]
+เวลา: [TIME]
+
+📥 10,000.00 THB
+💎 232.56 USDT
+🟡 READY</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t18',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="mismatch">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-19</div><div class="msg-name">Settlement Overrun</div><div class="msg-trigger">Trigger: SENT + ยอดใหม่ &gt; EXPECTED → ปฏิเสธ</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">OVERRUN</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t19">◈ CE · OVERRUN ⛔
+━━━━━━━━━━━━━━
+⛔ ยอดจะเกิน Expected
+
+EXPECTED    232.56 USDT
+SENT TOTAL  230.00 USDT
+ยอดที่กรอก  + 10.00 USDT ← เกิน!
+รวมจะเป็น   240.00 USDT
+
+ไม่สามารถบันทึกได้</div>
+      <div class="tg-btns">
+        <span class="tg-btn">✏️ แก้ยอด</span>
+        <span class="tg-btn">📋 Exception</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t19',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ GROUP 5: CYCLE ═══ -->
+<div data-section="cycle">
+<div class="group-hd">
+  <span style="width:3px;height:14px;background:var(--g);border-radius:2px;display:inline-block"></span>
+  🔄 GROUP 5 — CYCLE MANAGEMENT (3 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="cycle">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-20</div><div class="msg-name">Dashboard Summary</div><div class="msg-trigger">Trigger: Operator ขอดู KPI / พิมพ์ /summary</div></div>
+    <div class="msg-tag" style="background:var(--ca);color:var(--c);border:1px solid var(--cb)">SUMMARY</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t20">💎 CE VAULT
+━━━━━━━━━━━━━━
+🏠 CE44
+💳 LIMIT       ฿500,000
+📊 USED        ฿327,450
+🟢 REMAINING   ฿172,550
+📥 RECEIVED    ฿327,450
+📤 SENT        $7,614.32
+⏳ PENDING     $184.32
+🔴 NEGATIVE    -$32.40
+✨ PROFIT      ฿8,742.50
+💱 RATE        43.00
+━━━━━━━━━━━━━━
+42 SETTLED
+ 3 READY
+ 3 PENDING
+ 1 SHORT
+ 0 MISMATCH
+ 0 REVIEW</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t20',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="cycle">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-21</div><div class="msg-name">New Cycle — Blocked</div><div class="msg-trigger">Trigger: กด New Cycle → Preconditions ไม่ผ่าน</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">BLOCKED</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t21">◈ CE · NEW CYCLE ⛔
+━━━━━━━━━━━━━━
+❌ ยังเปิดรอบใหม่ไม่ได้
+
+รายการค้างอยู่:
+⏳ PENDING  3 รายการ
+🔴 SHORT    1 รายการ
+🟡 READY    2 รายการ
+
+แก้ไขรายการข้างต้นก่อน</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t21',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="cycle">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-22</div><div class="msg-name">New Cycle สำเร็จ</div><div class="msg-trigger">Trigger: Preconditions ผ่านทั้งหมด → ปิด CE43 เปิด CE44</div></div>
+    <div class="msg-tag" style="background:var(--ga);color:var(--g);border:1px solid var(--gb)">NEW CYCLE</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t22">◈ CE · NEW CYCLE ⚡
+━━━━━━━━━━━━━━
+✅ เปิดรอบใหม่สำเร็จ
+
+CE43  ✓ CLOSED
+CE44  🆕 OPEN
+━━━━━━━━━━━━━━
+💳 LIMIT  500,000 THB
+📊 USED   0 THB
+
+รอบใหม่พร้อมใช้งาน</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t22',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ GROUP 6: ALERTS ═══ -->
+<div data-section="alert">
+<div class="group-hd">
+  <span style="width:3px;height:14px;background:var(--d);border-radius:2px;display:inline-block"></span>
+  🚨 GROUP 6 — ALERTS (8 messages)
+</div>
+<div class="grid">
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-23</div><div class="msg-name">SHORT ค้างนาน — Warning 30m</div><div class="msg-trigger">Trigger: SHORT item อายุเกิน 30 นาที</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">⚠️ WARN</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t23">⚠️ CE VAULT ALERT
+━━━━━━━━━━━━━━
+⚠️ SHORT ค้างนาน
+
+🆔 #CE-20260913-A043
+💎 SHORT ▼ 2.56 USDT
+⏰ ค้างมา 31 นาที</div>
+      <div class="tg-btns">
+        <span class="tg-btn">📤 ส่งเพิ่ม</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t23',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-24</div><div class="msg-name">SHORT ค้างนาน — Critical 2h</div><div class="msg-trigger">Trigger: SHORT item อายุเกิน 2 ชั่วโมง</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">🔴 CRIT</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t24">🚨 CE VAULT CRITICAL
+━━━━━━━━━━━━━━
+🔴 SHORT ค้างนานมาก
+
+🆔 #CE-20260913-A043
+💎 SHORT ▼ 2.56 USDT
+⏰ ค้างมา 2h 15m
+
+⛔ บล็อก New Cycle
+แก้ไขด่วน!</div>
+      <div class="tg-btns">
+        <span class="tg-btn">📤 ส่งเพิ่ม</span>
+        <span class="tg-btn">🔍 ดูรายการ</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t24',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-25</div><div class="msg-name">PENDING ค้างนาน — 60m</div><div class="msg-trigger">Trigger: PENDING item อายุเกิน 60 นาที</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">⚠️ WARN</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t25">⚠️ CE VAULT ALERT
+━━━━━━━━━━━━━━
+⚠️ PENDING ค้างนาน
+
+🆔 #CE-20260913-A042
+💎 197.67 USDT
+⏰ ค้างมา 62 นาที</div>
+      <div class="tg-btns">
+        <span class="tg-btn">⏳ Pending Queue</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t25',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-26</div><div class="msg-name">Limit 80% Warning</div><div class="msg-trigger">Trigger: USED_THB ≥ LIMIT × 80%</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">⚠️ 80%</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t26">⚠️ CE VAULT ALERT
+━━━━━━━━━━━━━━
+⚠️ ใช้วงเงินเกิน 80%
+
+CE44 · ใช้ไปแล้ว 80.5%
+USED      402,500 THB
+LIMIT     500,000 THB
+LEFT       97,500 THB</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t26',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-27</div><div class="msg-name">Limit 95% Critical</div><div class="msg-trigger">Trigger: USED_THB ≥ LIMIT × 95%</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">🔴 95%</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t27">🚨 CE VAULT ALERT
+━━━━━━━━━━━━━━
+🔴 วงเงินใกล้เต็มแล้ว!
+
+CE44 · ใช้ไปแล้ว 95.1%
+USED      475,500 THB
+LIMIT     500,000 THB
+LEFT       24,500 THB
+
+รับได้อีกไม่มาก</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t27',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-28</div><div class="msg-name">Settlement Exception Open</div><div class="msg-trigger">Trigger: settlement_exceptions.status = OPEN</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">🔴 EXCEP</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t28">🚨 CE VAULT ALERT
+━━━━━━━━━━━━━━
+🔴 มี Exception ยังไม่แก้
+
+1 SETTLEMENT EXCEPTION OPEN
+⛔ บล็อก New Cycle
+
+ต้องให้ Admin แก้ไขก่อน</div>
+      <div class="tg-btns">
+        <span class="tg-btn">📋 ดู Exception</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t28',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-29</div><div class="msg-name">System Error — DB/Network</div><div class="msg-trigger">Trigger: Supabase error / timeout / network fail</div></div>
+    <div class="msg-tag" style="background:var(--da);color:var(--d);border:1px solid var(--db)">ERROR</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t29">◈ CE · ERROR ⚠️
+━━━━━━━━━━━━━━
+⚠️ ระบบขัดข้อง
+
+ไม่สามารถดำเนินการได้
+ไม่มีข้อมูลถูกบันทึก
+
+กรุณาลองใหม่อีกครั้ง</div>
+      <div class="tg-btns">
+        <span class="tg-btn">🔄 ลองใหม่</span>
+      </div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t29',this)">📋 Copy</button></div>
+</div>
+
+<div class="msg-card" data-group="alert">
+  <div class="msg-card-top">
+    <div><div class="msg-num">MSG-30</div><div class="msg-name">OCR Fail Rate สูง</div><div class="msg-trigger">Trigger: OCR fail rate &gt; 20% ใน 1 ชั่วโมง</div></div>
+    <div class="msg-tag" style="background:var(--wa);color:var(--w);border:1px solid var(--wb)">⚠️ OCR</div>
+  </div>
+  <div class="tg-preview">
+    <div class="tg-bubble">
+      <div class="tg-text" id="t30">⚠️ CE VAULT ALERT
+━━━━━━━━━━━━━━
+⚠️ OCR อ่านสลิปผิดพลาดบ่อย
+
+ช่วง 1 ชั่วโมงที่ผ่านมา
+❌ ล้มเหลว  8 / 32 ครั้ง
+อัตรา      25% (เกิน 20%)
+
+ตรวจสอบ OCR Service</div>
+    </div>
+  </div>
+  <div class="msg-foot"><button class="copy-btn" onclick="copyMsg('t30',this)">📋 Copy</button></div>
+</div>
+
+</div>
+</div>
+
+</main>
+
+<div class="toast" id="toast">✅ Copied!</div>
+
+<script>
+// Filter tabs
+const tabs = document.querySelectorAll('.tab');
+tabs.forEach(t => {
+  t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('on'));
+    t.classList.add('on');
+    const g = t.dataset.group;
+    document.querySelectorAll('.msg-card').forEach(c => {
+      c.closest('.grid').parentElement.style.display = '';
+      if (g === 'all') {
+        c.style.display = '';
+      } else {
+        c.style.display = c.dataset.group === g ? '' : 'none';
+      }
+    });
+    // Hide empty section headers
+    document.querySelectorAll('[data-section]').forEach(s => {
+      if (g !== 'all') {
+        const visible = s.querySelectorAll(`.msg-card[data-group="${g}"]`).length;
+        s.style.display = visible ? '' : 'none';
+      } else {
+        s.style.display = '';
+      }
+    });
+  });
+});
+
+// Copy function
+function copyMsg(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✅ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = '📋 Copy';
+      btn.classList.remove('copied');
+    }, 2000);
+    const toast = document.getElementById('toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✅ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = '📋 Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
