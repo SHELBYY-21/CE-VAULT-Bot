@@ -40,3 +40,22 @@ export function validateStickers() {
 export function getSticker(state: StickerState): string | undefined {
   return STICKER_IDS[state];
 }
+
+/**
+ * Telegram .WEBM/VP9 motion stickers are sent with sendSticker(file_id).
+ * Configure one of these after uploading the WebM to Telegram; a bare HTTP
+ * URL cannot be used for video stickers. Optional: no extra media if unset.
+ * The text message remains authoritative if a sticker fails.
+ */
+const WEBM_MOTION_IDS: Partial<Record<StickerState, string | undefined>> = {
+  PROCESSING: process.env.WEBM_PROCESSING_FILE_ID,
+  OCR_DONE: process.env.WEBM_OCR_DONE_FILE_ID,
+  WAITING: process.env.WEBM_WAITING_FILE_ID,
+  SUCCESS: process.env.WEBM_SUCCESS_FILE_ID,
+  ERROR: process.env.WEBM_ERROR_FILE_ID,
+};
+
+export function getWebmMotionSticker(state: StickerState): string | undefined {
+  const id = WEBM_MOTION_IDS[state]?.trim();
+  return id && id.startsWith('CAACAg') ? id : undefined;
+}
