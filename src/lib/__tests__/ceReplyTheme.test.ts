@@ -31,10 +31,20 @@ describe('CE VAULT message design lock', () => {
       kind: 'incoming', ledgerRef: 'CE-001', thb: 10000,
       usdt: 232.56, adminName: '<admin>',
     });
-    expect(response).toContain('บันทึกเงินเข้าแล้ว');
-    expect(response).toContain('ยังไม่ยืนยันว่า Settlement ครบ');
+    expect(response).toContain('Deposit Recorded / 入账已记录');
+    expect(response).toContain('Settlement not verified / 尚未结算确认');
     expect(response).not.toContain('Settlement สำเร็จ');
     expect(response).toContain('&lt;admin&gt;');
+  });
+  it('provides multilingual labels without changing amounts or transaction meaning', () => {
+    const ocr = ceOcrAmount(1200, 94);
+    expect(ocr).toContain('Extracted Amount / 识别金额');
+    expect(ocr).toContain('Not yet verified / 尚未核实');
+    const receipt = ceRecorded({ kind: 'outgoing', ledgerRef: 'CE-XYZ', usdt: 12.3456 });
+    expect(receipt).toContain('Transfer Recorded / 转出已记录');
+    expect(receipt).toContain('Reference / 交易编号');
+    expect(receipt).toContain('12.3456 USDT');
+    expect(receipt).not.toContain('Settlement complete');
   });
   it('does not interpolate preview account or amount into a live reply', () => {
     expect(ceRecorded({ kind: 'outgoing', ledgerRef: 'CE-XYZ', usdt: 3.25 }))

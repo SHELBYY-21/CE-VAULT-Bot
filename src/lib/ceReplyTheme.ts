@@ -42,8 +42,8 @@ export function ceOcrAmount(thb: number | null | undefined, confidence?: number 
   const conf = confidence != null && Number.isFinite(confidence)
     ? '\nOCR Confidence: ' + Math.max(0, Math.min(100, confidence)).toFixed(0) + '%'
     : '';
-  return '📥 ยอดจากสลิป (OCR)\n' + amount + conf +
-    '\n<i>ยังไม่ใช่ยอดที่ยืนยันหรือบันทึกสำเร็จ</i>';
+  return '📥 ยอดจากสลิป (Extracted Amount / 识别金额 · OCR)\n' + amount + conf +
+    '\n<i>ยังไม่ยืนยัน (Not yet verified / 尚未核实)</i>';
 }
 
 /** Telegram HTML renderer: no unsupported CSS or HTML tags. */
@@ -59,15 +59,15 @@ export function ceRecorded(data: {
 }): string {
   const incoming = data.kind === 'incoming';
   const body = [
-    incoming ? '✅ บันทึกเงินเข้าแล้ว' : '✅ บันทึกยอดส่งออกแล้ว',
+    incoming ? '✅ บันทึกเงินเข้า (Deposit Recorded / 入账已记录)' : '✅ บันทึกยอดส่งออก (Transfer Recorded / 转出已记录)',
     '',
-    data.thb != null ? `📥 IN    <b>${ceAmount(data.thb)} THB</b>` : null,
-    data.usdt != null ? `${incoming ? '💎 EXPECTED' : '📤 OUT'}   <b>${ceUsdt(data.usdt)} USDT</b>` : null,
-    data.sellRate != null ? `💱 RATE  ${ceAmount(data.sellRate)}` : null,
-    data.bank || data.last4 ? `🏦 ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
-    data.adminName ? `👤 ${ceEscape(data.adminName)}` : null,
-    `🆔 #${ceEscape(data.ledgerRef)}`,
-    incoming ? '⏳ ยังไม่ยืนยันว่า Settlement ครบ' : null,
+    data.thb != null ? `📥 ยอดเข้า (Received)    <b>${ceAmount(data.thb)} THB</b>` : null,
+    data.usdt != null ? `${incoming ? '💎 คาดว่าจะส่ง (Expected USDT)' : '📤 ส่งออก (Outgoing USDT)'}   <b>${ceUsdt(data.usdt)} USDT</b>` : null,
+    data.sellRate != null ? `💱 อัตราแลกเปลี่ยน (Rate)  ${ceAmount(data.sellRate)}` : null,
+    data.bank || data.last4 ? `🏦 ธนาคาร (Bank / 银行)  ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
+    data.adminName ? `👤 ผู้ดำเนินการ (Operator)  ${ceEscape(data.adminName)}` : null,
+    `🆔 เลขอ้างอิง (Reference / 交易编号)  #${ceEscape(data.ledgerRef)}`,
+    incoming ? '⏳ รอตรวจสอบการชำระครบ (Settlement not verified / 尚未结算确认)' : null,
   ].filter((line) => line !== null).join('\n');
-  return `◈ CE · RECORDED ✓\n${CE_RULE}\n${body}`;
+  return `◈ CE · RECORDED (已记录) ✓\n${CE_RULE}\n${body}`;
 }
