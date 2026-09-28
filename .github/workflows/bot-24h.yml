@@ -79,6 +79,12 @@ jobs:
           # Mask so they do not leak in logs
           echo "::add-mask::$BOT_TOKEN"
           printf '%s' "$FIREBASE_SA" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          if ! node -e 'const s=require("/tmp/firebase-sa.json"); if(s.type!=="service_account" || !s.project_id || !s.client_email || !s.private_key) process.exit(1)' 2>/dev/null; then
+            echo "::error::Invalid Firebase service account JSON. Telegram webhook was NOT changed."
+            exit 1
+          fi
+          echo "Firebase credential structure validated."
           echo "BOT_TOKEN=$BOT_TOKEN" >> "$GITHUB_ENV"
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
           echo "FIREBASE_SERVICE_ACCOUNT_JSON<<EOF" >> "$GITHUB_ENV"
