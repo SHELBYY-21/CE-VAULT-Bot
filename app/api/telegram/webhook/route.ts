@@ -80,8 +80,16 @@ const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
 function sticker(chatId: number, key: StickerState): void {
-  const id = getWebmMotionSticker(key) || getSticker(key);
-  if (id) sendSticker(chatId, id).catch(() => undefined);
+  const motion = getWebmMotionSticker(key);
+  const fallback = getSticker(key);
+  if (motion) {
+    void sendSticker(chatId, motion).catch(() => {
+      if (fallback && fallback !== motion) return sendSticker(chatId, fallback).catch(() => undefined);
+      return undefined;
+    });
+  } else if (fallback) {
+    void sendSticker(chatId, fallback).catch(() => undefined);
+  }
 }
 
 export const runtime = 'nodejs';
@@ -575,7 +583,9 @@ async function handleUpdate(update: any): Promise<void> {
           bank,
           last4,
           intel,
-          hint: `<i>OCR unclear — type</i> <code>+${slip?.thbAmount ?? 500}</code>`,
+          hint: slip?.thbAmount != null && slip.thbAmount > 0
+            ? `<i>OCR ยังไม่มั่นใจ — ตรวจยอดแล้วพิมพ์</i> <code>+${slip.thbAmount}</code>`
+            : '<i>OCR อ่านยอดไม่ได้ — ตรวจยอดจากสลิปจริงแล้วพิมพ์ +ยอด (เช่น +1200)</i>',
         }),
       );
     } catch (e: any) {

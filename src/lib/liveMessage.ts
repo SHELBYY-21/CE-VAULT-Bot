@@ -6,7 +6,7 @@
  */
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
 import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
-import { ceMessage, ceRecorded, CE_DIVIDER } from './ceReplyTheme';
+import { ceMessage, ceRecorded, ceOcrAmount, CE_DIVIDER } from './ceReplyTheme';
 
 export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED' | 'ERROR';
 
@@ -95,13 +95,13 @@ export function liveVerified(d: {
   receiverName?: string | null;
 }): OutgoingMessage {
   const lines: string[] = [];
-  if (d.thb != null) lines.push(`THB     <code>${liveMoney(d.thb)}</code>`);
+  lines.push(ceOcrAmount(d.thb, d.confidence));
   if (d.receiverName) lines.push(`Payee   <code>${esc(d.receiverName)}</code>`);
   if (d.bank || d.last4)
     lines.push(
       `Bank    <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
     );
-  if (d.confidence != null) lines.push(`OCR     <code>${d.confidence.toFixed(0)}%</code>`);
+
   return liveCard({
     stage: 'VERIFIED',
     ledgerRef: d.ledgerRef,
@@ -122,12 +122,12 @@ export function liveWaiting(d: {
   if (d.intel) {
     lines.push(intelBlock(d.intel), '');
   }
-  if (d.thb != null) lines.push(`THB     <code>${liveMoney(d.thb)}</code>`);
+  lines.push(ceOcrAmount(d.thb, d.confidence));
   if (!d.intel && (d.bank || d.last4))
     lines.push(
       `Bank    <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
     );
-  if (d.confidence != null) lines.push(`OCR     <code>${d.confidence.toFixed(0)}%</code>`);
+
   lines.push('');
   lines.push(d.hint || `<i>Waiting USDT proof or</i> <code>-13.6U</code>`);
   return liveCard({
@@ -216,7 +216,7 @@ export function liveIntelVerified(d: {
   skippedOcr?: boolean;
 }): OutgoingMessage {
   const lines: string[] = [intelBlock(d.intel)];
-  if (d.thb != null) lines.push('', `THB     <code>${liveMoney(d.thb)}</code>`);
+  lines.push('', ceOcrAmount(d.thb, d.confidence));
   if (d.confidence != null) lines.push(`OCR     <code>${d.confidence.toFixed(0)}%</code>`);
   if (d.skippedOcr) lines.push('', `<i>Known account — profile loaded (OCR light)</i>`);
   return liveCard({

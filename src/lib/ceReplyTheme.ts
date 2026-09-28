@@ -30,6 +30,22 @@ export function ceEscape(value: unknown): string {
 export const ceAmount = (n: number): string =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+/** Keep actual USDT precision: never round a ledger value to THB display precision. */
+export const ceUsdt = (n: number): string =>
+  new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(n);
+
+/** OCR-only presentation. This is not a verified deposit or ledger write. */
+export function ceOcrAmount(thb: number | null | undefined, confidence?: number | null): string {
+  const amount = thb != null && Number.isFinite(thb) && thb > 0
+    ? '<b>' + ceAmount(thb) + ' THB</b>'
+    : '<b>ยังอ่านยอดไม่ได้</b>';
+  const conf = confidence != null && Number.isFinite(confidence)
+    ? '\nOCR Confidence: ' + Math.max(0, Math.min(100, confidence)).toFixed(0) + '%'
+    : '';
+  return '📥 ยอดจากสลิป (OCR)\n' + amount + conf +
+    '\n<i>ยังไม่ใช่ยอดที่ยืนยันหรือบันทึกสำเร็จ</i>';
+}
+
 /** Telegram HTML renderer: no unsupported CSS or HTML tags. */
 export function ceMessage(id: CeMessageId, body: string): string {
   return `◈ CE · ${CE_MESSAGE_STATES[id]}\n${CE_RULE}\n${body}`;
@@ -46,7 +62,7 @@ export function ceRecorded(data: {
     incoming ? '✅ บันทึกเงินเข้าแล้ว' : '✅ บันทึกยอดส่งออกแล้ว',
     '',
     data.thb != null ? `📥 IN    <b>${ceAmount(data.thb)} THB</b>` : null,
-    data.usdt != null ? `${incoming ? '💎 EXPECTED' : '📤 OUT'}   <b>${ceAmount(data.usdt)} USDT</b>` : null,
+    data.usdt != null ? `${incoming ? '💎 EXPECTED' : '📤 OUT'}   <b>${ceUsdt(data.usdt)} USDT</b>` : null,
     data.sellRate != null ? `💱 RATE  ${ceAmount(data.sellRate)}` : null,
     data.bank || data.last4 ? `🏦 ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
     data.adminName ? `👤 ${ceEscape(data.adminName)}` : null,
