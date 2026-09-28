@@ -215,11 +215,11 @@ async function handleUpdate(update: any): Promise<void> {
   }
 
   // ----- /ce : compact per-room control panel -----
-  if (text && /^\\/ce(?:@\\w+)?$/i.test(text)) {
+  if (text && /^\/ce(?:@\w+)?$/i.test(text)) {
     const room = await getRoom(chatId);
     const rate = room.rate != null ? `${room.rate} THB/USDT` : 'ยังไม่ตั้งค่า';
     await sendMessage(chatId, {
-      text: `◈ <b>CE VAULT · ${ceEscape(room.name || 'ROOM CONTROL')}</b>\\nอัตราแลกเปลี่ยน: <b>${rate}</b>\\nเลือกเมนูด้านล่าง`,
+      text: `◈ <b>CE VAULT · ${ceEscape(room.name || 'ROOM CONTROL')}</b>\nอัตราแลกเปลี่ยน: <b>${rate}</b>\nเลือกเมนูด้านล่าง`,
       reply_markup: { inline_keyboard: [
         [{ text: '💱 อัตราแลกเปลี่ยน', callback_data: 'ce:rate' }, { text: '🏦 ธนาคาร', callback_data: 'ce:bank' }],
         [{ text: '🔐 เงินประกัน', callback_data: 'ce:deposit' }, { text: '📊 รายงาน', callback_data: 'ce:report' }],
@@ -1319,7 +1319,7 @@ async function handleCallback(cb: any): Promise<void> {
     if (arg === 'bank') return await handlePinCommand(chatId, '/pin');
     if (arg === 'rate') {
       const room = await getRoom(chatId);
-      return await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยน (THB/USDT)</b>\\nปัจจุบัน: <b>${room.rate ?? 'ยังไม่ตั้งค่า'}</b>\\nเปลี่ยน: <code>/setrate 32.49</code>` });
+      return await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยน (THB/USDT)</b>\nปัจจุบัน: <b>${room.rate ?? 'ยังไม่ตั้งค่า'}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
     }
     if (arg === 'deposit') return await sendMessage(chatId, { text: '🔐 เงินประกัน: ยังไม่เปิดรับการบันทึกผ่านบอต เพื่อป้องกันการหักยอดผิดหรือซ้ำ' });
     return;
