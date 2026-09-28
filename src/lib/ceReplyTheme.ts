@@ -1,0 +1,57 @@
+/**
+ * CE VAULT Design Lock v1.0: Telegram presentation contract.
+ * The MSG IDs map to ce-vault-messages.html. Only render an ID after its
+ * triggering business state was independently verified by existing logic.
+ * Do not use the sample amounts, accounts or names from the HTML preview.
+ */
+export const CE_MESSAGE_STATES = {
+  'MSG-01': 'OCR', 'MSG-02': 'VERIFY', 'MSG-03': 'OCR ERROR',
+  'MSG-04': 'REVIEW', 'MSG-05': 'MISMATCH', 'MSG-06': 'DUPLICATE',
+  'MSG-07': 'LIMIT', 'MSG-08': 'RATE CHANGED', 'MSG-09': 'READY',
+  'MSG-10': 'PENDING', 'MSG-11': 'DONE', 'MSG-12': 'SHORT',
+  'MSG-13': 'PENDING', 'MSG-14': 'DONE', 'MSG-15': 'REJECTED',
+  'MSG-16': 'MISMATCH', 'MSG-17': 'VERIFY', 'MSG-18': 'OVERRIDE',
+  'MSG-19': 'OVERRUN', 'MSG-20': 'SUMMARY', 'MSG-21': 'NEW CYCLE',
+  'MSG-22': 'NEW CYCLE', 'MSG-23': 'ALERT', 'MSG-24': 'CRITICAL',
+  'MSG-25': 'ALERT', 'MSG-26': 'ALERT', 'MSG-27': 'ALERT',
+  'MSG-28': 'ALERT', 'MSG-29': 'ERROR', 'MSG-30': 'ALERT',
+} as const;
+export type CeMessageId = keyof typeof CE_MESSAGE_STATES;
+export const CE_RULE = '━━━━━━━━━━━━━━';
+export const CE_DIVIDER = '─────────────';
+
+export function ceEscape(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+export const ceAmount = (n: number): string =>
+  new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+/** Telegram HTML renderer: no unsupported CSS or HTML tags. */
+export function ceMessage(id: CeMessageId, body: string): string {
+  return `◈ CE · ${CE_MESSAGE_STATES[id]}\n${CE_RULE}\n${body}`;
+}
+
+/** Actual recorded amount is not proof of final, reconciled settlement. */
+export function ceRecorded(data: {
+  kind: 'incoming' | 'outgoing'; ledgerRef: string; thb?: number | null;
+  usdt?: number | null; sellRate?: number | null; adminName?: string | null;
+  bank?: string | null; last4?: string | null;
+}): string {
+  const incoming = data.kind === 'incoming';
+  const body = [
+    incoming ? '✅ บันทึกเงินเข้าแล้ว' : '✅ บันทึกยอดส่งออกแล้ว',
+    '',
+    data.thb != null ? `📥 IN    <b>${ceAmount(data.thb)} THB</b>` : null,
+    data.usdt != null ? `${incoming ? '💎 EXPECTED' : '📤 OUT'}   <b>${ceAmount(data.usdt)} USDT</b>` : null,
+    data.sellRate != null ? `💱 RATE  ${ceAmount(data.sellRate)}` : null,
+    data.bank || data.last4 ? `🏦 ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
+    data.adminName ? `👤 ${ceEscape(data.adminName)}` : null,
+    `🆔 #${ceEscape(data.ledgerRef)}`,
+    incoming ? '⏳ ยังไม่ยืนยันว่า Settlement ครบ' : null,
+  ].filter((line) => line !== null).join('\n');
+  return `◈ CE · RECORDED ✓\n${CE_RULE}\n${body}`;
+}
