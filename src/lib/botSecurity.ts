@@ -72,7 +72,7 @@ export function parseSaveSlipArgs(text: string): SaveSlipArgs | null {
   }
   
   // Match: -100U
-  const usdtMatch = rest.match(/^\-\s*(\d[\d,]*(?:\.\d+)?)\s*(?:U|USDT)/i);
+  const usdtMatch = rest.match(/^-\s*(\d[\d,]*(?:\.\d+)?)\s*(?:U|USDT)/i);
   if (usdtMatch) {
     const usdt = Number(usdtMatch[1].replace(/,/g, ''));
     if (!Number.isFinite(usdt) || usdt <= 0) return null;
