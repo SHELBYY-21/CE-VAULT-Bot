@@ -6,6 +6,7 @@
  */
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
 import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
+import { ceMessage, ceRecorded, CE_DIVIDER } from './ceReplyTheme';
 
 export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED' | 'ERROR';
 
@@ -14,10 +15,10 @@ const STAGES: Array<{ id: Exclude<LiveStage, 'ERROR'>; label: string }> = [
   { id: 'OCR', label: 'OCR' },
   { id: 'VERIFIED', label: 'Verified' },
   { id: 'WAITING', label: 'Waiting' },
-  { id: 'SETTLED', label: 'Settled' },
+  { id: 'SETTLED', label: 'Recorded' },
 ];
 
-const RULE = '────────────────';
+const RULE = CE_DIVIDER;
 
 function esc(s: string | null | undefined): string {
   return String(s ?? '')
@@ -56,7 +57,7 @@ export type LiveCardOpts = {
 /** Single Live Message shell */
 export function liveCard(opts: LiveCardOpts): OutgoingMessage {
   const parts = [
-    `<b>CE VAULT</b>`,
+    `<b>◈ CE VAULT</b>`,
     `<i>Live Message</i>`,
     RULE,
     liveRail(opts.stage),
@@ -72,18 +73,17 @@ export function liveCard(opts: LiveCardOpts): OutgoingMessage {
 
 export function liveReceiving(ledgerRef?: string | null): OutgoingMessage {
   return liveCard({
-    stage: 'RECEIVING',
-    ledgerRef,
-    body: `<i>Receiving slip…</i>`,
+    stage: 'RECEIVING', ledgerRef,
+    body: '<i>📷 กำลังรับสลิป...</i>',
   });
 }
 
+/** MSG-01 — preserve single-message edit lifecycle during OCR. */
 export function liveOcr(ledgerRef?: string | null): OutgoingMessage {
-  return liveCard({
-    stage: 'OCR',
-    ledgerRef,
-    body: `<i>Reading slip (OCR)…</i>`,
-  });
+  return {
+    text: ceMessage('MSG-01', '🔄 กำลังอ่านสลิป...\n⏳ OCR กำลังประมวลผล') +
+      (ledgerRef ? '\n' + RULE + '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : ''),
+  };
 }
 
 export function liveVerified(d: {
@@ -147,38 +147,30 @@ export function liveSettled(d: {
   last4?: string | null;
   transactionId?: string | null;
 }): OutgoingMessage {
-  const lines: string[] = [];
-  if (d.thb != null) lines.push(`THB     <code>${liveMoney(d.thb)}</code>`);
-  if (d.usdt != null) lines.push(`USDT    <code>${liveMoney(d.usdt)}</code>`);
-  if (d.sellRate != null) lines.push(`Sell    <code>${liveMoney(d.sellRate)}</code>`);
-  if (d.bank || d.last4)
-    lines.push(
-      `Bank    <code>${esc(d.bank ?? '-')}${d.last4 ? ` ••••${esc(d.last4)}` : ''}</code>`,
-    );
-  if (d.adminName) lines.push(`Staff   <code>${esc(d.adminName)}</code>`);
-  return liveCard({
-    stage: 'SETTLED',
-    ledgerRef: d.ledgerRef,
-    body: lines.join('\n'),
+  // A THB credit with calculated USDT owed must NOT be called SETTLED (MSG-11).
+  // The transaction record and final reconciliation are different events.
+  return {
+    text: ceRecorded({
+      kind: d.thb != null ? 'incoming' : 'outgoing',
+      ledgerRef: d.ledgerRef, thb: d.thb, usdt: d.usdt,
+      sellRate: d.sellRate, adminName: d.adminName, bank: d.bank, last4: d.last4,
+    }),
     reply_markup: d.transactionId
-      ? {
-          inline_keyboard: [
-            [
-              { text: 'Edit', callback_data: `edit:${d.transactionId}` },
-              { text: 'Delete', callback_data: `del:${d.transactionId}` },
-            ],
-          ],
-        }
+      ? { inline_keyboard: [[
+          { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
+          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
+        ]] }
       : undefined,
-  });
+  };
 }
 
-export function liveError(message: string, ledgerRef?: string | null): OutgoingMessage {
-  return liveCard({
-    stage: 'ERROR',
-    ledgerRef,
-    body: `<code>${esc(message)}</code>`,
-  });
+export function liveError(_message: string, ledgerRef?: string | null): OutgoingMessage {
+  // Never claim "nothing was saved": a timeout may happen after a DB commit.
+  return {
+    text: ceMessage('MSG-29',
+      '⚠️ ระบบขัดข้อง\n\nไม่สามารถดำเนินการได้\nตรวจสอบ Ledger ก่อนลองใหม่อีกครั้ง' +
+      (ledgerRef ? '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : '')),
+  };
 }
 
 /** Compact intel block for Live Message body */
