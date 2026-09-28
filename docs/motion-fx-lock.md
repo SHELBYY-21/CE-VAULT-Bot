@@ -44,6 +44,11 @@ WELCOME (HI) ยังอยู่ที่ `/start` ตามเดิมใน
 - Dedupe เป็น best-effort ต่อ server instance — serverless cold start
   อาจส่ง sticker ซ้ำได้ในกรณีที่ stage เดียวกันถูก apply สอง instance
 
+## ดูเพิ่ม
+
+- `docs/mascot-motion-lock.md` — การเรนเดอร์/อัปโหลด WEBM 8 ท่า + ตาราง moment
+- `docs/mascot-brand-assets.md` — avatar/banner จากน้อง robot ตัวเดียวกัน (PR #51)
+
 ## ทดสอบ
 
 - `src/lib/__tests__/motionFx.test.ts` — moment mapping, dedupe, kill switch,
