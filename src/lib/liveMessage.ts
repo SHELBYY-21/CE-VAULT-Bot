@@ -7,6 +7,7 @@
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
 import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
 import { ceMessage, ceRecorded, ceOcrAmount, CE_DIVIDER } from './ceReplyTheme';
+import { motionAfter, motionGate } from './motionFx';
 
 export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED' | 'ERROR';
 
@@ -230,15 +231,23 @@ export function liveIntelVerified(d: {
  * Upsert Live Message:
  * - first call (no id) → sendMessage once
  * - every later call → editMessage only
+ * - motion layer (mascot sticker + OCR effect) fires per stage — src/lib/motionFx.ts
  */
 export async function upsertLive(
   chatId: number,
   messageId: number | null | undefined,
   message: OutgoingMessage,
 ): Promise<number> {
+  // Motion layer: gate before the edit (stops stale OCR effects), fire after.
+  motionGate(messageId, message);
   if (messageId) {
     const ok = await editMessage(chatId, messageId, message);
-    if (ok) return messageId;
+    if (ok) {
+      motionAfter(chatId, messageId, message);
+      return messageId;
+    }
   }
-  return sendMessage(chatId, message);
+  const id = await sendMessage(chatId, message);
+  motionAfter(chatId, id, message);
+  return id;
 }
