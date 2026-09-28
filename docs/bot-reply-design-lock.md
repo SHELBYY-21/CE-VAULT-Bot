@@ -48,7 +48,7 @@ long-polling and production webhook for the same Telegram bot concurrently.
 
 ## International labels (Thai / English / 简体中文)
 
-- Keep Thai as the primary operational language. Add concise international labels **only for high-value terms** (extracted amount / 识别金额, recipient / 收款人, bank / 银行, transaction reference / 交易编号, recorded / 已记录, not yet verified / 尚未核实).
+- Keep Thai as the primary operational language. Place English/Chinese translations in parentheses immediately after the Thai term (e.g. `ยอดจากสลิป (Extracted Amount / 识别金额)`). Add international labels **only for high-value terms** (extracted amount / 识别金额, recipient / 收款人, bank / 银行, transaction reference / 交易编号, recorded / 已记录, not yet verified / 尚未核实).
 - Preserve official ticker and units (THB, USDT, OCR) unchanged. Use Arabic numerals with consistent grouping and **do not convert amounts into other currencies**.
 - “Recorded / 已记录” is only confirmation of a saved record, **not** “Settled / 已结算”; do not translate unverified OCR to confirmed payment. English status names in `CE_MESSAGE_STATES` remain canonical for existing integrations.
 - Escape live user/bank/ID values for Telegram HTML, and never translate or change their actual content.
