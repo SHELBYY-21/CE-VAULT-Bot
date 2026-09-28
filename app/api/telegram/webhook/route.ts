@@ -56,7 +56,8 @@ import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { convertThbUsdt, parseConvertQuery } from '@/lib/convert';
 import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
-import { getSticker, validateStickers, type StickerState } from '@/config/stickers';
+import { getSticker, getWebmMotionSticker, validateStickers, type StickerState } from '@/config/stickers';
+import { ceMessage, ceEscape, ceAmount } from '@/lib/ceReplyTheme';
 import {
   bangkokDate,
   bangkokNowLabel,
@@ -78,8 +79,13 @@ const USDT_TOLERANCE = 0.0001;
 const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
+function motionSticker(chatId: number, key: StickerState): void {
+  // Optional .WEBM/VP9 Telegram video sticker; only after a real success event.
+  const id = getWebmMotionSticker(key);
+  if (id) sendSticker(chatId, id).catch(() => undefined);
+}
 function sticker(chatId: number, key: StickerState): void {
-  const id = getSticker(key);
+  const id = getWebmMotionSticker(key) || getSticker(key);
   if (id) sendSticker(chatId, id).catch(() => undefined);
 }
 
@@ -483,17 +489,20 @@ async function handleUpdate(update: any): Promise<void> {
           await upsertLive(
             chatId,
             liveId,
-            liveWaiting({
-              ledgerRef,
-              thb: slip!.thbAmount,
-              bank,
-              last4,
-              confidence: slip!.confidence,
-              intel,
-              hint:
-                `Pin mismatch — today <code>${first.bank_name} ••••${last4OfAccount(first.account_number) ?? '????'}</code>\n` +
-                `<i>Type</i> <code>+${slip!.thbAmount}</code> <i>to record, or</i> <code>/pin …</code>`,
-            }),
+            {
+              // MSG-05: visual-only mismatch. Do not offer RECHECK/OVERRIDE
+              // callbacks until the permission and ledger handlers exist.
+              text: ceMessage('MSG-05',
+                '📄 บัญชีในสลิป\n' +
+                '🏦 ' + ceEscape(bank ?? '-') + ' · ••••' + ceEscape(last4 ?? '????') + '\n\n' +
+                '📌 บัญชี PIN วันนี้\n' +
+                '🏦 ' + ceEscape(first.bank_name) + ' · ••••' +
+                  ceEscape(last4OfAccount(first.account_number) ?? '????') + '\n\n' +
+                '❌ บัญชีไม่ตรงกัน\n' +
+                '📥 ' + ceAmount(slip!.thbAmount!) + ' THB\n' +
+                '<i>พิมพ์ +ยอด เพื่อบันทึกเอง หรือใช้ /pin เปลี่ยนบัญชี</i>\n' +
+                '🆔 <code>#' + ceEscape(ledgerRef) + '</code>'),
+            },
           );
           return;
         }
@@ -820,6 +829,7 @@ async function commitIncoming(
       transactionId: r.transactionId,
     }),
   );
+  motionSticker(chatId, 'SUCCESS');
 }
 
 /** บันทึกขาออก — Live Message → Settled */
@@ -856,6 +866,7 @@ async function commitOutgoing(
       transactionId: r.transactionId,
     }),
   );
+  motionSticker(chatId, 'SUCCESS');
 }
 
 async function replyPinOk(
