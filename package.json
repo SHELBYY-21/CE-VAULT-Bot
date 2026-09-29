@@ -31,7 +31,9 @@
     "firebase-admin": "^13.6.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "@supabase/ssr": "latest",
+    "@supabase/supabase-js": "latest"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
