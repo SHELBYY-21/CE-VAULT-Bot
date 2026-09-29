@@ -9,7 +9,6 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
-  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import {
@@ -51,7 +50,7 @@ import {
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { sendDocument } from '@/lib/telegram';
-import { notifyDailySummary, notifyReady } from '@/lib/notifier';
+import { notifyDailySummary } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { convertThbUsdt, parseConvertQuery } from '@/lib/convert';
@@ -434,10 +433,10 @@ async function handleUpdate(update: any): Promise<void> {
         return;
       }
       const sell = nums[0];
+      const fallbackMarket = Number(process.env.DEFAULT_MARKET_RATE);
       const market: number = (nums[1] ??
         r.marketUsdtRate ??
-        Number(process.env.DEFAULT_MARKET_RATE) ??
-        34.8) as number;
+        (Number.isFinite(fallbackMarket) ? fallbackMarket : 34.8)) as number;
       await insertRate(admin.id, sell, market);
       await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
     } else {
@@ -1220,81 +1219,6 @@ function dealSessionFields(session: any): any {
     admin_id: session.admin_id ?? null,
     admin_name: session.admin_name ?? null,
   };
-}
-
-/**
- * คำนวณดีล + โชว์การ์ดยืนยัน (Confirm/Edit/Cancel)
- * usdtMeta != null = มาจากสกรีนช็อต (OCR), = null = พิมพ์เอง (manual)
- * req13: ถ้ามีทั้ง OCR และ manual แล้วต่างกัน > 0.0001 → block + manual review
- */
-async function presentDealConfirm(
-  chatId: number,
-  userId: number,
-  session: any,
-  usdt: number,
-  usdtMeta: { network: string | null; txid: string | null; imageUrl: string } | null,
-  thbOverride?: number,
-): Promise<void> {
-  const thb = Number(thbOverride ?? session.ocr_thb) || 0;
-  if (!thb) {
-    await sendMessage(chatId, {
-      text: '⚠️ ยังไม่ทราบยอด THB — พิมพ์ <b>ยอดบาท จำนวนUSDT</b> เช่น <code>500 13.6</code>',
-    });
-    return;
-  }
-
-  // req13: cross-verify OCR vs manual
-  const prior = session.pending_usdt != null ? Number(session.pending_usdt) : null;
-  const priorFromOcr = !!session.usdt_image_url;
-  const nowFromOcr = !!usdtMeta;
-  if (
-    prior != null &&
-    prior > 0 &&
-    priorFromOcr !== nowFromOcr &&
-    Math.abs(prior - usdt) > USDT_TOLERANCE
-  ) {
-    const ocrVal = nowFromOcr ? usdt : prior;
-    const manualVal = nowFromOcr ? prior : usdt;
-    // block: ล้าง pending_usdt เพื่อกันกดปุ่มยืนยันเก่า → dealok จะปฏิเสธ
-    await setSession(chatId, userId, {
-      ...dealSessionFields(session),
-      state: 'WAITING_USDT',
-      pending_usdt: null,
-    });
-    await sendMessage(chatId, UI.usdtMismatch(ocrVal, manualVal));
-    return;
-  }
-
-  const room = await getRoom(chatId);
-  const sellRate = room.rate ?? (await getLatestRates()).sellRate;
-  const buyRate = usdt > 0 ? thb / usdt : 0;
-  const profitThb = usdt * sellRate - thb;
-
-  await setSession(chatId, userId, {
-    ...dealSessionFields(session),
-    state: 'WAITING_USDT',
-    ocr_thb: thb,
-    pending_usdt: usdt,
-    usdt_network: usdtMeta?.network ?? session.usdt_network ?? null,
-    usdt_txid: usdtMeta?.txid ?? session.usdt_txid ?? null,
-    usdt_image_url: usdtMeta?.imageUrl ?? session.usdt_image_url ?? null,
-  });
-
-  await sendMessage(
-    chatId,
-    UI.dealConfirm({
-      ledgerRef: session.ledger_ref || '—',
-      thb,
-      usdt,
-      buyRate,
-      sellRate,
-      profitThb,
-      receiverName: session.slip_receiver_name,
-      bank: session.slip_bank,
-      last4: session.slip_last4,
-      network: usdtMeta?.network ?? session.usdt_network ?? null,
-    }),
-  );
 }
 
 /** บันทึกดีลจริง + การ์ดสำเร็จ + ledger รวมของวัน (รวม recent pairs) */
