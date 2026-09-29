@@ -92,20 +92,15 @@ function buttons(transactionId?: string): unknown {
 export function welcomeRegistered(name: string): OutgoingMessage {
   return {
     text:
-      `${GRAD_INDIGO}\n` +
-      `${BRAND}  <i>· secure USDT ledger</i>\n` +
-      `${GRAD_INDIGO}\n` +
-      `🔐 ยินดีต้อนรับกลับ <b>${name}</b>\n` +
-      `${THIN}\n` +
-      `<b>①  ฝาก THB → USDT</b>\n` +
-      `<blockquote>ส่งรูปสลิป แล้วพิมพ์ USDT ที่ได้จริง\n` +
-      `<code>11</code>  หรือ  <code>5000 11 35.5 34.8</code></blockquote>\n` +
-      `<b>②  ส่ง USDT ให้ทุนจีน</b>\n` +
-      `<blockquote>ส่งรูปสลิป + แคปชัน <code>ส่ง usdt</code> แล้วพิมพ์จำนวน</blockquote>\n` +
-      `<b>③  เรตตลาด</b>  <code>/rate</code> ดู · <code>/rate 35.5</code> ตั้งเรตขาย\n` +
-      `${THIN}\n` +
-      `${SIG}`,
-    reply_markup: buttons(),
+      `◈ <b>CE VAULT · ROOM CONTROL</b>\n` +
+      `ยินดีต้อนรับ <b>${ceEscape(name)}</b>\n` +
+      `─────────────\n` +
+      `ส่งสลิป THB เพื่อเริ่มอ่านข้อมูล (ยังไม่ใช่การยืนยันธุรกรรม)\n` +
+      `เมนูห้อง: <code>/ce</code> · คำสั่ง: <code>/help</code>\n` +
+      `ยกเลิกขั้นตอนค้าง: <code>/cancel</code>`,
+    reply_markup: {
+      inline_keyboard: [[{ text: '◈ เปิด CE VAULT', callback_data: 'ce:home' }]],
+    },
   };
 }
 
@@ -189,7 +184,7 @@ export function slipReady(d: SlipReadyData): OutgoingMessage {
     ? '⚠️ <b>อ่านยอดไม่สำเร็จ</b>'
     : lowConf
       ? '⚠️ <b>ตรวจสอบสลิปอีกครั้ง</b>'
-      : '✅ <b>OCR สำเร็จ</b>';
+      : '👁 <b>OCR อ่านยอดได้ (รอตรวจ)</b>';
 
   const detail: string[] = [];
   if (gotAmount) detail.push(`💵 ยอดเงิน   <b>${money(d.thb!)} บาท</b>`);
@@ -327,13 +322,13 @@ export function incomingRecorded(d: {
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
   const conf = d.confidence != null ? `  <i>· Vision ${d.confidence.toFixed(0)}%</i>` : '';
-  const pinLine = d.pinMatched ? `✅ <b>OCR สำเร็จ</b> — ตรงบัญชีที่เซ็ตไว้วันนี้\n` : '';
+  const pinLine = d.pinMatched ? `👁 <b>บัญชีตรงกับรายการเซ็ตในระบบ</b> (ไม่ใช่การยืนยัน Telegram PIN)\n` : '';
   const when = d.date || d.time ? `📅 ${[d.date, d.time].filter(Boolean).join(' ')}\n` : '';
   return {
     text:
       `🟢 <b>เข้า (IN)</b>  <b>${money(d.thb)} THB</b>${conf}\n` +
       pinLine +
-      `🎯 ต้องส่ง <i>(Should Send)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
+      `🎯 ยอดคาดว่าจะส่ง <i>(Expected USDT)</i>  <b>${money(d.usdtOwed)} USDT</b>  <i>@${money(d.sellRate)}</i>\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
       when +
       `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
@@ -372,7 +367,7 @@ export function slipAskPin(d: {
 }): OutgoingMessage {
   return {
     text:
-      `👁 <b>Vision อ่านสลิปได้</b>  <b>${money(d.thb)} THB</b>` +
+      `👁 <b>Vision อ่านสลิปได้ (ยังไม่ยืนยัน)</b>  <b>${money(d.thb)} THB</b>` +
       (d.confidence != null ? `  <i>· ${d.confidence.toFixed(0)}%</i>` : '') +
       `\n` +
       (d.last4 ? `🏦 ${d.bank ?? ''} <code>••••${d.last4}</code>\n` : '') +
@@ -397,7 +392,7 @@ export function pinStatusCard(d: {
   if (!d.banks.length) {
     return {
       text:
-        `📌 <b>ยังไม่ได้เซ็ตบัญชีรับวันนี้</b> <i>(${d.today})</i>\n` +
+        `📌 <b>ยังไม่ได้เซ็ตบัญชีรับในระบบ</b> <i>(${d.today})</i>\n` +
         `${THIN}\n` +
         `พิมพ์ <code>/pin kbank 1234567890</code>\n` +
         `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i>\n` +
@@ -416,7 +411,7 @@ export function pinStatusCard(d: {
     .join('\n');
   return {
     text:
-      `📌 <b>บัญชีรับวันนี้</b> <i>(${d.today})</i> · ${d.banks.length}/${max}\n` +
+      `📌 <b>บัญชีรับในระบบ (ยังไม่เชื่อม Telegram PIN)</b> <i>(${d.today})</i> · ${d.banks.length}/${max}\n` +
       `${THIN}\n` +
       `${lines}\n` +
       `${THIN}\n` +
@@ -437,7 +432,7 @@ export function pinSetOk(d: {
   const max = d.max ?? 3;
   return {
     text:
-      `✅ <b>เซ็ตบัญชีรับวันนี้แล้ว</b> <i>(${d.today})</i> · ${d.count}/${max}\n` +
+      `✅ <b>เซ็ตบัญชีในระบบแล้ว (ไม่ใช่ Telegram PIN)</b> <i>(${d.today})</i> · ${d.count}/${max}\n` +
       `🏦 <b>${d.bank_name}</b>  <code>••••${d.last4}</code> · ${d.label}\n` +
       `ส่งสลิปได้เลย — ตรงบัญชีที่เซ็ต = OCR สำเร็จ`,
   };
@@ -481,7 +476,7 @@ export function outgoingRecorded(d: {
   return {
     text:
       `🔴 <b>ออก (OUT)</b>  <b>${money(d.usdt)} USDT</b>\n` +
-      `${done ? '✅ ส่งครบแล้ว <i>(Settled)</i>' : `⏳ คงเหลือ <i>(Remaining)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
+      `${done ? '✅ บันทึกยอดส่งครบตามที่คำนวณ <i>(ยังไม่ยืนยัน Settlement)</i>' : `⏳ คงเหลือตามรายการ <i>(Recorded balance)</i>  <b>${money(d.remainingUsdt)} USDT</b>`}\n` +
       `<code>#${d.ledgerRef}</code> · <i>${d.adminName}</i>` +
       formatRecentBlock(d.recent),
     reply_markup: buttons(d.transactionId),
@@ -661,9 +656,9 @@ export function brandCard(d: BrandCardData): OutgoingMessage {
     text:
       `🟢 ━━━━━━━━━━━━━\n` +
       `        ✅\n` +
-      `  <b>✔ TRANSACTION COMPLETE</b>\n\n` +
-      `      <b>ทำรายการสำเร็จ</b>\n` +
-      `   <i>交易完成 · USDT Sent</i>\n` +
+      `  <b>✔ TRANSFER RECORDED</b>\n\n` +
+      `      <b>บันทึกรายการส่งออกแล้ว</b>\n` +
+      `   <i>已记录 · Settlement not verified</i>\n` +
       `${THIN}\n` +
       `  AMOUNT / <i>จำนวน</i>\n` +
       `  💠 <b>${money(d.usdt)} USDT</b>\n` +
@@ -671,7 +666,7 @@ export function brandCard(d: BrandCardData): OutgoingMessage {
       table(
         [
           ...(shortTxid ? [['TXID', shortTxid] as [string, string]] : []),
-          ['Net', d.network ?? 'TRC-20'],
+          ...(d.network ? [['Net', ceEscape(d.network)] as [string, string]] : []),
           ['Time', t],
           ['Ref', `#${d.ledgerRef}`],
         ],
@@ -1095,6 +1090,27 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
 }
 
 // ═══════════════ เมนูคำสั่ง ═══════════════
+/** Compact per-chat control panel; never invents missing rate or bank/deposit balances. */
+export function roomControlCard(d: { roomName?: string | null; rate: number | null }): OutgoingMessage {
+  const rate = d.rate != null && Number.isFinite(d.rate) && d.rate > 0
+    ? `${money(d.rate)} THB/USDT`
+    : 'ยังไม่ตั้งค่า';
+  return {
+    text:
+      `◈ <b>CE VAULT · ${ceEscape(d.roomName || 'ROOM CONTROL')}</b>\n` +
+      `─────────────\n` +
+      `💱 เรตห้องนี้: <b>${rate}</b>\n` +
+      `<i>บัญชีรับชุดเดิมยังไม่เชื่อมกับ Telegram PIN จริง</i>\n` +
+      `เลือกเมนูด้านล่าง`,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '💱 เรต', callback_data: 'ce:rate' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
+        [{ text: '🔐 เงินประกัน', callback_data: 'ce:deposit' }, { text: '📊 รายงานห้อง', callback_data: 'ce:report' }],
+      ],
+    },
+  };
+}
+
 export function menuCard(): OutgoingMessage {
   return {
     text:
