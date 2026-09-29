@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { applicationDefault, cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage, type Storage } from 'firebase-admin/storage';
+import { getAuth } from 'firebase-admin/auth';
 
 function loadServiceAccount(): Record<string, string> | null {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -52,6 +53,7 @@ function initAdmin(): App {
 const app = initAdmin();
 
 export const adminDb: Firestore = getFirestore(app);
+export const adminAuth = getAuth(app);
 export const adminStorage: Storage = getStorage(app);
 
 export function storageBucketName(): string {
