@@ -9,7 +9,9 @@
 // หมายเหตุความถูกต้อง: status จริงมี 3 ค่า (ocr_success/waiting_admin/completed)
 // flow ด้านล่าง map ตรงตามข้อมูลจริง — ไม่มีการแสดง "settled" ก่อนตรวจสอบจริง
 // ============================================================
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { firebaseApp } from '@/lib/firebaseClient';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
 import ComposioSessionCard from '@/components/ComposioSessionCard';
@@ -35,6 +37,13 @@ function roomNameOf(t: Transaction): string {
 }
 
 export default function DashboardPage() {
+  // Firebase ID token stays in Firebase client memory/persistence. No API_SECRET in browser.
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [admins, setAdmins] = useState<Admin[]>([]);
   const [rate, setRate] = useState<RateRow | null>(null);
@@ -49,8 +58,22 @@ export default function DashboardPage() {
   const [today, setToday] = useState('');
 
   async function loadDashboard() {
+    if (!authUser) return;
     try {
-      const res = await fetch('/api/dashboard/data', { cache: 'no-store' });
+      const idToken = await authUser.getIdToken();
+      const res = await fetch('/api/dashboard/data', {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) {
+        // Never keep displaying stale financial data after an authorization failure.
+        setTransactions([]); setAdmins([]); setRate(null); setSyncOk(false);
+        setAuthError(res.status === 503 ? 'ระบบยังไม่ได้กำหนดผู้ดูแล Firebase UID บน Hosting' :
+          res.status === 403 ? 'บัญชีนี้ไม่ได้รับอนุญาตให้ดูข้อมูลการเงิน' :
+          res.status === 401 ? 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่' : 'ยังไม่สามารถโหลดข้อมูลได้');
+        return;
+      }
+      setAuthError('');
       const json = await res.json();
       if (json?.ok) {
         setTransactions((json.transactions as Transaction[]) ?? []);
@@ -85,6 +108,20 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    const stop = onAuthStateChanged(getAuth(firebaseApp), (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      if (!user) {
+        setTransactions([]); setAdmins([]); setRate(null);
+        setLoading(false); setSyncOk(false);
+      }
+    }, () => { setAuthUser(null); setAuthReady(true); setSyncOk(false); });
+    return () => stop();
+  }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    setLoading(true);
     loadDashboard();
     loadMarketRate();
     const dashPoll = setInterval(loadDashboard, 5_000);
@@ -93,7 +130,18 @@ export default function DashboardPage() {
       clearInterval(dashPoll);
       clearInterval(marketPoll);
     };
-  }, []);
+  }, [authUser]);
+
+  async function login(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setAuthError(''); setLoginBusy(true);
+    try {
+      await signInWithEmailAndPassword(getAuth(firebaseApp), authEmail.trim(), authPassword);
+      setAuthPassword('');
+    } catch {
+      setAuthError('เข้าสู่ระบบไม่สำเร็จ ตรวจสอบบัญชี Firebase Auth');
+    } finally { setLoginBusy(false); }
+  }
 
   useEffect(() => {
     setToday(
@@ -193,6 +241,39 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url);
   }
 
+  if (!authReady) {
+    return <main className="ce-empire-dashboard flex min-h-screen items-center justify-center p-6">กำลังตรวจสอบ Session…</main>;
+  }
+  if (!authUser) {
+    return (
+      <main className="ce-empire-dashboard flex min-h-screen items-center justify-center p-5">
+        <form onSubmit={login} className="ce-panel w-full max-w-sm space-y-4 rounded-2xl p-6">
+          <p className="ce-empire-eyebrow">CE EMPIRE · PRIVATE WORKSPACE</p>
+          <h1 className="text-2xl font-bold">CE VAULT · เข้าสู่ระบบ</h1>
+          <p className="text-xs text-[#91A7B4]">ใช้บัญชี Firebase Auth ที่ได้รับอนุญาตเท่านั้น ไม่ใช้ API Token หรือ PIN ในหน้าเว็บ</p>
+          <label className="block text-sm">Email
+            <input autoComplete="username" type="email" required value={authEmail}
+              onChange={e => setAuthEmail(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-[#365464] bg-[#0C1520] p-3 text-white" />
+          </label>
+          <label className="block text-sm">Password
+            <input autoComplete="current-password" type="password" required value={authPassword}
+              onChange={e => setAuthPassword(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-[#365464] bg-[#0C1520] p-3 text-white" />
+          </label>
+          {authError && <p role="alert" className="text-sm text-[#FF7777]">{authError}</p>}
+          <button disabled={loginBusy} type="submit"
+            className="w-full rounded-lg bg-[#00D4FF] p-3 font-bold text-[#03070F] disabled:opacity-50">
+            {loginBusy ? 'กำลังตรวจสอบ…' : 'เข้าสู่ระบบ'}
+          </button>
+          <a className="block text-center text-xs text-[#F0B429]" href="https://ce-vault-empire-desk.ce-ceo21.chatgpt.site">
+            กลับ Empire Desk
+          </a>
+        </form>
+      </main>
+    );
+  }
+
   return (
     <div className="ce-empire-dashboard min-h-screen bg-[#03070F] text-[#E4F4FC]">
       <main className="mx-auto max-w-6xl px-6 py-10">
@@ -231,6 +312,8 @@ export default function DashboardPage() {
               >
                 Empire Desk ↗
               </a>
+              <button type="button" onClick={() => signOut(getAuth(firebaseApp))}
+                className="rounded-full border border-[#365464] px-3.5 py-1.5 text-xs text-[#91A7B4] hover:text-white">ออกจากระบบ</button>
               <a
                 href="/brand"
                 className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(240,180,41,.28)] bg-[rgba(240,180,41,.08)] px-3.5 py-1.5 text-xs font-semibold text-[#FFD766] transition hover:bg-[rgba(240,180,41,.16)]"
