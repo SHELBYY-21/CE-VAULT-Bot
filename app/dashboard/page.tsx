@@ -224,6 +224,14 @@ export default function DashboardPage() {
 
             <div className="flex flex-wrap items-center gap-2">
               <a
+                href="https://ce-vault-empire-desk.ce-ceo21.chatgpt.site"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(0,212,255,.26)] bg-[rgba(0,212,255,.07)] px-3.5 py-1.5 text-xs font-semibold text-[#00D4FF] transition hover:bg-[rgba(0,212,255,.14)]"
+              >
+                Empire Desk ↗
+              </a>
+              <a
                 href="/brand"
                 className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(240,180,41,.28)] bg-[rgba(240,180,41,.08)] px-3.5 py-1.5 text-xs font-semibold text-[#FFD766] transition hover:bg-[rgba(240,180,41,.16)]"
               >
