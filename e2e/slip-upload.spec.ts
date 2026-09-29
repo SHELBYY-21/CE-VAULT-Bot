@@ -26,15 +26,8 @@ test.describe('Telegram Bot - Webhook Security Boundary', () => {
     expect((await response.json()).ok).toBe(false);
   });
 
-  test('should parse Thai slip text correctly', async () => {
-    const text = 'โอน 5,000 บาท เข้าบัญชี SCB 3376 ชื่อบัญชี นายสมชาย ใจดี วันที่ 24/07/26 เวลา 14:30';
-    
-    // This would be tested via the parseSlipText function in unit tests
-    // E2E test would verify the full flow from image upload to DB save
-    expect(text).toContain('5,000');
-    expect(text).toContain('SCB');
-    expect(text).toContain('3376');
-  });
+  // Thai slip text parsing is owned by src/lib/__tests__/parseSlipText.test.ts (unit) —
+  // no always-green string assertions belong in this E2E boundary suite.
 });
 
 test.describe('Dashboard - Anonymous Access Boundary', () => {
