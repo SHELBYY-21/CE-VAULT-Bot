@@ -82,6 +82,7 @@ const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
 
 // fire-and-forget — ไม่ block flow หลัก ไม่ throw
 function sticker(chatId: number, key: StickerState): void {
+  if (process.env.CE_MOTION_FX === '0') return; // quiet menu-first presentation
   const motion = getWebmMotionSticker(key);
   const fallback = getSticker(key);
   if (motion) {
@@ -104,7 +105,7 @@ try {
   console.warn(`[sticker config] ${e.message}`);
 }
 
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.API_SECRET;
+const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
 const log = (msg: string, data?: any) => {
   const ts = new Date().toISOString();
@@ -119,14 +120,17 @@ const parseNums = (s: string): number[] =>
     .filter((n) => Number.isFinite(n));
 
 export async function POST(req: NextRequest) {
-  // ตรวจ secret จาก Telegram (ตั้งตอน setWebhook)
-  if (WEBHOOK_SECRET && req.headers.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) {
+  // Never accept unsigned Telegram traffic, even during incomplete deployment.
+  if (!WEBHOOK_SECRET) return NextResponse.json({ ok: false, error: 'webhook_not_configured' }, { status: 503 });
+  if (req.headers.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) {
     log('❌ Invalid webhook secret');
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
+  let replyChatId: number | undefined;
   try {
     const update = await req.json();
+    replyChatId = update?.message?.chat?.id ?? update?.edited_message?.chat?.id ?? update?.callback_query?.message?.chat?.id;
     const updateId = update?.update_id || '?';
     log(`📨 incoming update #${updateId}`);
 
@@ -137,18 +141,39 @@ export async function POST(req: NextRequest) {
     ]);
     log(`✅ update #${updateId} processed`);
   } catch (e: any) {
-    log(`⚠️ webhook error: ${e?.message || e}`, e?.stack?.slice(0, 200));
+    log('⚠️ webhook handler failed; no financial error details published');
+    if (replyChatId) {
+      await sendMessage(replyChatId, { text: '⚠️ <b>CE VAULT</b> · คำสั่งนี้ยังไม่สำเร็จ โปรดลองใหม่หรือพิมพ์ /ce เพื่อเปิดเมนู' }).catch(() => undefined);
+    }
   }
-  // ตอบ 200 เสมอ เพื่อไม่ให้ Telegram retry ซ้ำ
+  // Keep legacy at-most-once acknowledgment: financial updates must not be retried blindly.
   return NextResponse.json({ ok: true });
 }
 
 
-// Menu-first entry point: existing ledger, OCR and accounting logic remain unchanged.
+// Menu-first entrypoint: Telegram replies continue even while Firebase is unavailable.
+async function menuRoomPreview(chatId: number): Promise<{ name: string; rate: number | null; connected: boolean }> {
+  if (process.env.CE_BOT_MENU_ONLY === '1') {
+    return { name: 'ROOM CONTROL', rate: null, connected: false };
+  }
+  try {
+    const room = await Promise.race([
+      getRoom(chatId),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('database_timeout')), 2500)),
+    ]);
+    return { name: room.name || 'ROOM CONTROL', rate: room.rate ?? null, connected: true };
+  } catch {
+    return { name: 'ROOM CONTROL', rate: null, connected: false };
+  }
+}
+
 async function sendCeMenu(chatId: number): Promise<void> {
-  const room = await getRoom(chatId);
+  const room = await menuRoomPreview(chatId);
   await sendMessage(chatId, {
-    text: `◈ <b>CE VAULT</b> · ${ceEscape(room.name || 'ROOM CONTROL')}\n━━━━━━━━━━━━━━\n💱 THB/USDT: <b>${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}</b>\nเลือกเมนูเพื่อดำเนินการ`,
+    text: `◈ <b>CE VAULT</b> · ${ceEscape(room.name)}
+━━━━━━━━━━━━━━
+💱 THB/USDT: <b>${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}</b>
+เลือกเมนูเพื่อดำเนินการ${room.connected ? '' : '\n⚠️ ข้อมูล Ledger ยังไม่พร้อม · บอตยังตอบเมนูและช่วยเหลือได้'}`,
     reply_markup: { inline_keyboard: [
       [{ text: '📊 ยอดวันนี้', callback_data: 'ce:report' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
       [{ text: '💱 อัตราแลกเปลี่ยน', callback_data: 'ce:rate' }, { text: 'ℹ️ วิธีใช้งาน', callback_data: 'ce:help' }],
@@ -184,9 +209,24 @@ async function handleUpdate(update: any): Promise<void> {
     await notifyDailySummary();
     return;
   }
-  // ----- /ping : เช็คสถานะ CEempire -----
-  if (text && text.startsWith('/ping')) {
-    await notifyReady();
+  // Direct bot acknowledgement: does not depend on Firebase or a notification channel.
+  if (text && /^\/(?:ping|status)(?:@\w+)?$/i.test(text)) {
+    await sendMessage(chatId, {
+      text: `◈ <b>CE VAULT · ONLINE</b>\n✅ Telegram รับข้อความแล้ว\n${process.env.CE_BOT_MENU_ONLY === '1' ? '⚠️ โหมดเมนู · รอเชื่อมต่อ Firebase' : 'ℹ️ ตรวจยอดจริงผ่าน /ledger'}\nเปิดเมนู: /ce`,
+    });
+    return;
+  }
+  if (text && /^\/id(?:@\w+)?$/i.test(text)) {
+    await sendMessage(chatId, { text: `◈ <b>CE VAULT · Telegram IDs</b>\nChat: <code>${chatId}</code>\nUser: <code>${userId}</code>` });
+    return;
+  }
+  // Until verified Firebase credentials are configured, do not run financial flows.
+  if (process.env.CE_BOT_MENU_ONLY === '1') {
+    if (text || msg.photo || msg.document) {
+      await sendMessage(chatId, {
+        text: '⚠️ <b>CE VAULT · MENU MODE</b>\nบอตตอบกลับได้แล้ว แต่ OCR / Ledger / การบันทึกยอดยังปิดอยู่จนกว่าจะยืนยัน Firebase\nพิมพ์ /ce เพื่อเปิดเมนู หรือ /ping เพื่อตรวจการตอบกลับ',
+      });
+    }
     return;
   }
 
@@ -1361,52 +1401,34 @@ async function handleCallback(cb: any): Promise<void> {
   if (action === 'ce') {
     await answerCallback(id);
     if (arg === 'home') { await sendCeMenu(chatId); return; }
-    if (arg === 'report') { await sendLedger(chatId); return; }
-    if (arg === 'bank') { await handlePinCommand(chatId, '/pin'); return; }
-    if (arg === 'rate') {
-      const room = await getRoom(chatId);
-      await sendMessage(chatId, { text: `💱 <b>THB/USDT</b> · ${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}\nตั้งเรตเฉพาะห้อง: <code>/setrate 32.49</code>` });
+    if (arg === 'help') {
+      await sendMessage(chatId, {
+        text: '◈ <b>CE VAULT · QUICK GUIDE</b>\n/ce · เมนูหลัก\n/ping · ทดสอบการตอบกลับ\n/id · ตรวจ Telegram ID\n📷 ส่งสลิปเมื่อ Firebase พร้อม\n⚠️ OCR / RECORDED ไม่เท่ากับ SETTLED',
+      });
       return;
     }
-    if (arg === 'help') {
-      await sendMessage(chatId, { text: `◈ <b>CE VAULT · QUICK GUIDE</b>\n📷 ส่งสลิปเพื่อให้ OCR อ่านข้อมูล\n💱 /setrate 32.49 · ตั้งเรตห้อง\n🏦 /pin · ดูบัญชีรับที่ตั้งไว้\n📊 /ledger · ตรวจยอดห้อง\n⚠️ OCR ไม่ใช่การยืนยันชำระ และ RECORDED ไม่ใช่ SETTLED` });
+    if (process.env.CE_BOT_MENU_ONLY === '1') {
+      await sendMessage(chatId, { text: '⚠️ ยังไม่เชื่อม Firebase · เมนูนี้จะพร้อมหลังเปิดระบบ Ledger โปรดใช้ /ce หรือ /ping ในระหว่างนี้' });
       return;
+    }
+    try {
+      if (arg === 'report') { await sendLedger(chatId); return; }
+      if (arg === 'bank') {
+        await sendMessage(chatId, { text: '🏦 ข้อมูลบัญชีในระบบยังไม่ใช่ข้อความ Telegram PIN จริง โปรดตรวจข้อความปักหมุดของกลุ่มก่อนรับเงิน' });
+        await handlePinCommand(chatId, '/pin');
+        return;
+      }
+      if (arg === 'rate') {
+        const room = await menuRoomPreview(chatId);
+        await sendMessage(chatId, { text: `💱 <b>THB/USDT</b> · ${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}\nตั้งเรตเฉพาะห้อง: <code>/setrate 32.49</code>` });
+        return;
+      }
+    } catch {
+      await sendMessage(chatId, { text: '⚠️ ข้อมูลนี้ยังไม่พร้อม โปรดลองใหม่เมื่อ Firebase เชื่อมต่อแล้ว' });
     }
     return;
   }
   if (!arg) return await answerCallback(id);
-
-  // ----- CE compact room menu: read-only navigation, no financial writes -----
-  if (action === 'ce') {
-    await answerCallback(id);
-    if (arg === 'home') {
-      const room = await getRoom(chatId);
-      await sendMessage(chatId, UI.roomControlCard({ roomName: room.name, rate: room.rate }));
-      return;
-    }
-    if (arg === 'report') {
-      await sendLedger(chatId);
-      return;
-    }
-    if (arg === 'bank') {
-      await sendMessage(chatId, {
-        text: '🏦 <b>บัญชีรับในระบบเดิม</b>\n<i>รายการนี้ใช้ร่วมกันหลายห้องและยังไม่ซิงก์กับข้อความ Telegram PIN จริง โปรดตรวจสอบข้อความปักหมุดในกลุ่มก่อนรับเงิน</i>',
-      });
-      await handlePinCommand(chatId, '/pin');
-      return;
-    }
-    if (arg === 'rate') {
-      const room = await getRoom(chatId);
-      const rate = room.rate != null && room.rate > 0 ? `${room.rate} THB/USDT` : 'ยังไม่ตั้งค่า';
-      await sendMessage(chatId, { text: `💱 <b>อัตราแลกเปลี่ยนของห้องนี้</b>\nปัจจุบัน: <b>${rate}</b>\nเปลี่ยน: <code>/setrate 32.49</code>` });
-      return;
-    }
-    if (arg === 'deposit') {
-      await sendMessage(chatId, { text: '🔐 <b>เงินประกัน</b>\nยังไม่เปิดรับการบันทึกผ่านบอตชุดนี้ เพื่อป้องกันการหักยอดซ้ำหรือแสดงยอดที่ยังไม่ได้ตรวจสอบ' });
-      return;
-    }
-    return;
-  }
 
   // ----- dealok:<ledgerRef> : ยืนยันดีล → บันทึกจริง -----
   if (action === 'dealok') {
