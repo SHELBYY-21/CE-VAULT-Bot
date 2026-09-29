@@ -34,3 +34,19 @@ The user-owned ChatGPT Site is active at source version 3, project `appgprj_6ab9
 - The public site displays connection status without exposing finance.
 - A missing/unverified session shows no financial information, not fabricated zeroes.
 - Source sites editing + authenticated finance integration is a distinct next phase.
+
+
+## Minimal Site Editor insertion — safe Monitor widget
+
+When editing the actual user-owned ChatGPT Site (`appgprj_6ab9f97547a48191b3f30a7faa545e2f`), add the following HTML to its Monitor / การเชื่อมต่อ panel **if the site authoring surface supports custom HTML and external scripts**. This changes the actual Site only when applied through its editor; committing this snippet to GitHub alone does not change a chatgpt.site project.
+
+```html
+<div data-ce-vault-monitor role="status" aria-live="polite">
+  กำลังตรวจสอบการเชื่อมต่อ CE VAULT…
+</div>
+<script defer src="https://ce-vault-menu-first.onrender.com/empire-desk-monitor.js"></script>
+```
+
+The script reads only `/api/empire-desk/status`, never `/api/dashboard/data`. Its displayed states are connected (Render and Firebase verified), degraded (Render available but Firebase not verified), and unverified (request failed, timed out, unexpected, or unsupported). It cannot authenticate a user or prove Telegram webhook delivery. No token or personally identifiable or financial data belongs in this client-side snippet.
+
+**Live financial cards must remain unavailable without server-verified user/room authorization.** In particular, do not try to solve cross-origin Site auth by pasting `API_SECRET` into a JavaScript variable or localStorage.
