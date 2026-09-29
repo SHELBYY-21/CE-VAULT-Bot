@@ -1,7 +1,7 @@
 /**
  * Live Message — one Telegram message per deal, always editMessage()
  *
- * Receiving... → OCR → Verified → Waiting → Settled
+ * Receiving... → OCR → Verified → Waiting → Recorded\n * Note: Recorded means persisted to the ledger; it does not by itself prove final settlement.
  * Chat stays clean: send once, then edit in place.
  */
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
