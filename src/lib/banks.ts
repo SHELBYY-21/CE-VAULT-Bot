@@ -253,7 +253,7 @@ export async function unpinPinnedByHint(
 export async function upsertAndPinBank(input:{bank:string;accountNumber:string;label?:string}):Promise<BankAccount>{
  const last4=last4OfAccount(input.accountNumber);if(!last4)throw new Error('เลขบัญชีต้องมีอย่างน้อย 4 ตัว');
  const bankCode=normalizeBankCode(input.bank)||'OTHER';const existing=await findBankByLast4(last4,bankCode);
- const row={bank_name:bankCode,account_number:input.accountNumber.replace(/\\s+/g,''),label:input.label||existing?.label||`${bankCode} ••••${last4}`,updated_at:new Date().toISOString()};
+ const row={bank_name:bankCode,account_number:input.accountNumber.replace(/\s+/g,''),label:input.label||existing?.label||`${bankCode} ••••${last4}`,updated_at:new Date().toISOString()};
  if(existing){const {error}=await db().from('bank_accounts').update(row).eq('id',existing.id);checked(error);return pinBankForToday(existing.id);}
  const {data,error}=await db().from('bank_accounts').insert(row).select('id').single();checked(error);
  if(!data)throw new Error('Bank insert returned no ID');return pinBankForToday(data.id);
