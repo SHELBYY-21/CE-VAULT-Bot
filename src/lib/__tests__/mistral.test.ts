@@ -7,7 +7,7 @@ describe('Mistral-only AI integration', () => {
     expect(() => validateMessages([{ role: 'user', content: '' }])).toThrow();
   });
   it('calls only the Mistral API with server key', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'pong' } }] }), { status: 200 }));
+    const fetchImpl = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'pong' } }] }), { status: 200 }));
     const answer = await askMistral([{ role: 'user', content: 'ping' }], { apiKey: 'test-key', fetchImpl: fetchImpl as typeof fetch });
     expect(answer).toBe('pong');
     expect(fetchImpl).toHaveBeenCalledOnce();
