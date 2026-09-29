@@ -1,14 +1,17 @@
-// CE VAULT · Next.js runtime bootstrap for a single Render-hosted Telegram webhook.
+// CE VAULT · Next.js runtime bootstrap for a single production-hosted Telegram webhook.
 // Does not run during `next build`. No secrets or token-bearing API URLs are logged.
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const portFlag = args.findIndex((value) => value === '--port' || value === '-p');
 const requestedPort = portFlag >= 0 ? args[portFlag + 1] : undefined;
 const port = String(process.env.PORT || requestedPort || '3000');
 const nextBin = join(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
-const child = spawn(process.execPath, [nextBin, 'start', '--hostname', '0.0.0.0', '--port', port], {
+const standalone = join(process.cwd(), 'server.js');
+const useStandalone = existsSync(standalone);
+const child = spawn(process.execPath, useStandalone ? [standalone] : [nextBin, 'start', '--hostname', '0.0.0.0', '--port', port], {
   stdio: 'inherit',
   env: process.env,
 });
@@ -103,10 +106,10 @@ async function registerWebhook() {
     }
     const info = await telegramCall(token, 'getWebhookInfo');
     if (!info.ok || info.result?.url !== url) {
-      console.error('[CE Bot] getWebhookInfo did not confirm expected Render endpoint.');
+      console.error('[CE Bot] getWebhookInfo did not confirm expected production endpoint.');
       return;
     }
-    console.info(`[CE Bot] Render webhook active; queued updates: ${Number(info.result.pending_update_count || 0)}.`);
+    console.info(`[CE Bot] Production webhook active; queued updates: ${Number(info.result.pending_update_count || 0)}.`);
     const commands = await telegramCall(token, 'setMyCommands', {
       commands: [
         { command: 'ce', description: 'เมนูหลัก CE VAULT' },
