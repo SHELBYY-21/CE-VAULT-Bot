@@ -7,6 +7,7 @@ import { adminDb } from './firebaseAdmin';
 import { calculateDepositProfit, ProfitResult } from './profit';
 import { calculateFee, FeeResult } from './fees';
 import { fetchBinanceThUsdtRate } from './binance';
+import { assertFiniteRate } from './rateGuard';
 import { notifyIncome, notifyOutflow, notifyEdit, notifyDelete } from './notifier';
 import type { Admin, TransactionStatus } from '@/types/transactions';
 import {
@@ -268,6 +269,10 @@ export async function insertRate(
   sellRate: number,
   marketUsdtRate: number,
 ): Promise<void> {
+  // Ledger integrity: fail closed on non-finite rates. Number(env) fallbacks are
+  // NaN (never null), so a dead `?? default` upstream must not reach Firestore.
+  assertFiniteRate(sellRate, 'sell_rate');
+  assertFiniteRate(marketUsdtRate, 'market_usdt_rate');
   await adminDb.collection('rates').doc(randomUUID()).set({
     sell_rate: sellRate,
     market_usdt_rate: marketUsdtRate,
