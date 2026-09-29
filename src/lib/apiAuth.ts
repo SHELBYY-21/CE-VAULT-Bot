@@ -1,7 +1,7 @@
 // ============================================================
 // ตรวจ API key สำหรับ route ที่เขียนข้อมูล (ให้เฉพาะบอทเรียกได้)
 // - ตั้ง API_SECRET ใน ENV แล้วให้ผู้เรียกส่ง header: x-api-key: <secret>
-// - ถ้าไม่ตั้ง API_SECRET จะข้ามการตรวจ (สะดวกตอน dev)
+// - ถ้าไม่ตั้ง API_SECRET จะปิด endpoint (fail closed / HTTP 503)
 // - เทียบแบบ constant-time กัน timing attack
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,7 +19,9 @@ function safeEqual(a: string, b: string): boolean {
  */
 export function requireApiKey(req: NextRequest): NextResponse | null {
   const secret = process.env.API_SECRET;
-  if (!secret) return null; // dev mode: ไม่ได้ตั้ง secret = เปิดโล่ง
+  if (!secret) {
+    return NextResponse.json({ error: 'api_auth_not_configured' }, { status: 503 });
+  }
 
   const provided = req.headers.get('x-api-key') ?? '';
   if (!safeEqual(provided, secret)) {
