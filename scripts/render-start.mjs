@@ -3,7 +3,10 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
-const port = String(process.env.PORT || '10000');
+const args = process.argv.slice(2);
+const portFlag = args.findIndex((value) => value === '--port' || value === '-p');
+const requestedPort = portFlag >= 0 ? args[portFlag + 1] : undefined;
+const port = String(process.env.PORT || requestedPort || '3000');
 const nextBin = join(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
 const child = spawn(process.execPath, [nextBin, 'start', '--hostname', '0.0.0.0', '--port', port], {
   stdio: 'inherit',
