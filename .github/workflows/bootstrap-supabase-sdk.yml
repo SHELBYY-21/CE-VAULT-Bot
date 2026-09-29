@@ -1,0 +1,59 @@
+# One-time, branch-scoped SDK bootstrap; does NOT deploy to Railway.
+name: Bootstrap Supabase SDK
+on:
+  push:
+    branches:
+      - chore/supabase-sdk-setup-20260930
+    paths:
+      - .github/workflows/bootstrap-supabase-sdk.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install and lock Supabase SDK dependencies
+        run: npm install --save-exact --legacy-peer-deps @supabase/supabase-js @supabase/ssr
+      - name: Install official Supabase Next.js client registry block
+        env:
+          CI: 'true'
+        run: npx --yes shadcn@latest add @supabase/supabase-client-nextjs --yes
+      - name: Install optional Supabase Agent Skills for coding agents
+        env:
+          DISABLE_TELEMETRY: '1'
+        run: npx --yes skills add supabase/agent-skills --skill supabase --skill supabase-postgres-best-practices -a codex -a cursor -a claude-code --copy -y
+      - name: Ensure lockfile and generated client files exist
+        shell: bash
+        run: |
+          test -f package-lock.json
+          test -f src/lib/supabase/client.ts || { echo 'Missing browser client in expected location'; find . -maxdepth 6 -name client.ts | head -20; exit 1; }
+          test -f src/lib/supabase/server.ts || { echo 'Missing server client in expected location'; find . -maxdepth 6 -name server.ts | head -20; exit 1; }
+          node -e "const p=require('./package.json'); if(!p.dependencies['@supabase/supabase-js']||!p.dependencies['@supabase/ssr']) process.exit(1);"
+      - name: Commit generated dependencies, clients and skills to integration branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: install Supabase SDK, shadcn clients and agent skills [skip ci]"
+            git push origin HEAD:chore/supabase-sdk-setup-20260930
+          fi
+      - name: Validate TypeScript
+        run: npm run typecheck
+      - name: Validate lint
+        run: npm run lint
+      - name: Run tests
+        run: npm test
+      - name: Build Next.js
+        run: npm run build
