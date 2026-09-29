@@ -1,10 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAdmin } from '@/lib/dashboardAuth';
 import { setTransactionStatus } from '@/lib/transactions';
 import { normalizeTransactionStatus } from '@/types/transactions';
 
 export const runtime = 'nodejs';
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireDashboardAdmin(req);
+  if (denied) return denied;
   const { id } = await params;
   if (!id) {
     return NextResponse.json({ ok: false, error: 'missing id' }, { status: 400 });
