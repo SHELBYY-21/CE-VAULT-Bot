@@ -108,15 +108,50 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    const stop = onAuthStateChanged(getAuth(firebaseApp), (user) => {
-      setAuthUser(user);
-      setAuthReady(true);
-      if (!user) {
-        setTransactions([]); setAdmins([]); setRate(null);
-        setLoading(false); setSyncOk(false);
-      }
-    }, () => { setAuthUser(null); setAuthReady(true); setSyncOk(false); });
-    return () => stop();
+    let cancelled = false;
+    const auth = getAuth(firebaseApp);
+    const stop = onAuthStateChanged(auth, (user) => {
+      void (async () => {
+        if (user) {
+          try {
+            // Existing HttpOnly session may outlive the five-minute recent-sign-in window.
+            const current = await fetch('/api/dashboard/session', { cache: 'no-store' });
+            if (!current.ok) {
+              const idToken = await user.getIdToken();
+              const response = await fetch('/api/dashboard/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken }),
+              });
+              if (!response.ok) {
+                const body = await response.json().catch(() => ({}));
+                if (!cancelled) setAuthError(
+                  body.error === 'dashboard_auth_not_configured'
+                    ? 'ยังไม่ได้กำหนด DASHBOARD_ALLOWED_UIDS บน Render'
+                    : body.error === 'forbidden'
+                      ? 'บัญชี Firebase นี้ยังไม่ได้รับสิทธิ์ Admin'
+                      : 'Session ยังไม่ผ่าน กรุณาเข้าสู่ระบบใหม่',
+                );
+                await signOut(auth);
+                return;
+              }
+            }
+            if (!cancelled) { setAuthUser(user); setAuthError(''); }
+          } catch {
+            if (!cancelled) setAuthError('ไม่สามารถตรวจสอบ Session ได้');
+            await signOut(auth);
+          }
+        } else {
+          void fetch('/api/dashboard/session', { method: 'DELETE' }).catch(() => {});
+          if (!cancelled) {
+            setAuthUser(null); setTransactions([]); setAdmins([]); setRate(null);
+            setLoading(false); setSyncOk(false);
+          }
+        }
+        if (!cancelled) setAuthReady(true);
+      })();
+    }, () => { if (!cancelled) { setAuthUser(null); setAuthReady(true); setSyncOk(false); } });
+    return () => { cancelled = true; stop(); };
   }, []);
 
   useEffect(() => {
@@ -317,7 +352,10 @@ export default function DashboardPage() {
               >
                 Empire Desk ↗
               </a>
-              <button type="button" onClick={() => signOut(getAuth(firebaseApp))}
+              <button type="button" onClick={async () => {
+                await fetch('/api/dashboard/session', { method: 'DELETE' }).catch(() => {});
+                await signOut(getAuth(firebaseApp));
+              }}
                 className="rounded-full border border-[#365464] px-3.5 py-1.5 text-xs text-[#91A7B4] hover:text-white">ออกจากระบบ</button>
               <a
                 href="/brand"
