@@ -1,0 +1,55 @@
+# CE VAULT — Render deployment (Next.js Telegram webhook + Firebase)
+# No secrets are stored in this file. Configure sync:false values in Render on initial setup.
+# Do NOT enable Telegram setWebhook until the service is live and the legacy polling runner is stopped.
+services:
+  - type: web
+    name: ce-vault-menu-first
+    runtime: node
+    region: singapore
+    plan: free # Staging only: choose a non-sleeping paid plan before production webhook cutover.
+    branch: main
+    autoDeployTrigger: off # Enable checksPass after credentials and webhook delivery are validated.
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        value: ce88-95911
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        value: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        value: ce88-95911.firebaseapp.com
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        value: ce88-95911.firebasestorage.app
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        value: "1061212552362"
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        value: "1:1061212552362:web:178ee63516a172826164d3"
+      - key: NEXT_PUBLIC_USE_FIREBASE_EMULATOR
+        value: "0"
+      - key: FIREBASE_PROJECT_ID
+        value: ce88-95911
+      - key: FIREBASE_STORAGE_BUCKET
+        value: ce88-95911.firebasestorage.app
+      - key: BOT_TOKEN
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: API_SECRET
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: ADMIN_TELEGRAM_IDS
+        sync: false
+      - key: NOTIFY_CHAT_ID
+        sync: false
+      - key: GROK_API_KEY
+        sync: false
+      - key: OCR_AUTO_MIN
+        value: "90"
+      - key: CE_MOTION_FX
+        value: "0"
