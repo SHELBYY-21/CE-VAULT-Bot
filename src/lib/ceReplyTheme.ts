@@ -67,7 +67,7 @@ export function ceRecorded(data: {
     data.bank || data.last4 ? `🏦 ธนาคาร (Bank / 银行)  ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
     data.adminName ? `👤 ผู้ดำเนินการ (Operator)  ${ceEscape(data.adminName)}` : null,
     `🆔 เลขอ้างอิง (Reference / 交易编号)  #${ceEscape(data.ledgerRef)}`,
-    incoming ? '⏳ รอตรวจสอบการชำระครบ (Settlement not verified / 尚未结算确认)' : null,
+    '⏳ ยังไม่ยืนยันการชำระครบ (Settlement not verified / 尚未结算确认)',
   ].filter((line) => line !== null).join('\n');
   return `◈ CE · RECORDED (已记录) ✓\n${CE_RULE}\n${body}`;
 }
