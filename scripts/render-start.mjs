@@ -43,7 +43,7 @@ async function registerWebhook() {
   }
   const token = process.env.BOT_TOKEN;
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  const appUrl = (process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\\/$/, '');
+  const appUrl = (process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\/$/, '');
   const missing = [
     ['BOT_TOKEN', token],
     ['TELEGRAM_WEBHOOK_SECRET', secret],
