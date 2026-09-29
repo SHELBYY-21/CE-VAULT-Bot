@@ -14,7 +14,7 @@ export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED'
 const STAGES: Array<{ id: Exclude<LiveStage, 'ERROR'>; label: string }> = [
   { id: 'RECEIVING', label: 'Receiving...' },
   { id: 'OCR', label: 'OCR' },
-  { id: 'VERIFIED', label: 'Verified' },
+  { id: 'VERIFIED', label: 'Profile / OCR' },
   { id: 'WAITING', label: 'Waiting' },
   { id: 'SETTLED', label: 'Recorded' },
 ];
