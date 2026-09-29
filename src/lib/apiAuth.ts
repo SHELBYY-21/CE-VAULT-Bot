@@ -19,7 +19,13 @@ function safeEqual(a: string, b: string): boolean {
  */
 export function requireApiKey(req: NextRequest): NextResponse | null {
   const secret = process.env.API_SECRET;
-  if (!secret) return null; // dev mode: ไม่ได้ตั้ง secret = เปิดโล่ง
+  if (!secret) {
+    // Local dev can opt into unauthenticated fixtures; never allow open writes online.
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'api_auth_not_configured' }, { status: 503 });
+    }
+    return null;
+  }
 
   const provided = req.headers.get('x-api-key') ?? '';
   if (!safeEqual(provided, secret)) {
