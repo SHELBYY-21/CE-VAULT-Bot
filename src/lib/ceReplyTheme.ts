@@ -69,5 +69,5 @@ export function ceRecorded(data: {
     `🆔 เลขอ้างอิง (Reference / 交易编号)  #${ceEscape(data.ledgerRef)}`,
     incoming ? '⏳ รอตรวจสอบการชำระครบ (Settlement not verified / 尚未结算确认)' : null,
   ].filter((line) => line !== null).join('\n');
-  return `◈ CE · RECORDED (已记录) ✓\n${CE_RULE}\n${body}`;
+  return `◈ CE VAULT · RECORDED / 已记录\n${CE_RULE}\n${body}\n${CE_RULE}\n<i>สถานะ: บันทึกใน Ledger แล้ว · ไม่ใช่การยืนยัน Settlement</i>`;
 }
