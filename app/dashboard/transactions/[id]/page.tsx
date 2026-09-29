@@ -1,5 +1,8 @@
 // หน้า Transaction Detail — dark glass (ธีม CE Vault)
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { DASHBOARD_COOKIE_NAME, verifyDashboardSessionCookie } from '@/lib/dashboardAuth';
 import { adminDb } from '@/lib/firebaseAdmin';
 import type { Transaction } from '@/types/transactions';
 import MarkCompletedButton from '@/components/MarkCompletedButton';
@@ -11,6 +14,9 @@ export default async function TransactionDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Guard the SSR Firestore read: checking only /api/dashboard/data is not enough.
+  const session = (await cookies()).get(DASHBOARD_COOKIE_NAME)?.value;
+  if (!await verifyDashboardSessionCookie(session)) redirect('/dashboard');
   const { id } = await params;
 
   const snap = await adminDb.collection('transactions').doc(id).get();
