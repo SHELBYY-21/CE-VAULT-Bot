@@ -1091,21 +1091,25 @@ export function ledgerCard(d: LedgerData): OutgoingMessage {
 
 // ═══════════════ เมนูคำสั่ง ═══════════════
 /** Compact per-chat control panel; never invents missing rate or bank/deposit balances. */
-export function roomControlCard(d: { roomName?: string | null; rate: number | null }): OutgoingMessage {
+export function roomControlCard(d: { roomName?: string | null; rate: number | null; connected?: boolean }): OutgoingMessage {
   const rate = d.rate != null && Number.isFinite(d.rate) && d.rate > 0
     ? `${money(d.rate)} THB/USDT`
     : 'ยังไม่ตั้งค่า';
+  const available = d.connected !== false;
   return {
     text:
       `◈ <b>CE VAULT · ${ceEscape(d.roomName || 'ROOM CONTROL')}</b>\n` +
       `─────────────\n` +
       `💱 เรตห้องนี้: <b>${rate}</b>\n` +
-      `<i>บัญชีรับชุดเดิมยังไม่เชื่อมกับ Telegram PIN จริง</i>\n` +
-      `เลือกเมนูด้านล่าง`,
+      (available
+        ? '<i>ตรวจบัญชีรับกับข้อความ Telegram PIN จริงก่อนทำรายการ</i>\n'
+        : '⚠️ <b>MENU MODE</b> · Ledger / OCR ยังไม่พร้อม\n<i>บอตตอบเมนูได้ แต่ไม่แสดงยอดหรือบันทึกธุรกรรม</i>\n') +
+      'เลือกเมนูด้านล่าง',
     reply_markup: {
       inline_keyboard: [
-        [{ text: '💱 เรต', callback_data: 'ce:rate' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
-        [{ text: '🔐 เงินประกัน', callback_data: 'ce:deposit' }, { text: '📊 รายงานห้อง', callback_data: 'ce:report' }],
+        [{ text: '📊 ยอดวันนี้', callback_data: 'ce:report' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
+        [{ text: '💱 เรต', callback_data: 'ce:rate' }, { text: 'ℹ️ วิธีใช้', callback_data: 'ce:help' }],
+        [{ text: '↻ เปิดเมนู', callback_data: 'ce:home' }],
       ],
     },
   };
