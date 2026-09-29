@@ -9,7 +9,6 @@ import {
   sendChatAction,
   answerCallback,
   uploadSlipFromTelegram,
-  toPersistedSlipUrl,
   sendSticker,
 } from '@/lib/telegram';
 import {
@@ -51,7 +50,7 @@ import {
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { sendDocument } from '@/lib/telegram';
-import { notifyDailySummary, notifyReady } from '@/lib/notifier';
+import { notifyDailySummary } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
 import { parseAmounts } from '@/lib/amounts';
 import { convertThbUsdt, parseConvertQuery } from '@/lib/convert';
@@ -434,10 +433,10 @@ async function handleUpdate(update: any): Promise<void> {
         return;
       }
       const sell = nums[0];
+      const fallbackMarket = Number(process.env.DEFAULT_MARKET_RATE);
       const market: number = (nums[1] ??
         r.marketUsdtRate ??
-        Number(process.env.DEFAULT_MARKET_RATE) ??
-        34.8) as number;
+        (Number.isFinite(fallbackMarket) ? fallbackMarket : 34.8)) as number;
       await insertRate(admin.id, sell, market);
       await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
     } else {
@@ -1222,17 +1221,6 @@ function dealSessionFields(session: any): any {
   };
 }
 
-/**
- * คำนวณดีล + โชว์การ์ดยืนยัน (Confirm/Edit/Cancel)
- * usdtMeta != null = มาจากสกรีนช็อต (OCR), = null = พิมพ์เอง (manual)
- * req13: ถ้ามีทั้ง OCR และ manual แล้วต่างกัน > 0.0001 → block + manual review
- */
-async function presentDealConfirm(
-  chatId: number,
-  userId: number,
-  session: any,
-  usdt: number,
-  usdtMeta: { network: string | null; txid: string | null; imageUrl: string } | null,
   thbOverride?: number,
 ): Promise<void> {
   const thb = Number(thbOverride ?? session.ocr_thb) || 0;
