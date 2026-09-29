@@ -169,17 +169,13 @@ async function menuRoomPreview(chatId: number): Promise<{ name: string; rate: nu
 
 async function sendCeMenu(chatId: number): Promise<void> {
   const room = await menuRoomPreview(chatId);
-  await sendMessage(chatId, {
-    text: `◈ <b>CE VAULT</b> · ${ceEscape(room.name)}
-━━━━━━━━━━━━━━
-💱 THB/USDT: <b>${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}</b>
-เลือกเมนูเพื่อดำเนินการ${room.connected ? '' : '\n⚠️ ข้อมูล Ledger ยังไม่พร้อม · บอตยังตอบเมนูและช่วยเหลือได้'}`,
-    reply_markup: { inline_keyboard: [
-      [{ text: '📊 ยอดวันนี้', callback_data: 'ce:report' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
-      [{ text: '💱 อัตราแลกเปลี่ยน', callback_data: 'ce:rate' }, { text: 'ℹ️ วิธีใช้งาน', callback_data: 'ce:help' }],
-      [{ text: '↻ เปิดเมนูใหม่', callback_data: 'ce:home' }],
-    ] },
-  });
+  // One canonical reply template for /start, /help, /menu, /ce and inline Home.
+  // Never show an invented rate when Firebase is offline.
+  await sendMessage(chatId, UI.roomControlCard({
+    roomName: room.name,
+    rate: room.rate,
+    connected: room.connected,
+  }));
 }
 
 async function handleUpdate(update: any): Promise<void> {
