@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     log('⚠️ webhook handler failed; no financial error details published');
     if (replyChatId) {
-      await sendMessage(replyChatId, { text: '⚠️ <b>CE VAULT</b> · คำสั่งนี้ยังไม่สำเร็จ โปรดลองใหม่หรือพิมพ์ /ce เพื่อเปิดเมนู' }).catch(() => undefined);
+      await sendMessage(replyChatId, { text: '⚠️ <b>CE VAULT</b> · ไม่สามารถยืนยันผลคำสั่งได้ โปรดตรวจ Ledger ก่อนส่งรายการซ้ำ หรือพิมพ์ /ce' }).catch(() => undefined);
     }
   }
   // Keep legacy at-most-once acknowledgment: financial updates must not be retried blindly.
@@ -206,7 +206,11 @@ async function handleUpdate(update: any): Promise<void> {
 
   // ----- /summary : สรุปวันนี้ (ส่งไปกลุ่มแจ้งเตือน CEempire) -----
   if (text && text.startsWith('/summary')) {
-    await notifyDailySummary();
+    if (process.env.CE_BOT_MENU_ONLY === '1') {
+      await sendMessage(chatId, { text: '⚠️ ระบบรายงานยังปิดอยู่จนกว่า Firebase จะได้รับการยืนยัน · พิมพ์ /ce เพื่อดูเมนู' });
+    } else {
+      await notifyDailySummary();
+    }
     return;
   }
   // Direct bot acknowledgement: does not depend on Firebase or a notification channel.
