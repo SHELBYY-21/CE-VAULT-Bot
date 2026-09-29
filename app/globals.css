@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -321,3 +322,27 @@ body {
     transition: none !important;
   }
 }
+
+
+/* CE EMPIRE / VAULT · Master Design System v1 — presentation only.
+   Source: user-supplied CE VAULT Design System + Replit Export. */
+:root {
+  --ce-bg-0:#03070f; --ce-bg-1:#05090e; --ce-bg-2:#080e18;
+  --ce-bg-3:#0c1520; --ce-bg-4:#101b28;
+  --ce-cyan:#00d4ff; --ce-gold:#f0b429;
+  --ce-success:#00e676; --ce-error:#ff5252;
+  --ce-warning:#ffca28; --ce-mismatch:#ff6d35;
+  --ce-processing:#b39ddb; --ce-text:#e4f4fc;
+  --ce-muted:rgba(228,244,252,.6); --ce-border:rgba(0,212,255,.14);
+}
+.ce-empire-dashboard {background:radial-gradient(circle at 50% -180px,rgba(0,212,255,.085),transparent 40%),var(--ce-bg-0);color:var(--ce-text);font-family:'Space Grotesk',system-ui,sans-serif}
+.ce-empire-dashboard .font-mono,.ce-empire-dashboard [data-ce-value] {font-family:'Space Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ce-empire-dashboard .ce-empire-hero {position:relative;overflow:hidden;border:1px solid rgba(240,180,41,.28);border-radius:22px;padding:22px;background:linear-gradient(110deg,rgba(240,180,41,.055),rgba(0,212,255,.04) 52%,rgba(8,14,24,.98));box-shadow:inset 0 1px rgba(255,255,255,.08),0 24px 60px -35px rgba(0,212,255,.18)}
+.ce-empire-dashboard .ce-empire-hero::after {content:'';position:absolute;right:-52px;top:-86px;width:230px;height:230px;border:1px solid rgba(0,212,255,.2);border-radius:50%;box-shadow:0 0 0 24px rgba(0,212,255,.028),0 0 0 48px rgba(240,180,41,.025);pointer-events:none}
+.ce-empire-dashboard .ce-empire-hero>* {position:relative;z-index:1}
+.ce-empire-dashboard .ce-panel {border:1px solid var(--ce-border);background:var(--ce-bg-2);box-shadow:inset 0 1px rgba(255,255,255,.035),0 16px 30px -25px rgba(0,0,0,.9)}
+.ce-empire-dashboard .ce-panel:focus-within {border-color:rgba(0,212,255,.42)}
+.ce-empire-dashboard .ce-empire-eyebrow {color:var(--ce-gold);font-size:10px;font-weight:700;letter-spacing:.27em;text-transform:uppercase}
+.ce-empire-dashboard .ce-flow-band {background:linear-gradient(90deg,rgba(179,157,219,.09),rgba(255,109,53,.065),rgba(0,212,255,.09),rgba(0,230,118,.055));border:1px solid rgba(0,212,255,.18);border-radius:16px}
+.ce-empire-dashboard .ce-status-note {color:var(--ce-muted);font-size:11px;line-height:1.5}
+@media(max-width:640px){.ce-empire-dashboard .ce-empire-hero{padding:16px;border-radius:16px}.ce-empire-dashboard main{padding-left:14px;padding-right:14px}.ce-empire-dashboard .ce-flow-band{overflow-x:auto}}

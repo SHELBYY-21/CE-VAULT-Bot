@@ -194,21 +194,21 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#03070F] text-[#E4F4FC]">
+    <div className="ce-empire-dashboard min-h-screen bg-[#03070F] text-[#E4F4FC]">
       <main className="mx-auto max-w-6xl px-6 py-10">
         {/* ── HERO ── */}
-        <header className="reveal">
+        <header className="ce-empire-hero reveal">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-4">
               <CEMascot expression="happy" size={64} armR={-14} />
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.35em] text-[#00D4FF]">
-                  CE Vault · Financial Overview
+                <p className="ce-empire-eyebrow">
+                  CE EMPIRE / VAULT · OPERATIONS DESK
                 </p>
                 <h1 className="mt-1 text-3xl font-bold tracking-tight">
-                  ภาพรวมการเงิน
+                  CE VAULT · ภาพรวมการเงิน
                   <span className="ml-3 hidden align-middle text-xs font-semibold uppercase tracking-[.25em] text-[#F0B429] sm:inline">
-                    Your Empire. In Focus.
+                    BUILD · GROW · EMPOWER
                   </span>
                 </h1>
                 <p className="mt-1 text-sm text-[rgba(228,244,252,.6)]">
@@ -283,7 +283,7 @@ export default function DashboardPage() {
         <ComposioSessionCard />
 
         {/* ── KPI BAND (ข้อมูลจริงจาก /api/dashboard/data) ── */}
-        <div className="reveal mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="reveal mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="KPI จากข้อมูล API จริง">
           <div className="rounded-2xl border border-[rgba(0,212,255,.14)] bg-[#080E18] p-5">
             <p className="text-[10px] font-bold uppercase tracking-[.25em] text-[rgba(228,244,252,.4)]">
               ยอดรับรวม
@@ -292,30 +292,30 @@ export default function DashboardPage() {
               {nf.format(kpis.totalThb)}
               <span className="ml-1.5 text-xs font-semibold text-[rgba(228,244,252,.4)]">THB</span>
             </p>
-            <p className="mt-1 text-xs text-[rgba(228,244,252,.4)]">รวมยอดฝากทุกรายการที่บันทึก</p>
+            <p className="mt-1 text-xs text-[rgba(228,244,252,.4)]">รวมยอดฝากจากรายการใน Ledger ที่เลือก</p>
           </div>
 
           <div className="rounded-2xl border border-[rgba(240,180,41,.22)] bg-[#080E18] p-5">
             <p className="text-[10px] font-bold uppercase tracking-[.25em] text-[rgba(228,244,252,.4)]">
-              ยอดส่งออก
+              ยอด USDT ในรายการฝาก
             </p>
             <p className="mt-2 font-mono text-2xl font-bold text-[#FFD766]">
               {nf.format(kpis.totalUsdtOut)}
               <span className="ml-1.5 text-xs font-semibold text-[rgba(228,244,252,.4)]">USDT</span>
             </p>
-            <p className="mt-1 text-xs text-[rgba(228,244,252,.4)]">ยอด USDT รวมจากรายการฝาก</p>
+            <p className="mt-1 text-xs text-[rgba(228,244,252,.4)]">ยอด USDT ตามรายการฝาก — ไม่ใช่ยอดยืนยันส่งจริง</p>
           </div>
 
           <div className="rounded-2xl border border-[rgba(255,109,53,.2)] bg-[#080E18] p-5">
             <p className="text-[10px] font-bold uppercase tracking-[.25em] text-[rgba(228,244,252,.4)]">
-              รอเคลียร์ยอด
+              รายการยังไม่ completed
             </p>
             <p className="mt-2 font-mono text-2xl font-bold text-[#FF6D35]">
               {nf.format(kpis.pendingUsdt)}
               <span className="ml-1.5 text-xs font-semibold text-[rgba(228,244,252,.4)]">USDT</span>
             </p>
             <p className="mt-1 text-xs text-[rgba(228,244,252,.4)]">
-              {kpis.pendingCount} รายการรอดำเนินการ
+              {kpis.pendingCount} รายการที่ยังไม่ completed ในระบบเดิม
             </p>
           </div>
 
@@ -365,7 +365,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── TRANSACTION FLOW (map ตรงกับ status จริง 3 ค่า) ── */}
+        {/* ── Existing three-state flow: presentation only, no new settlement semantics ── */}
+        <p className="ce-status-note mt-5">ข้อมูลสถานะจากระบบปัจจุบัน: OCR SUCCESS / WAITING ADMIN / COMPLETED · การบันทึกรายการไม่ใช่หลักฐาน Settlement</p>
         <div className="reveal mt-6 rounded-2xl border border-[rgba(0,212,255,.14)] bg-[#080E18] p-5">
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-bold uppercase tracking-[.25em] text-[rgba(228,244,252,.4)]">
