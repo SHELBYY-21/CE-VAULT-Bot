@@ -43,9 +43,14 @@ async function registerWebhook() {
   }
   const token = process.env.BOT_TOKEN;
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  const appUrl = process.env.APP_URL;
-  if (!token || !secret || !appUrl) {
-    console.error('[CE Bot] Missing BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET or APP_URL; webhook unchanged.');
+  const appUrl = (process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\\/$/, '');
+  const missing = [
+    ['BOT_TOKEN', token],
+    ['TELEGRAM_WEBHOOK_SECRET', secret],
+    ['APP_URL_OR_RAILWAY_PUBLIC_DOMAIN', appUrl],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) {
+    console.error(`[CE Bot] Missing environment variable(s): ${missing.join(', ')}; webhook unchanged.`);
     return;
   }
   if (!/^https:\/\/[^/]+(?:\:\d+)?$/.test(appUrl) || !/^[A-Za-z0-9_-]{1,256}$/.test(secret)) {
