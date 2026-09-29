@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const secret = process.env.API_SECRET;
   const provided = req.nextUrl.searchParams.get('secret');
   const bearer = req.headers.get('authorization')?.replace('Bearer ', '');
-  if (secret && provided !== secret && bearer !== secret) {
+  if (!secret) return NextResponse.json({ error: 'api_auth_not_configured' }, { status: 503 });
+  if (provided !== secret && bearer !== secret) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
