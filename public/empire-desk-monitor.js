@@ -11,7 +11,7 @@
       box.textContent = message;
     };
     update('checking', 'กำลังตรวจสอบการเชื่อมต่อ CE VAULT…');
-    const abort = new AbortController();
+    const abort = new window.AbortController();
     const timeout = setTimeout(() => abort.abort(), 12000);
     fetch(endpoint, { method: 'GET', mode: 'cors', cache: 'no-store', signal: abort.signal })
       .then(async response => {
@@ -30,7 +30,7 @@
         }
       })
       .catch(() => update('unverified', 'ตรวจสถานะไม่สำเร็จ — โปรดลองใหม่ภายหลัง'))
-      .finally(() => clearTimeout(timeout));
+      .finally(() => window.clearTimeout(timeout));
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init, { once: true });
