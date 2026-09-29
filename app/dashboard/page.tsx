@@ -277,6 +277,11 @@ export default function DashboardPage() {
   return (
     <div className="ce-empire-dashboard min-h-screen bg-[#03070F] text-[#E4F4FC]">
       <main className="mx-auto max-w-6xl px-6 py-10">
+        {authError && (
+          <div role="alert" className="mb-5 rounded-xl border border-[#FF5252]/30 bg-[#FF5252]/10 p-4 text-sm text-[#FF8888]">
+            {authError}
+          </div>
+        )}
         {/* ── HERO ── */}
         <header className="ce-empire-hero reveal">
           <div className="flex flex-wrap items-start justify-between gap-4">
