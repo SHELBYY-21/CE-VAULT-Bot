@@ -141,6 +141,20 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+
+// Menu-first entry point: existing ledger, OCR and accounting logic remain unchanged.
+async function sendCeMenu(chatId: number): Promise<void> {
+  const room = await getRoom(chatId);
+  await sendMessage(chatId, {
+    text: `◈ <b>CE VAULT</b> · ${ceEscape(room.name || 'ROOM CONTROL')}\n━━━━━━━━━━━━━━\n💱 THB/USDT: <b>${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}</b>\nเลือกเมนูเพื่อดำเนินการ`,
+    reply_markup: { inline_keyboard: [
+      [{ text: '📊 ยอดวันนี้', callback_data: 'ce:report' }, { text: '🏦 บัญชีรับ', callback_data: 'ce:bank' }],
+      [{ text: '💱 อัตราแลกเปลี่ยน', callback_data: 'ce:rate' }, { text: 'ℹ️ วิธีใช้งาน', callback_data: 'ce:help' }],
+      [{ text: '↻ เปิดเมนูใหม่', callback_data: 'ce:home' }],
+    ] },
+  });
+}
+
 async function handleUpdate(update: any): Promise<void> {
   // ----- callback_query จากปุ่ม แก้ไข/ลบ -----
   if (update?.callback_query) {
@@ -156,6 +170,12 @@ async function handleUpdate(update: any): Promise<void> {
   const text: string | undefined = msg.text?.trim();
   const chatType: string = msg.chat?.type ?? 'private';
   const isGroup = chatType === 'group' || chatType === 'supergroup';
+
+  // One clean entry point. /start and /help never reset an existing deal session.
+  if (text && /^\/(?:start|help|menu|ce)(?:@\w+)?$/i.test(text)) {
+    await sendCeMenu(chatId);
+    return;
+  }
 
   // ----- /summary : สรุปวันนี้ (ส่งไปกลุ่มแจ้งเตือน CEempire) -----
   if (text && text.startsWith('/summary')) {
@@ -1296,6 +1316,22 @@ async function handleCallback(cb: any): Promise<void> {
   if (!chatId || !userId) return await answerCallback(id);
 
   const [action, arg] = data.split(':');
+  if (action === 'ce') {
+    await answerCallback(id);
+    if (arg === 'home') { await sendCeMenu(chatId); return; }
+    if (arg === 'report') { await sendLedger(chatId); return; }
+    if (arg === 'bank') { await handlePinCommand(chatId, '/pin'); return; }
+    if (arg === 'rate') {
+      const room = await getRoom(chatId);
+      await sendMessage(chatId, { text: `💱 <b>THB/USDT</b> · ${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}\nตั้งเรตเฉพาะห้อง: <code>/setrate 32.49</code>` });
+      return;
+    }
+    if (arg === 'help') {
+      await sendMessage(chatId, { text: '◈ <b>CE VAULT · QUICK GUIDE</b>\n📷 ส่งสลิปเพื่อให้ OCR อ่านข้อมูล\n💱 /setrate 32.49 · ตั้งเรตห้อง\n🏦 /pin · ดูบัญชีรับที่ตั้งไว้\n📊 /ledger · ตรวจยอดห้อง\n⚠️ OCR ไม่ใช่การยืนยันชำระ และ RECORDED ไม่ใช่ SETTLED' });
+      return;
+    }
+    return;
+  }
   if (!arg) return await answerCallback(id);
 
   // ----- dealok:<ledgerRef> : ยืนยันดีล → บันทึกจริง -----
