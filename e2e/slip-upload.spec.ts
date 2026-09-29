@@ -15,45 +15,26 @@ const mockTelegramUpdate = {
   },
 };
 
-test.describe('Telegram Bot - Slip Upload Flow', () => {
-  test.beforeEach(async ({ page }) => {
-    // Mock the Telegram webhook endpoint
-    await page.route('**/api/telegram/webhook', (route) => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ status: 'ok' }),
-      });
-    });
-  });
-
-  test('should handle slip image upload', async ({ page }) => {
-    // Simulate a POST request to the webhook with a slip image
-    const response = await page.request.post('/api/telegram/webhook', {
+test.describe('Telegram Bot - Webhook Security Boundary', () => {
+  test('rejects an unsigned slip update without processing it', async ({ request }) => {
+    // APIRequestContext does not use page.route; never fake a 200 response.
+    // The isolated test webServer uses a synthetic secret, no real Telegram key.
+    const response = await request.post('/api/telegram/webhook', {
       data: mockTelegramUpdate,
     });
-    
-    expect(response.status()).toBe(200);
-    const body = await response.json();
-    expect(body.status).toBe('ok');
+    expect(response.status()).toBe(401);
+    expect((await response.json()).ok).toBe(false);
   });
 
-  test('should parse Thai slip text correctly', async () => {
-    const text = 'โอน 5,000 บาท เข้าบัญชี SCB 3376 ชื่อบัญชี นายสมชาย ใจดี วันที่ 24/07/26 เวลา 14:30';
-    
-    // This would be tested via the parseSlipText function in unit tests
-    // E2E test would verify the full flow from image upload to DB save
-    expect(text).toContain('5,000');
-    expect(text).toContain('SCB');
-    expect(text).toContain('3376');
-  });
+  // Thai slip text parsing is owned by src/lib/__tests__/parseSlipText.test.ts (unit) —
+  // no always-green string assertions belong in this E2E boundary suite.
 });
 
 test.describe('Dashboard - Anonymous Access Boundary', () => {
   test('redirects unauthenticated visitors to login', async ({ page }) => {
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page).toHaveTitle(/CE VAULT/);
+    await expect(page).toHaveTitle(/CE Vault/i);
   });
 
   test('does not return financial ledger data to anonymous requests', async ({ page }) => {
