@@ -322,7 +322,7 @@ export function incomingRecorded(d: {
   recent?: { time: string; thb: number; usdt: number; gapMin: number | null }[] | null;
 }): OutgoingMessage {
   const conf = d.confidence != null ? `  <i>· Vision ${d.confidence.toFixed(0)}%</i>` : '';
-  const pinLine = d.pinMatched ? `✅ <b>OCR สำเร็จ</b> — ตรงบัญชีที่เซ็ตไว้วันนี้\n` : '';
+  const pinLine = d.pinMatched ? `👁 <b>บัญชีตรงกับรายการเซ็ตในระบบ</b> (ไม่ใช่การยืนยัน Telegram PIN)\n` : '';
   const when = d.date || d.time ? `📅 ${[d.date, d.time].filter(Boolean).join(' ')}\n` : '';
   return {
     text:
