@@ -44,6 +44,12 @@ env:
   - variable: API_SECRET
     secret: API_SECRET
     availability: [RUNTIME]
+  - variable: CE_API_TOKEN
+    secret: CE_API_TOKEN
+    availability: [RUNTIME]
+  - variable: CE_COMPOSIO_SESSION_WEBHOOK_URL
+    value: https://razen8n.app.n8n.cloud/webhook/ce-composio-session
+    availability: [RUNTIME]
   - variable: APP_URL
     secret: APP_URL
     availability: [RUNTIME]

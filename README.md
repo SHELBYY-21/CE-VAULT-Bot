@@ -22,6 +22,14 @@ Existing transaction commands and OCR continue to work; opening the menu does no
 - `app/dashboard`: secondary operational interface; not the Telegram home screen.
 - `bot/`: optional local development bridge; not a second production bot.
 
+## Composio MCP session shortcuts
+The Dashboard and Telegram admin bot can create Composio sessions through the secured n8n webhook.
+- Set the server-only `CE_API_TOKEN` secret to the bearer token configured on the n8n webhook.
+- Optionally set `CE_COMPOSIO_SESSION_WEBHOOK_URL` and `CE_COMPOSIO_DEFAULT_TOOLKITS`.
+- In Telegram, use `/ai` or `/ai github,gmail` in a private chat with the bot. MCP links are not sent to groups.
+- In the Dashboard, use the Composio MCP card and provide the CE VAULT `API_SECRET` once. It is cleared after the request.
+- Session creation is not retried automatically because a timed out POST might already have created a session.
+
 ## Quality gate
 ```bash
 npm ci

@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminHoldings from '@/components/AdminHoldings';
 import TransactionsTable from '@/components/TransactionsTable';
+import ComposioSessionCard from '@/components/ComposioSessionCard';
 import CEMascot from '@/components/brand/CEMascot';
 import type { Admin, Transaction } from '@/types/transactions';
 
@@ -278,6 +279,8 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
+
+        <ComposioSessionCard />
 
         {/* ── KPI BAND (ข้อมูลจริงจาก /api/dashboard/data) ── */}
         <div className="reveal mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

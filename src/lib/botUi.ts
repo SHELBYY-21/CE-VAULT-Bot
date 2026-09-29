@@ -1136,6 +1136,7 @@ export function menuCard(): OutgoingMessage {
       `💱 <code>/rate</code>  เรตตลาด Binance\n` +
       `🧮 <code>/convert 5000</code>  แปลงหน่วย THB ⇄ USDT\n` +
       `🏦 <code>/receiver 6578</code>  ประวัติผู้รับ\n` +
+      `⚡ <code>/ai github,gmail</code>  สร้าง Composio MCP session\n` +
       `✖️ <code>/cancel</code>  ยกเลิกรายการค้าง\n` +
       `${SIG}`,
     reply_markup: {

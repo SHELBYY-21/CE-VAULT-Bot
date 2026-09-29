@@ -18,6 +18,7 @@ const COMMANDS = [
   { command: 'setrate', description: 'ตั้งเรตขายห้อง — /setrate 40' },
   { command: 'rate', description: 'เรตตลาด Binance TH' },
   { command: 'receiver', description: 'ประวัติผู้รับ — /receiver 6578' },
+  { command: 'ai', description: 'สร้าง Composio MCP session' },
   { command: 'cancel', description: 'ยกเลิกรายการที่ค้าง' },
   { command: 'export', description: 'ดาวน์โหลด CSV ยอดห้อง' },
   { command: 'setroom', description: 'ตั้งชื่อห้อง — /setroom ชื่อ' },

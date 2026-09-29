@@ -122,6 +122,8 @@ jobs:
         env:
           API_SECRET: ${{ secrets.API_SECRET }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.API_SECRET }}
+          CE_API_TOKEN: ${{ secrets.CE_API_TOKEN }}
+          CE_COMPOSIO_SESSION_WEBHOOK_URL: https://razen8n.app.n8n.cloud/webhook/ce-composio-session
           NEXT_PUBLIC_FIREBASE_PROJECT_ID: ce88-95911
           NEXT_PUBLIC_FIREBASE_API_KEY: AIzaSyAsMPN5vnoFkRmoLPySPV2yqtnO7NDj9WQ
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ce88-95911.firebaseapp.com

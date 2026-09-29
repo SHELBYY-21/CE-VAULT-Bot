@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 // Commands that require admin access
 const ADMIN_COMMANDS = new Set([
   'save_slip', 'pin', 'unpin', 'rate', 'setrate', 'newday', 'reset',
-  'setroom', 'export', 'summary', 'recent_slips', 'receiver', 'today', 'ledger',
+  'setroom', 'export', 'summary', 'recent_slips', 'receiver', 'today', 'ledger', 'ai', 'composio',
 ]);
 
 /**
