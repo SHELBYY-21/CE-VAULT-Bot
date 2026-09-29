@@ -2,7 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   // Smaller image for Docker / VPS / App Hosting
-  output: 'standalone',
+  // Render uses `next start`, which requires the standard build output.
+  // Preserve standalone output for Docker / other standalone deployments.
+  ...(process.env.RENDER === 'true' ? {} : { output: 'standalone' }),
 };
 
 module.exports = nextConfig;
