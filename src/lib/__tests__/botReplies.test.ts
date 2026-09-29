@@ -9,15 +9,24 @@ import {
 import { ceRecorded } from '../ceReplyTheme';
 
 describe('CE VAULT Telegram reply contract', () => {
-  it('renders the room-specific menu without inventing a rate', () => {
+  it('renders the room-specific menu with only actionable callbacks', () => {
     const menu = roomControlCard({ roomName: '<Room & A>', rate: null });
     expect(menu.text).toContain('&lt;Room &amp; A&gt;');
     expect(menu.text).toContain('ยังไม่ตั้งค่า');
-    expect(menu.text).toContain('ยังไม่เชื่อมกับ Telegram PIN จริง');
-    expect(JSON.stringify(menu.reply_markup)).toContain('ce:rate');
-    expect(JSON.stringify(menu.reply_markup)).toContain('ce:bank');
-    expect(JSON.stringify(menu.reply_markup)).toContain('ce:deposit');
-    expect(JSON.stringify(menu.reply_markup)).toContain('ce:report');
+    expect(menu.text).toContain('ตรวจบัญชีรับกับข้อความ Telegram PIN จริง');
+    const callbacks = JSON.stringify(menu.reply_markup);
+    for (const action of ['ce:rate', 'ce:bank', 'ce:report', 'ce:help', 'ce:home']) {
+      expect(callbacks).toContain(action);
+    }
+    expect(callbacks).not.toContain('ce:deposit');
+  });
+
+  it('uses menu-only wording when the database is not connected', () => {
+    const menu = roomControlCard({ roomName: 'ROOM CONTROL', rate: null, connected: false });
+    expect(menu.text).toContain('MENU MODE');
+    expect(menu.text).toContain('Ledger / OCR ยังไม่พร้อม');
+    expect(menu.text).not.toContain('0.00 THB/USDT');
+    expect(JSON.stringify(menu.reply_markup)).toContain('ce:help');
   });
 
   it('shows a configured THB/USDT rate and escapes operator name', () => {
