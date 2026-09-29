@@ -72,6 +72,8 @@ import {
   MAX_PINNED_TODAY,
 } from '@/lib/banks';
 import { getLiveToolsSnapshot } from '@/lib/botTools';
+import { ComposioSessionError, createComposioSession, normalizeToolkits } from '@/lib/composioSession';
+import { commandName, escapeTelegramHtml } from '@/lib/botSecurity';
 
 // ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
 const USDT_TOLERANCE = 0.0001;
@@ -341,6 +343,45 @@ async function handleUpdate(update: any): Promise<void> {
     getSession(chatId, userId),
     getAdminByTelegramId(userId),
   ]);
+
+  // ----- /ai [toolkit,toolkit] : สร้าง Composio MCP session ผ่าน n8n -----
+  if (text && (commandName(text) === 'ai' || commandName(text) === 'composio')) {
+    if (chatType !== 'private') {
+      await sendMessage(chatId, { text: '🔒 เพื่อปกป้อง MCP URL ให้ใช้คำสั่งนี้ในแชตส่วนตัวกับบอทเท่านั้น' });
+      return;
+    }
+    if (!admin) {
+      await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+      await sendMessage(chatId, UI.askName());
+      return;
+    }
+
+    try {
+      const requested = text.replace(/^\/(?:ai|composio)(?:@[a-z0-9_]+)?/i, '').trim();
+      const toolkits = normalizeToolkits(requested || process.env.CE_COMPOSIO_DEFAULT_TOOLKITS);
+      await sendChatAction(chatId, 'typing');
+      const created = await createComposioSession({
+        userId: `telegram:${userId}`,
+        toolkits,
+      });
+      await sendMessage(chatId, {
+        text:
+          `⚡ <b>Composio MCP พร้อมใช้งาน</b>\n` +
+          `<code>${escapeTelegramHtml(created.sessionId)}</code>\n\n` +
+          `<i>กดปุ่มด้านล่างเพื่อเปิด session</i>`,
+        reply_markup: {
+          inline_keyboard: [[{ text: 'เปิด MCP Session →', url: created.mcpUrl }]],
+        },
+      });
+    } catch (error) {
+      const reason =
+        error instanceof ComposioSessionError && error.code === 'INVALID_INPUT'
+          ? 'รูปแบบ toolkit ไม่ถูกต้อง — ตัวอย่าง <code>/ai github,gmail</code>'
+          : 'ยังสร้าง MCP session ไม่สำเร็จ กรุณาลองใหม่ภายหลัง';
+      await sendMessage(chatId, { text: `⚠️ ${reason}` });
+    }
+    return;
+  }
 
   // ----- /rate : ดูเรต (ตลาด=Binance TH สด) / ตั้งเรตขาย -----
   if (text && text.startsWith('/rate')) {
