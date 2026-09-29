@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const token = process.env.BOT_TOKEN;
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const origin = (process.env.APP_URL ?? '').replace(/\/$/, '');
-  if (!token || !secret || !/^https:\/\/[^/]+(?:\:\d+)?$/.test(origin) || !/^[A-Za-z0-9_-]{1,256}$/.test(secret)) {
+  if (!token || !secret || !/^https:\/\/[^/]+(?::\d+)?$/.test(origin) || !/^[A-Za-z0-9_-]{1,256}$/.test(secret)) {
     return NextResponse.json({ error: 'telegram_configuration_incomplete' }, { status: 503 });
   }
 
