@@ -100,22 +100,22 @@ begin
   end if;
 end$$;
 
--- 8) RLS — anon อ่านได้ (แดชบอร์ด), เขียนผ่าน service role เท่านั้น
+-- 8) RLS — finance data is backend-only until owner-scoped Auth policies exist.
+-- Never expose admins, bank accounts or transactions to anonymous browser clients.
 alter table public.admins        enable row level security;
 alter table public.bank_accounts enable row level security;
 alter table public.transactions  enable row level security;
 alter table public.rates         enable row level security;
-alter table public.bot_sessions  enable row level security;  -- ไม่มี policy = service role only
+alter table public.bot_sessions  enable row level security;  -- backend/service role only
 
 drop policy if exists "anon can read admins" on public.admins;
 drop policy if exists "anon can read bank_accounts" on public.bank_accounts;
 drop policy if exists "anon can read transactions" on public.transactions;
 drop policy if exists "anon can read rates" on public.rates;
+revoke select on public.admins, public.bank_accounts, public.transactions from anon, authenticated;
 
-create policy "anon can read admins"        on public.admins        for select using (true);
-create policy "anon can read bank_accounts" on public.bank_accounts for select using (true);
-create policy "anon can read transactions"  on public.transactions  for select using (true);
-create policy "anon can read rates"         on public.rates         for select using (true);
+-- Non-sensitive published rates may be read publicly; all ledger/admin reads stay server-side.
+create policy "anon can read rates" on public.rates for select to anon, authenticated using (true);
 
 -- 9) Storage bucket สำหรับสลิป (public)
 insert into storage.buckets (id, name, public)
