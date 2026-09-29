@@ -1327,7 +1327,7 @@ async function handleCallback(cb: any): Promise<void> {
       return;
     }
     if (arg === 'help') {
-      await sendMessage(chatId, { text: '◈ <b>CE VAULT · QUICK GUIDE</b>\n📷 ส่งสลิปเพื่อให้ OCR อ่านข้อมูล\n💱 /setrate 32.49 · ตั้งเรตห้อง\n🏦 /pin · ดูบัญชีรับที่ตั้งไว้\n📊 /ledger · ตรวจยอดห้อง\n⚠️ OCR ไม่ใช่การยืนยันชำระ และ RECORDED ไม่ใช่ SETTLED' });
+      await sendMessage(chatId, { text: `◈ <b>CE VAULT · QUICK GUIDE</b>\n📷 ส่งสลิปเพื่อให้ OCR อ่านข้อมูล\n💱 /setrate 32.49 · ตั้งเรตห้อง\n🏦 /pin · ดูบัญชีรับที่ตั้งไว้\n📊 /ledger · ตรวจยอดห้อง\n⚠️ OCR ไม่ใช่การยืนยันชำระ และ RECORDED ไม่ใช่ SETTLED` });
       return;
     }
     return;
