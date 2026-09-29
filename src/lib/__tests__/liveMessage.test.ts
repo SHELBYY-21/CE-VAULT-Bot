@@ -15,7 +15,7 @@ describe('liveRail', () => {
     const rail = liveRail('RECEIVING');
     expect(rail).toContain('<b>● Receiving...</b>');
     expect(rail).toContain('<i>○ OCR</i>');
-    expect(rail).toContain('<i>○ Verified</i>');
+    expect(rail).toContain('<i>○ Profile / OCR</i>');
     expect(rail).toContain('<i>○ Waiting</i>');
     expect(rail).toContain('<i>○ Recorded</i>');
     expect(rail.match(/<b>●/g)?.length).toBe(1);
@@ -25,7 +25,7 @@ describe('liveRail', () => {
     const rail = liveRail('WAITING');
     expect(rail).toContain('✓ Receiving...');
     expect(rail).toContain('✓ OCR');
-    expect(rail).toContain('✓ Verified');
+    expect(rail).toContain('✓ Profile / OCR');
     expect(rail).toContain('<b>● Waiting</b>');
     expect(rail).toContain('<i>○ Recorded</i>');
   });
