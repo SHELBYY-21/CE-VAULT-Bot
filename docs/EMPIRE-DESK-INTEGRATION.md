@@ -50,3 +50,14 @@ When editing the actual user-owned ChatGPT Site (`appgprj_6ab9f97547a48191b3f30a
 The script reads only `/api/empire-desk/status`, never `/api/dashboard/data`. Its displayed states are connected (Render and Firebase verified), degraded (Render available but Firebase not verified), and unverified (request failed, timed out, unexpected, or unsupported). It cannot authenticate a user or prove Telegram webhook delivery. No token or personally identifiable or financial data belongs in this client-side snippet.
 
 **Live financial cards must remain unavailable without server-verified user/room authorization.** In particular, do not try to solve cross-origin Site auth by pasting `API_SECRET` into a JavaScript variable or localStorage.
+
+## Dashboard access boundary — staging / first rollout
+
+Sensitive Render Dashboard endpoints now require a signed, 4-hour HttpOnly SameSite=Strict cookie. Configure BOTH server-only Render environment variables before using /login:
+
+- `DASHBOARD_ACCESS_PASSPHRASE`: unique strong phrase, **at least 12 characters**, not Telegram, API_SECRET, an old PIN or any credential ever pasted in chat.
+- `DASHBOARD_SESSION_SECRET`: cryptographically random 32+ characters; separate from the access passphrase.
+
+Missing/weak values fail closed, so users see the login's configuration warning rather than raw ledger data. After env update Render triggers a redeploy. Visit Render /login and authenticate; only then can /dashboard, /dashboard/transactions/[id] and /api/dashboard/data show transactions. /api/export permits that signed dashboard session or a separately configured valid legacy API_SECRET; missing API_SECRET grants no access. The completion POST also requires same-origin signed dashboard session or a valid configured server API key. Production API writes and cron routes fail closed without API_SECRET.
+
+This is a staging single-instance passphrase/session boundary, **not yet a per-operator RBAC or an SSO bridge**; do not claim room-level permissions or expose financial reads inside chatgpt.site until identity/role verification and a secure same-origin backend-for-frontend are implemented. The cross-origin status probe remains non-sensitive. No financial calculations, settlement state machine, Firebase data, Telegram token or webhook is changed.

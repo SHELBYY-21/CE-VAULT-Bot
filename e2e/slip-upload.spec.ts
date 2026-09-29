@@ -49,14 +49,17 @@ test.describe('Telegram Bot - Slip Upload Flow', () => {
   });
 });
 
-test.describe('Dashboard - Transaction View', () => {
-  test('should load dashboard page', async ({ page }) => {
+test.describe('Dashboard - Anonymous Access Boundary', () => {
+  test('redirects unauthenticated visitors to login', async ({ page }) => {
     await page.goto('/dashboard');
+    await expect(page).toHaveURL(/\/login$/);
     await expect(page).toHaveTitle(/CE VAULT/);
   });
 
-  test('should display transactions table', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page.locator('table')).toBeVisible();
+  test('does not return financial ledger data to anonymous requests', async ({ page }) => {
+    const response = await page.request.get('/api/dashboard/data');
+    expect(response.status()).toBe(401);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
   });
 });

@@ -1,5 +1,7 @@
 // GET /api/export?secret=API_SECRET&chatId=<id>&since=<ISO>
 import { NextRequest } from 'next/server';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { DASHBOARD_COOKIE, validDashboardSession } from '@/lib/dashboardSession';
 import type { Query } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebaseAdmin';
 import { exportRoomCsv, isFirestoreIndexError } from '@/lib/transactions';
@@ -33,8 +35,17 @@ function csvCell(v: any): string {
 
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
-  if (process.env.API_SECRET && p.get('secret') !== process.env.API_SECRET) {
-    return new Response('unauthorized', { status: 401 });
+  const sessionOk = validDashboardSession(req.cookies.get(DASHBOARD_COOKIE)?.value);
+  const secret = process.env.API_SECRET ?? '';
+  // Preserve the legacy server-side export API key option for existing integrations.
+  // Never treat a missing API_SECRET as permission to export the ledger.
+  const supplied = req.headers.get('x-api-key') || p.get('secret') || '';
+  const keyOk = Boolean(secret && supplied) && timingSafeEqual(
+    createHash('sha256').update(supplied).digest(),
+    createHash('sha256').update(secret).digest(),
+  );
+  if (!sessionOk && !keyOk) {
+    return new Response('unauthorized', { status: 401, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const chatId = p.get('chatId');

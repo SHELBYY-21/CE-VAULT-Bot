@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   const provided = req.nextUrl.searchParams.get('secret');
   // รับได้ทั้ง ?secret= และ Authorization: Bearer <secret>
   const bearer = req.headers.get('authorization')?.replace('Bearer ', '');
-  if (secret && provided !== secret && bearer !== secret) {
+  if (!secret) return NextResponse.json({ error: 'api_auth_not_configured' }, { status: 503 });
+  if (provided !== secret && bearer !== secret) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   await notifyDailySummary();
