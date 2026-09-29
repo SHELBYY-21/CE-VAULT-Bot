@@ -1,11 +1,14 @@
 // GET /api/dashboard/data — bootstrap สำหรับแดชบอร์ด (Admin SDK, ไม่พึ่ง client rules)
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireDashboardAdmin } from '@/lib/dashboardAuth';
 import { adminDb } from '@/lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireDashboardAdmin(req);
+  if (denied) return denied;
   try {
     const [txSnap, adminSnap, rateSnap] = await Promise.all([
       adminDb.collection('transactions').orderBy('created_at', 'desc').limit(100).get(),
@@ -18,8 +21,8 @@ export async function GET() {
       transactions: txSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
       admins: adminSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
       rate: rateSnap.empty ? null : rateSnap.docs[0]!.data(),
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }
