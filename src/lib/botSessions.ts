@@ -20,7 +20,7 @@ export async function getSession(chatId:number,userId:number):Promise<BotSession
 }
 export async function setSession(chatId:number,userId:number,patch:Partial<Omit<BotSession,'chat_id'|'telegram_user_id'>>):Promise<void>{
  const current=await getSession(chatId,userId);
- const allowed=['admin_id','admin_name','state','pending_type','slip_url','caption','ocr_thb','pending_usdt','usdt_network','usdt_txid','usdt_image_url','ocr_conf','ledger_ref','slip_receiver_name','live_message_id'] as const;
+ const allowed=['admin_id','admin_name','state','pending_type','slip_url','caption','ocr_thb','pending_usdt','usdt_network','usdt_txid','usdt_image_url','ocr_conf','ledger_ref','slip_receiver_name','slip_date','slip_time','slip_last4','slip_bank','live_message_id'] as const;
  const row:Record<string,unknown>={chat_id:chatId,telegram_user_id:userId,updated_at:new Date().toISOString()};
  for(const key of allowed) if(patch[key]!==undefined) row[key]=patch[key];
  if(!row.state && !current?.state) throw new Error('Session state required');
