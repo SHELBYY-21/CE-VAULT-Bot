@@ -22,6 +22,7 @@ export default defineConfig({
     ? undefined
     : {
         command: 'npm run dev -- --hostname 127.0.0.1',
+        env: { TELEGRAM_WEBHOOK_SECRET: 'ce-e2e-local-test-secret' },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
