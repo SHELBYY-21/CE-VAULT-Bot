@@ -399,3 +399,387 @@ export async function deleteTransaction(
   notifyDelete({ adminName: old.admins?.name ?? '-' }).catch(() => undefined);
   return { name: old.admins?.name ?? '-', holdingUsdt: holding };
 }
+
+export interface RecordDealInput {
+  adminTelegramId: number;
+  chatId?: number | null;
+  thb: number;
+  usdt: number;
+  sellRate: number;
+  roomName?: string | null;
+  ocrConfidence?: number | null;
+  ledgerRef: string;
+  slipImageUrl?: string | null;
+  usdtImageUrl?: string | null;
+  usdtNetwork?: string | null;
+  usdtTxid?: string | null;
+  receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
+  bankAccountId?: string | null;
+}
+export interface DealResult {
+  transactionId: string;
+  adminName: string;
+  buyRate: number;
+  sellRate: number;
+  profitThb: number;
+}
+
+export async function recordDeal(input: RecordDealInput): Promise<DealResult> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const buyRate = input.usdt > 0 ? input.thb / input.usdt : 0;
+  const profitThb = input.usdt * input.sellRate - input.thb;
+
+  const row = clean({
+    ...zeroMoneyFields(),
+    admin_id: admin.id,
+    bank_account_id: input.bankAccountId ?? null,
+    type: 'THB_DEPOSIT',
+    thb_amount: input.thb,
+    usdt_amount: input.usdt,
+    sell_rate: input.sellRate,
+    cost_per_unit: buyRate,
+    sell_value_thb: input.usdt * input.sellRate,
+    net_profit_thb: profitThb,
+    profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+    chat_id: input.chatId ?? null,
+    buy_rate: buyRate,
+    room_name: input.roomName ?? null,
+    ocr_confidence: input.ocrConfidence ?? null,
+    usdt_network: input.usdtNetwork ?? null,
+    usdt_txid: input.usdtTxid ?? null,
+    usdt_image_url: input.usdtImageUrl ?? null,
+    receiver_name: input.receiver?.name ?? null,
+    receiver_bank: input.receiver?.bank ?? null,
+    receiver_last4: input.receiver?.last4 ?? null,
+    ledger_ref: input.ledgerRef,
+    // ดีลยืนยันแล้ว (มี USDT) — รอแอดมินปิดงาน / Mark Completed
+    status: DEFAULT_TRANSACTION_STATUS,
+    admins: { name: admin.name },
+    created_at: nowIso(),
+  });
+
+  // ธนาคาร +1THB ใน Postgres transaction เดียวกับแถวธุรกรรม (RPC ข้ามาถ้าไม่มีบัญชี)
+  const { id } = await rpcInsert(row, input.thb, null);
+  notifyIncome({ adminName: admin.name, usdt: input.usdt, thb: input.thb }).catch(
+    () => undefined,
+  );
+  return { transactionId: id, adminName: admin.name, buyRate, sellRate: input.sellRate, profitThb };
+}
+
+export async function recordIncoming(input: {
+  adminTelegramId: number;
+  chatId: number;
+  thb: number;
+  sellRate: number;
+  marketRate: number;
+  roomName?: string | null;
+  ledgerRef: string;
+  ocrConfidence?: number | null;
+  slipImageUrl?: string | null;
+  receiver?: { name?: string | null; bank?: string | null; last4?: string | null } | null;
+  bankAccountId?: string | null;
+}): Promise<{ transactionId: string; adminName: string; usdtOwed: number; profitThb: number }> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const usdtOwed = input.sellRate > 0 ? input.thb / input.sellRate : 0;
+  const profitThb = input.thb - usdtOwed * input.marketRate;
+  const bankAccountId = input.bankAccountId ?? (await getDefaultBankAccountId());
+
+  const row = clean({
+    ...zeroMoneyFields(),
+    admin_id: admin.id,
+    bank_account_id: bankAccountId,
+    type: 'THB_DEPOSIT',
+    thb_amount: input.thb,
+    usdt_amount: usdtOwed,
+    sell_rate: input.sellRate,
+    cost_per_unit: input.marketRate,
+    sell_value_thb: input.thb,
+    net_profit_thb: profitThb,
+    profit_percent: input.thb > 0 ? (profitThb / input.thb) * 100 : 0,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+    chat_id: input.chatId,
+    buy_rate: input.sellRate,
+    room_name: input.roomName ?? null,
+    ocr_confidence: input.ocrConfidence ?? null,
+    receiver_name: input.receiver?.name ?? null,
+    receiver_bank: input.receiver?.bank ?? null,
+    receiver_last4: input.receiver?.last4 ?? null,
+    ledger_ref: input.ledgerRef,
+    // หลัง OCR สลิป THB — ขั้นแรกของ customer status (patch-v8)
+    status: 'ocr_success',
+    admins: { name: admin.name },
+    created_at: nowIso(),
+  });
+
+  // fail-closed: ยอดธนาคารปรับใน Postgres transaction เดียวกับแถวธุรกรรม (patch-v10)
+  const { id } = await rpcInsert(row, input.thb, null);
+  notifyIncome({ adminName: admin.name, usdt: usdtOwed, thb: input.thb }).catch(
+    () => undefined,
+  );
+  return { transactionId: id, adminName: admin.name, usdtOwed, profitThb };
+}
+
+export async function recordOutgoing(input: {
+  adminTelegramId: number;
+  chatId: number;
+  usdt: number;
+  ledgerRef: string;
+  slipImageUrl?: string | null;
+  usdtNetwork?: string | null;
+  usdtTxid?: string | null;
+}): Promise<{ transactionId: string; adminName: string }> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const row = clean({
+    ...zeroMoneyFields(),
+    admin_id: admin.id,
+    type: 'USDT_SEND',
+    usdt_amount: input.usdt,
+    slip_image_url: input.slipImageUrl ?? '',
+    note: input.ledgerRef,
+    chat_id: input.chatId,
+    ledger_ref: input.ledgerRef,
+    usdt_network: input.usdtNetwork ?? null,
+    usdt_txid: input.usdtTxid ?? null,
+    usdt_image_url: input.slipImageUrl ?? null,
+    status: 'waiting_admin',
+    admins: { name: admin.name },
+    created_at: nowIso(),
+  });
+
+  const { id } = await rpcInsert(row, null, null);
+  notifyOutflow({ adminName: admin.name, usdt: input.usdt }).catch(() => undefined);
+  return { transactionId: id, adminName: admin.name };
+}
+
+export interface RecentPair {
+  time: string;
+  thb: number;
+  usdt: number;
+  gapMin: number | null;
+}
+export async function getRecentPairs(
+  chatId: number,
+  sinceIso?: string | null,
+  limit = 5,
+): Promise<RecentPair[]> {
+  let query = db()
+    .from('transactions')
+    .select('*')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true });
+  if (sinceIso) query = query.gte('created_at', sinceIso);
+  const { data, error } = await query;
+  checked(error);
+  const rows = rowsFrom(data);
+
+  const sends = rows.filter((r) => r.type === 'USDT_SEND');
+  const usedSend = new Set<number>();
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Bangkok',
+    });
+
+  const pairs: RecentPair[] = [];
+  for (const inRow of rows.filter((r) => r.type === 'THB_DEPOSIT')) {
+    const inTime = new Date(inRow.created_at).getTime();
+    const idx = sends.findIndex(
+      (s, i) => !usedSend.has(i) && new Date(s.created_at).getTime() >= inTime,
+    );
+    if (idx >= 0) {
+      usedSend.add(idx);
+      const sendTime = new Date(sends[idx].created_at).getTime();
+      pairs.push({
+        time: fmt(inRow.created_at),
+        thb: Number(inRow.thb_amount || 0),
+        usdt: Number(sends[idx].usdt_amount || 0),
+        gapMin: Math.max(0, Math.round((sendTime - inTime) / 60000)),
+      });
+    } else {
+      pairs.push({
+        time: fmt(inRow.created_at),
+        thb: Number(inRow.thb_amount || 0),
+        usdt: Number(inRow.usdt_amount || 0),
+        gapMin: null,
+      });
+    }
+  }
+  return pairs.slice(-limit).reverse();
+}
+
+export async function exportRoomCsv(
+  chatId: number,
+  sinceIso?: string | null,
+): Promise<{ csv: string; rows: number }> {
+  let query = db()
+    .from('transactions')
+    .select('*')
+    .eq('type', 'THB_DEPOSIT')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(5000);
+  if (sinceIso) query = query.gte('created_at', sinceIso);
+  const { data, error } = await query;
+  checked(error);
+  const rows = rowsFrom(data);
+
+  const cols = [
+    'ledger_ref',
+    'created_at',
+    'staff',
+    'room_name',
+    'thb_amount',
+    'usdt_amount',
+    'buy_rate',
+    'sell_rate',
+    'net_profit_thb',
+    'receiver_name',
+    'receiver_bank',
+    'receiver_last4',
+    'usdt_network',
+    'usdt_txid',
+    'ocr_confidence',
+  ];
+  const cell = (v: any) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = rows.map((r) =>
+    cols.map((c) => (c === 'staff' ? cell(r.admins?.name) : cell(r[c]))).join(','),
+  );
+  return { csv: [cols.join(','), ...lines].join('\n'), rows: rows.length };
+}
+
+export async function resetRoom(chatId: number): Promise<number> {
+  const { count, error } = await db()
+    .from('transactions')
+    .delete({ count: 'exact' })
+    .eq('chat_id', chatId);
+  checked(error);
+  return Number(count ?? 0);
+}
+
+export interface RoomStat {
+  chatId: number | null;
+  roomName: string | null;
+  txCount: number;
+  totalThb: number;
+  totalUsdt: number;
+  profitThb: number;
+}
+export async function getRoomLeaderboard(sinceIso?: string | null): Promise<RoomStat[]> {
+  let query = db().from('transactions').select('*').eq('type', 'THB_DEPOSIT');
+  if (sinceIso) query = query.gte('created_at', sinceIso);
+  const { data, error } = await query;
+  checked(error);
+  const rows = rowsFrom(data);
+
+  const byRoom = new Map<string, RoomStat>();
+  for (const r of rows) {
+    const key = String(r.chat_id ?? 'unknown');
+    const cur = byRoom.get(key) ?? {
+      chatId: r.chat_id ?? null,
+      roomName: r.room_name ?? null,
+      txCount: 0,
+      totalThb: 0,
+      totalUsdt: 0,
+      profitThb: 0,
+    };
+    cur.txCount += 1;
+    cur.totalThb += Number(r.thb_amount || 0);
+    cur.totalUsdt += Number(r.usdt_amount || 0);
+    cur.profitThb += Number(r.net_profit_thb || 0);
+    if (!cur.roomName && r.room_name) cur.roomName = r.room_name;
+    byRoom.set(key, cur);
+  }
+  return [...byRoom.values()].sort((a, b) => b.profitThb - a.profitThb);
+}
+
+export interface StaffStat {
+  name: string;
+  count: number;
+  totalThb: number;
+  profitThb: number;
+}
+export async function getStaffLeaderboard(
+  sinceIso?: string | null,
+  chatId?: number | null,
+): Promise<StaffStat[]> {
+  let query = db().from('transactions').select('*').eq('type', 'THB_DEPOSIT');
+  if (chatId != null) query = query.eq('chat_id', chatId);
+  if (sinceIso) query = query.gte('created_at', sinceIso);
+  const { data, error } = await query;
+  checked(error);
+  const rows = rowsFrom(data);
+
+  const map = new Map<string, StaffStat>();
+  for (const r of rows) {
+    const name = r.admins?.name ?? '-';
+    const cur = map.get(name) ?? { name, count: 0, totalThb: 0, profitThb: 0 };
+    cur.count += 1;
+    cur.totalThb += Number(r.thb_amount || 0);
+    cur.profitThb += Number(r.net_profit_thb || 0);
+    map.set(name, cur);
+  }
+  return [...map.values()].sort((a, b) => b.profitThb - a.profitThb);
+}
+
+export async function getRoomDaySummary(
+  chatId: number,
+  sinceIso?: string | null,
+): Promise<{ ledger: Awaited<ReturnType<typeof getTodayLedger>>; staff: StaffStat[] }> {
+  const [ledger, staff] = await Promise.all([
+    getTodayLedger(sinceIso, chatId),
+    getStaffLeaderboard(sinceIso, chatId),
+  ]);
+  return { ledger, staff };
+}
+
+export interface RecordSendInput {
+  adminTelegramId: number;
+  usdtAmount: number;
+  note?: string;
+  slipImageUrl?: string;
+}
+export interface SendResult {
+  transactionId: string;
+  admin: { id: string; name: string; holdingUsdt: number };
+}
+
+export async function recordUsdtSend(input: RecordSendInput): Promise<SendResult> {
+  const admin = await getAdminByTelegramId(input.adminTelegramId);
+  if (!admin) throw new AdminNotFoundError();
+
+  const row = clean({
+    ...zeroMoneyFields(),
+    admin_id: admin.id,
+    type: 'USDT_SEND',
+    usdt_amount: input.usdtAmount,
+    note: input.note ?? '',
+    slip_image_url: input.slipImageUrl ?? '',
+    status: 'waiting_admin',
+    admins: { name: admin.name },
+    created_at: nowIso(),
+  });
+
+  // หักเหรียญตกค้างแอดมินใน Postgres transaction เดียวกับแถวธุรกรรม (fail พร้อมกัน)
+  const { id, holding } = await rpcInsert(row, null, -Math.abs(input.usdtAmount));
+  notifyOutflow({ adminName: admin.name, usdt: input.usdtAmount }).catch(() => undefined);
+
+  return {
+    transactionId: id,
+    admin: { id: admin.id, name: admin.name, holdingUsdt: holding },
+  };
+}
