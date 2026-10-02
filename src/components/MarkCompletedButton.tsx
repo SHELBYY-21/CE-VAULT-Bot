@@ -23,6 +23,10 @@ export default function MarkCompletedButton({ id, currentStatus }: MarkCompleted
     setErr(null);
     try {
       const res = await fetch(`/api/transactions/${id}/complete`, { method: 'POST' });
+      if (res.status === 401 || res.status === 503) {
+        // Ledger writes still require a trusted API key; the open dashboard is view-only.
+        throw new Error('ต้องยืนยันสถานะผ่านบอท Telegram หรือระบบที่มี API key');
+      }
       if (!res.ok) throw new Error(await res.text());
       router.refresh();
     } catch (e) {

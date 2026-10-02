@@ -30,17 +30,15 @@ test.describe('Telegram Bot - Webhook Security Boundary', () => {
   // no always-green string assertions belong in this E2E boundary suite.
 });
 
-test.describe('Dashboard - Anonymous Access Boundary', () => {
-  test('redirects unauthenticated visitors to login', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page).toHaveURL(/\/login$/);
+test.describe('Dashboard - Open View, Protected Writes', () => {
+  test('opens the dashboard without a login', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page).toHaveTitle(/CE Vault/i);
   });
 
-  test('does not return financial ledger data to anonymous requests', async ({ page }) => {
-    const response = await page.request.get('/api/dashboard/data');
-    expect(response.status()).toBe(401);
-    const body = await response.json();
-    expect(body.ok).toBe(false);
+  test('does not let anonymous requests mark a transaction completed', async ({ page, baseURL }) => {
+    const response = await page.request.post('/api/transactions/1/complete', { headers: { origin: baseURL ?? '' } });
+    expect([401, 503]).toContain(response.status());
   });
 });

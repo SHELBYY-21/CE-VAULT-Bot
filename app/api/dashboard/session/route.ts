@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  checkDashboardPassphrase, dashboardAuthConfigured, DASHBOARD_COOKIE,
+  checkDashboardPassphrase, dashboardAuthConfigured, dashboardAuthMissing, DASHBOARD_COOKIE,
   DASHBOARD_TTL_SECONDS, issueDashboardSession, validDashboardSession,
 } from '@/lib/dashboardSession';
 
@@ -25,6 +25,7 @@ function sameOrigin(request: NextRequest): boolean {
 export async function GET(request: NextRequest) {
   return response({
     configured: dashboardAuthConfigured(),
+    missing: dashboardAuthMissing(),
     authenticated: validDashboardSession(request.cookies.get(DASHBOARD_COOKIE)?.value),
   });
 }

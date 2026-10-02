@@ -1,16 +1,12 @@
 // GET /api/dashboard/data — bootstrap สำหรับแดชบอร์ด (Admin SDK, ไม่พึ่ง client rules)
-import { NextRequest, NextResponse } from 'next/server';
-import { DASHBOARD_COOKIE, validDashboardSession } from '@/lib/dashboardSession';
+import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  // Never expose transaction/admin records to an unauthenticated browser.
-  if (!validDashboardSession(request.cookies.get(DASHBOARD_COOKIE)?.value)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
-  }
+// Open read (owner decision): the dashboard has no passphrase/session login.
+export async function GET() {
   try {
     const [txRes, adminRes, rateRes] = await Promise.all([
       createSupabaseAdminClient()
