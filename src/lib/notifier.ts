@@ -3,7 +3,7 @@
 // โทน: กระชับ มั่นใจ เป็นระบบแต่เป็นมิตร ใช้อีโมจิเล็กน้อย
 // ใช้ bot token เดียวกับ CE Vault (คนละ chat)
 // ============================================================
-import { adminDb } from './firebaseAdmin';
+import { createSupabaseAdminClient } from './supabase/admin';
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const CHAT_ID = process.env.NOTIFY_CHAT_ID || ''; // เว้นว่าง = ปิดแจ้งเตือน
@@ -34,8 +34,11 @@ async function post(text: string): Promise<void> {
 
 /** ยอดรวม holding USDT ปัจจุบันของทุกแอดมิน (ใช้เป็น "ยอดบัญชีรวม") */
 async function totalHoldingUsdt(): Promise<number> {
-  const snap = await adminDb.collection('admins').get();
-  return snap.docs.reduce((s, d) => s + Number(d.data().holding_usdt || 0), 0);
+  const { data, error } = await createSupabaseAdminClient()
+    .from('admins')
+    .select('holding_usdt');
+  if (error) throw error;
+  return (data ?? []).reduce((s, d) => s + Number((d as any).holding_usdt || 0), 0);
 }
 
 // ─── รายรับเข้า (ฝาก THB → ได้ USDT) ───
@@ -90,11 +93,12 @@ export async function notifyDelete(input: { adminName: string }): Promise<void> 
 export async function notifyDailySummary(): Promise<void> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
-  const snap = await adminDb
-    .collection('transactions')
-    .where('created_at', '>=', startOfDay.toISOString())
-    .get();
-  const rows = snap.docs.map((d) => d.data());
+  const { data, error } = await createSupabaseAdminClient()
+    .from('transactions')
+    .select('type,thb_amount,usdt_amount,net_profit_thb')
+    .gte('created_at', startOfDay.toISOString());
+  if (error) throw error;
+  const rows = (data ?? []) as any[];
   const income = rows
     .filter((r: any) => r.type === 'THB_DEPOSIT')
     .reduce((s, r: any) => s + Number(r.thb_amount || 0), 0);
