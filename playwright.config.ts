@@ -22,7 +22,12 @@ export default defineConfig({
     ? undefined
     : {
         command: 'npm run dev -- --hostname 127.0.0.1',
-        env: { TELEGRAM_WEBHOOK_SECRET: 'ce-e2e-local-test-secret' },
+        env: {
+          TELEGRAM_WEBHOOK_SECRET: 'ce-e2e-local-test-secret',
+          // Match production posture: with an API key configured, anonymous
+          // ledger writes must be rejected with 401 instead of falling through.
+          API_SECRET: 'ce-e2e-local-test-secret-api-key',
+        },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
