@@ -30,6 +30,7 @@ export async function GET() {
       detail,
       latencyMs: latency,
       version: '4.0-supabase',
+      commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? 'unknown',
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
     },
