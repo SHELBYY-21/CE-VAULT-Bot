@@ -21,6 +21,13 @@ function passphrase(): string | null {
 export function dashboardAuthConfigured(): boolean {
   return secret() !== null && passphrase() !== null;
 }
+/** Names (never values) of server settings that are missing or too short. */
+export function dashboardAuthMissing(): string[] {
+  const missing: string[] = [];
+  if (passphrase() === null) missing.push(`DASHBOARD_ACCESS_PASSPHRASE (>= ${MIN_PASSPHRASE} chars)`);
+  if (secret() === null) missing.push(`DASHBOARD_SESSION_SECRET (>= ${MIN_SECRET} chars)`);
+  return missing;
+}
 export function checkDashboardPassphrase(input: unknown): boolean {
   const expected = passphrase();
   if (!expected || typeof input !== 'string' || input.length > 512) return false;

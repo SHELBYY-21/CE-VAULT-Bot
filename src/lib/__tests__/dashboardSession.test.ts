@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  checkDashboardPassphrase, dashboardAuthConfigured, issueDashboardSession,
+  checkDashboardPassphrase, dashboardAuthConfigured, dashboardAuthMissing, issueDashboardSession,
   DASHBOARD_TTL_SECONDS, validDashboardSession,
 } from '../dashboardSession';
 
@@ -17,6 +17,15 @@ afterEach(() => {
   else process.env.DASHBOARD_SESSION_SECRET = oldSecret;
 });
 describe('CE Vault signed Dashboard sessions', () => {
+  it('lists missing or weak setting names without exposing values', () => {
+    expect(dashboardAuthMissing()).toEqual([]);
+    process.env.DASHBOARD_SESSION_SECRET = 'x';
+    delete process.env.DASHBOARD_ACCESS_PASSPHRASE;
+    const missing = dashboardAuthMissing();
+    expect(missing).toHaveLength(2);
+    expect(missing.join(' ')).toContain('DASHBOARD_ACCESS_PASSPHRASE');
+    expect(missing.join(' ')).toContain('DASHBOARD_SESSION_SECRET');
+  });
   it('fails closed when either required server-only value is missing', () => {
     delete process.env.DASHBOARD_SESSION_SECRET;
     expect(dashboardAuthConfigured()).toBe(false);

@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 export default function LoginPage() {
   const [passphrase, setPassphrase] = useState('');
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [missing, setMissing] = useState<string[]>([]);
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
     fetch('/api/dashboard/session', { cache: 'no-store' })
       .then((r) => r.json()).then((data) => {
         setConfigured(Boolean(data.configured));
+        if (Array.isArray(data.missing)) setMissing(data.missing.filter((x: unknown) => typeof x === 'string'));
         if (data.authenticated) window.location.replace('/dashboard');
       }).catch(() => setConfigured(false));
   }, []);
@@ -39,7 +41,8 @@ export default function LoginPage() {
       <h1 className="mt-3 text-3xl font-semibold">CE VAULT</h1>
       <p className="mt-2 text-sm text-[#91AAB8]">ข้อมูลธุรกรรมต้องเข้าสู่ระบบก่อนใช้งาน</p>
       {configured === false ? <p role="alert" className="mt-5 rounded-lg border border-amber-700/40 bg-amber-950/30 p-3 text-sm text-amber-200">
-        Dashboard ยังไม่เปิดรับ Session — ตั้งค่า Server-only DASHBOARD_ACCESS_PASSPHRASE และ DASHBOARD_SESSION_SECRET ใน Render
+        Dashboard ยังไม่เปิดรับ Session — ตั้งค่า Server-only Environment Variables บน Hosting แล้ว Deploy ใหม่:
+        {missing.length > 0 && <span className="mt-2 block font-mono text-xs">{missing.join(' · ')}</span>}
       </p> : <form onSubmit={login} className="mt-6 space-y-4">
         <label htmlFor="vault-access" className="block text-xs font-semibold uppercase tracking-wider text-[#91AAB8]">Access Passphrase</label>
         <input id="vault-access" autoComplete="current-password" type="password"
