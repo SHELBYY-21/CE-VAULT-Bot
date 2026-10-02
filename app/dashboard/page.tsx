@@ -51,14 +51,6 @@ export default function DashboardPage() {
   async function loadDashboard() {
     try {
       const res = await fetch('/api/dashboard/data', { cache: 'no-store' });
-      if (res.status === 401) {
-        // Expired/rotated session: do not leave previously fetched financial data visible.
-        setTransactions([]);
-        setAdmins([]);
-        setRate(null);
-        window.location.replace('/login');
-        return;
-      }
       const json = await res.json();
       if (json?.ok) {
         setTransactions((json.transactions as Transaction[]) ?? []);
