@@ -1,8 +1,12 @@
 /* CE VAULT Empire Desk · status-only browser bridge (no credentials or financial data).
-   Embed only in the owned CE Empire Desk Site. Missing target means no-op. */
+   Embed only in the owned CE Empire Desk Site. Missing target means no-op.
+   Backend endpoint: set window.CE_DESK_STATUS_URL to the CE VAULT public origin
+   (Railway, e.g. https://<service>-xxxx.up.railway.app/api/empire-desk/status)
+   before loading this script; same-origin /api/empire-desk/status is the default. */
 (() => {
   'use strict';
-  const endpoint = 'https://ce-vault-menu-first.onrender.com/api/empire-desk/status';
+  const configured = typeof window.CE_DESK_STATUS_URL === 'string' && window.CE_DESK_STATUS_URL.trim();
+  const endpoint = configured ? window.CE_DESK_STATUS_URL.trim() : '/api/empire-desk/status';
   const init = () => {
     const box = document.querySelector('[data-ce-vault-monitor]');
     if (!box) return;
@@ -22,9 +26,9 @@
           return;
         }
         if (response.ok && value.online === true && value.firestore === true) {
-          update('connected', 'Render ออนไลน์ · Firebase เชื่อมต่อแล้ว');
+          update('connected', 'Backend ออนไลน์ · Firebase เชื่อมต่อแล้ว');
         } else if (value.online === true) {
-          update('degraded', 'Render ออนไลน์ · Firebase ยังไม่ผ่านการตรวจสอบ');
+          update('degraded', 'Backend ออนไลน์ · Firebase ยังไม่ผ่านการตรวจสอบ');
         } else {
           update('unverified', 'ยังยืนยันการเชื่อมต่อ Backend ไม่ได้');
         }
