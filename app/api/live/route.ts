@@ -7,7 +7,12 @@ export const dynamic = 'force-dynamic';
 
 export function GET() {
   return NextResponse.json(
-    { status: 'alive', service: 'ce-vault-web', timestamp: new Date().toISOString() },
+    {
+      status: 'alive',
+      service: 'ce-vault-web',
+      commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? null,
+      timestamp: new Date().toISOString(),
+    },
     { status: 200, headers: { 'Cache-Control': 'no-store' } },
   );
 }

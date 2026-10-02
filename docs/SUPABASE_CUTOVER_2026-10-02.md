@@ -17,6 +17,7 @@
 - ลบไฟล์ Firebase ที่ไม่ใช้แล้ว: firebase.json, .firebaserc, firestore.indexes.json, firestore.rules, storage.rules, src/lib/firebaseClient.ts,
   scripts/diag.mjs, scripts/setup-db.mjs, scripts/verify-db.mjs, scripts/cleanup-test.mjs, docs/FIRESTORE_INDEXES.md
 - npm scripts ที่อ้าง Firebase ถูกลบ (firebase/firebase-admin ยังอยู่ใน package.json ชั่วคราว — ถอดพร้อม lockfile update ใน PR ถัดไป เพื่อไม่ให้ `npm ci` พัง)
+- **Update (PR default-supabase)**: `DATABASE_PROVIDER` ไม่จำเป็นอีกต่อไป — unset หรือ `supabase` = ใช้ Supabase, `firebase` ยังถูกเคารพสำหรับ legacy, ค่าอื่น fail closed (`src/lib/databaseProvider.ts`)
 
 ## ขั้นตอนหลัง merge (ต้องทำตามลำดับ)
 
@@ -25,13 +26,15 @@
    - ขยาย precision `usdt_amount`/`expected_usdt`/`fee_usdt`/`holding_usdt` → numeric(24,6)
    - สร้าง RPC atomic 3 ตัว
    - revoke EXECUTE ของทุก function ใน public schema จาก public/anon/authenticated (เหลือ service_role เท่านั้น)
-2. **ตั้ง env บน Railway** (server-side): `DATABASE_PROVIDER=supabase` — ตัวเดียวที่ต้องเพิ่ม (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY` มีอยู่แล้ว) — merge เข้า main แล้ว Railway จะ redeploy อัตโนมัติ
+   - **สถานะ: ทำแล้ว (2026-10-02)** — migration `patch_v10_operational_cutover` ถูก apply และตรวจสอบด้วย SQL แล้ว
+2. **ตั้ง env บน Railway ไม่จำเป็นอีกต่อไป** — `DATABASE_PROVIDER` default เป็น `supabase` ในตัวโค้ดเองแล้ว (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY` มีอยู่แล้ว) — merge เข้า main แล้ว Railway จะ redeploy อัตโนมัติ; ถ้าเคยตั้ง `DATABASE_PROVIDER` เป็นค่าอื่นไว้ ให้ลบหรือเปลี่ยนเป็น `supabase` (ค่าอื่นนอกเหนือจาก supabase/firebase จะ fail closed)
 3. env อื่นที่ต้องมีอยู่แล้ว: `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `API_SECRET`, `APP_URL`, `CE_AUTO_WEBHOOK=1`, dashboard passphrase/session secret, `NOTIFY_CHAT_ID`
 
 ## ตรวจสอบหลัง deploy
 
-- `GET /api/health` → `status:'ok'`, `db:'ok'`, `database:'supabase'`, version `4.0-supabase`
+- `GET /api/health` → `status:'ok'`, `db:'ok'`, `database:'supabase'`, version `4.0-supabase` และ `commit` = 12 ตัวแรกของ commit SHA ที่ deploy จริง (เทียบกับ main เพื่อยืนยันว่า deploy ไม่ตกรุ่น)
 - `GET /api/health/supabase` → ok
+- `GET /api/live` → มี field `commit` บอก commit SHA ของ deploy ปัจจุบัน
 - ในกลุ่ม Telegram ของระบบจริง: `/ping` บอทตอบ, `/ledger` เลดเจอร์วันนี้, `/ce` สรุป, `/today` การ์ดยอด
 - ดีลทดสอบจริง 1 รายการ: ฝาก → OCR → ยืนยัน → Mark Completed → แก้ไขยอด → ลบ (เช็ค holding กลับมาถูกต้องทุกขั้น)
 - Dashboard: หน้าแรก + หน้ารายละเอียดธุรกรรมแสดงข้อมูลตรงกับ Telegram
