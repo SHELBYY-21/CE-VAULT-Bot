@@ -1,12 +1,14 @@
 import 'server-only';
 import { createSupabaseAdminClient } from './admin';
 
+/** Read-only preflight. Never return credentials or financial row contents. */
 export async function checkSupabaseReadiness() {
-  const db = createSupabaseAdminClient();
+  const client = createSupabaseAdminClient();
+  const tables = ['admins', 'transactions', 'bank_accounts', 'receivers', 'rates'] as const;
   const counts: Record<string, number> = {};
-  for (const table of ['admins', 'transactions', 'bank_accounts', 'rates', 'bot_sessions', 'chat_settings']) {
-    const { count, error } = await db.from(table).select('*', { count: 'exact', head: true });
-    if (error || count === null) throw new Error(`Supabase table unavailable: ${table} (${error?.code ?? 'unknown'})`);
+  for (const table of tables) {
+    const { count, error } = await client.from(table).select('id', { count: 'exact', head: true });
+    if (error || count === null) throw new Error(`Supabase readiness failed for ${table}: ${error?.code ?? 'unknown'}`);
     counts[table] = count;
   }
   return { ready: true, counts };
