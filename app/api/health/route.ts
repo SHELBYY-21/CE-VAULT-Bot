@@ -20,6 +20,8 @@ export async function GET() {
 
   const latency = Date.now() - startedAt;
   const isHealthy = db === 'ok' && latency < 5000;
+  const commit =
+    process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? process.env.COMMIT_REF?.slice(0, 12) ?? 'unknown';
 
   return NextResponse.json(
     {
@@ -30,7 +32,7 @@ export async function GET() {
       detail,
       latencyMs: latency,
       version: '4.0-supabase',
-      commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? 'unknown',
+      commit,
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
     },
