@@ -30,11 +30,23 @@
 2. **ตั้ง env บน Railway ไม่จำเป็นอีกต่อไป** — `DATABASE_PROVIDER` default เป็น `supabase` ในตัวโค้ดเองแล้ว (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY` มีอยู่แล้ว) — merge เข้า main แล้ว Railway จะ redeploy อัตโนมัติ; ถ้าเคยตั้ง `DATABASE_PROVIDER` เป็นค่าอื่นไว้ ให้ลบหรือเปลี่ยนเป็น `supabase` (ค่าอื่นนอกเหนือจาก supabase/firebase จะ fail closed)
 3. env อื่นที่ต้องมีอยู่แล้ว: `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `API_SECRET`, `APP_URL`, `CE_AUTO_WEBHOOK=1`, dashboard passphrase/session secret, `NOTIFY_CHAT_ID`
 
+## การ hosting ปัจจุบัน: Netlify (ย้ายจาก Railway วันที่ 2026-10-02)
+
+- **Production site**: `zesty-semolina-b169fc` → `https://zesty-semolina-b169fc.netlify.app` (ผูกกับ GitHub repo นี้, branch `main`, **auto-deploy ทุก push**)
+- **Railway** เลิกใช้: build เก่าบน Railway ยังค้างเป็นสมัย Firestore (auto-deploy ไม่ทำงาน) ไม่ต้องแตะอีก — ปิด/ลบ service ได้เมื่อ Netlify ผ่าน smoke test ครบ
+- **สาเหตุที่ย้าย**: Railway ไม่มี deployment ใหม่ขึ้นเลยหลัง merge สอง PR สำคัญ ทำให้ production ติดค้างบนโค้ด Firestore ที่พัง ส่วน Netlify deploy เองทุก push
+- **Build mode บน Netlify**: PR #85 ให้ใช้ standard Next build (ข้าม `output: standalone` เมื่อ `NETLIFY=true`)
+- **Deploy commit**: `/api/live` + `/api/health` มี field `commit` (Railway: `RAILWAY_GIT_COMMIT_SHA`, Netlify: `COMMIT_REF` ที่ build-time — หมายเหตุ: ค่า `COMMIT_REF` อาจไม่พร้อมใช้ใน runtime ของ functions)
+- **env บน Netlify** (Site configuration → Environment variables): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (service_role), `BOT_TOKEN`, `API_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `APP_URL`, `CE_AUTO_WEBHOOK=1`, `NOTIFY_CHAT_ID`, `ADMIN_TELEGRAM_IDS`, `SESSION_SECRET`/`DASHBOARD_SESSION_SECRET` — การแก้ env ต้อง deploy ใหม่ (Deploys → Trigger deploy → Deploy site หรือ push commit) ถึงจะมีผล
+- **ลงทะเบียน webhook**: POST `/api/telegram/set-webhook` (ใช้ `API_SECRET` ผ่าน requireApiKey) — หรือเปิด `CE_AUTO_WEBHOOK=1` บน runtime ที่มี startup script (Netlify ไม่มี จึงต้องเรียก route นี้เองครั้งเดียว)
+- **day-cut cron**: ไม่มี scheduler ในตัวบน Netlify — ต้องตั้ง external trigger (เช่น n8n cron → POST `/api/cron/day-cut`) ด้วย `API_SECRET`
+- **Empire Desk (chatgpt.site)**: อัปเดต `window.CE_DESK_STATUS_URL` ให้ชี้ `https://zesty-semolina-b169fc.netlify.app/api/empire-desk/status`
+
 ## ตรวจสอบหลัง deploy
 
-- `GET /api/health` → `status:'ok'`, `db:'ok'`, `database:'supabase'`, version `4.0-supabase` และ `commit` = 12 ตัวแรกของ commit SHA ที่ deploy จริง (เทียบกับ main เพื่อยืนยันว่า deploy ไม่ตกรุ่น)
+- `GET /api/health` → `status:'ok'`, `db:'ok'`, `database:'supabase'`, version `4.0-supabase`
 - `GET /api/health/supabase` → ok
-- `GET /api/live` → มี field `commit` บอก commit SHA ของ deploy ปัจจุบัน
+- `GET /api/live` → 200 เสมอ (liveness แยกจาก DB)
 - ในกลุ่ม Telegram ของระบบจริง: `/ping` บอทตอบ, `/ledger` เลดเจอร์วันนี้, `/ce` สรุป, `/today` การ์ดยอด
 - ดีลทดสอบจริง 1 รายการ: ฝาก → OCR → ยืนยัน → Mark Completed → แก้ไขยอด → ลบ (เช็ค holding กลับมาถูกต้องทุกขั้น)
 - Dashboard: หน้าแรก + หน้ารายละเอียดธุรกรรมแสดงข้อมูลตรงกับ Telegram
