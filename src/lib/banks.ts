@@ -2,7 +2,10 @@
 // บัญชีรับเงินที่ปักหมุด "วันนี้" (สูงสุด 3) + จับคู่สลิป Vision OCR
 // /pin SCB|kbank|ktb|bbl|tmn <เลขบัญชี>
 // ============================================================
-import { adminDb } from './firebaseAdmin';
+import { createSupabaseAdminClient } from './supabase/admin';
+const db = () => createSupabaseAdminClient();
+function checked(error: {message:string}|null){if(error)throw new Error(error.message);}
+
 
 export const MAX_PINNED_TODAY = 3;
 
@@ -173,41 +176,20 @@ function mapDoc(id: string, data: Record<string, unknown>): BankAccount {
 }
 
 export async function listBankAccounts(): Promise<BankAccount[]> {
-  const snap = await adminDb.collection('bank_accounts').orderBy('created_at', 'asc').get();
-  return snap.docs.map((d) => mapDoc(d.id, d.data() as Record<string, unknown>));
+ const {data,error}=await db().from('bank_accounts').select('*').order('created_at',{ascending:true});checked(error);
+ return (data??[]).map(r=>mapDoc(r.id,r));
 }
-
-/** บัญชีที่ปักหมุดวันนี้ทั้งหมด (สูงสุด 3) */
-export async function listPinnedBanksForToday(today = bangkokDate()): Promise<BankAccount[]> {
-  try {
-    const snap = await adminDb
-      .collection('bank_accounts')
-      .where('pinned_for_date', '==', today)
-      .limit(MAX_PINNED_TODAY + 2)
-      .get();
-    if (!snap.empty) {
-      return snap.docs
-        .map((d) => mapDoc(d.id, d.data() as Record<string, unknown>))
-        .slice(0, MAX_PINNED_TODAY);
-    }
-  } catch {
-    /* อาจไม่มี index — สแกนทั้งหมด */
-  }
-  const all = await listBankAccounts();
-  return all.filter((b) => b.pinned_for_date === today).slice(0, MAX_PINNED_TODAY);
+export async function listPinnedBanksForToday(today=bangkokDate()):Promise<BankAccount[]> {
+ const {data,error}=await db().from('bank_accounts').select('*').eq('pinned_for_date',today).order('created_at',{ascending:true}).limit(MAX_PINNED_TODAY);checked(error);
+ return (data??[]).map(r=>mapDoc(r.id,r));
 }
-
-/** ใบแรก (backward compat) */
-export async function getPinnedBankForToday(today = bangkokDate()): Promise<BankAccount | null> {
-  const list = await listPinnedBanksForToday(today);
-  return list[0] ?? null;
+export async function getPinnedBankForToday(today=bangkokDate()):Promise<BankAccount|null>{
+ return (await listPinnedBanksForToday(today))[0]??null;
 }
-
-export async function getBankById(id: string): Promise<BankAccount | null> {
-  const doc = await adminDb.collection('bank_accounts').doc(id).get();
-  return doc.exists ? mapDoc(doc.id, doc.data() as Record<string, unknown>) : null;
+export async function getBankById(id:string):Promise<BankAccount|null>{
+ const {data,error}=await db().from('bank_accounts').select('*').eq('id',id).maybeSingle();checked(error);
+ return data?mapDoc(data.id,data):null;
 }
-
 /** หาบัญชีจากเลขท้าย (+ธนาคารถ้ามี) */
 export async function findBankByLast4(
   last4: string,
@@ -231,35 +213,16 @@ export async function findBankByLast4(
  * - ถ้าบัญชีนี้อยู่ในรายการปักหมุดอยู่แล้ว → อัปเดตวันแล้วคืนค่า (ไม่นับเพิ่ม)
  * - ถ้าครบ 3 แล้วและเป็นบัญชีใหม่ → PinLimitError
  */
-export async function pinBankForToday(bankId: string, today = bangkokDate()): Promise<BankAccount> {
-  const ref = adminDb.collection('bank_accounts').doc(bankId);
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error('ไม่พบบัญชีธนาคาร');
-
-  const pinned = await listPinnedBanksForToday(today);
-  const already = pinned.find((b) => b.id === bankId);
-  if (already) {
-    await ref.update({ pinned_for_date: today, updated_at: new Date().toISOString() });
-    const next = await ref.get();
-    return mapDoc(next.id, next.data() as Record<string, unknown>);
-  }
-
-  if (pinned.length >= MAX_PINNED_TODAY) {
-    throw new PinLimitError(pinned);
-  }
-
-  await ref.update({ pinned_for_date: today, updated_at: new Date().toISOString() });
-  const next = await ref.get();
-  return mapDoc(next.id, next.data() as Record<string, unknown>);
+export async function pinBankForToday(bankId:string,today=bangkokDate()):Promise<BankAccount>{
+ const bank=await getBankById(bankId);if(!bank)throw new Error('ไม่พบบัญชีธนาคาร');
+ const pinned=await listPinnedBanksForToday(today);
+ if(!pinned.some(b=>b.id===bankId)&&pinned.length>=MAX_PINNED_TODAY)throw new PinLimitError(pinned);
+ const {error}=await db().from('bank_accounts').update({pinned_for_date:today,updated_at:new Date().toISOString()}).eq('id',bankId);checked(error);
+ return (await getBankById(bankId))!;
 }
-
-export async function unpinBank(bankId: string): Promise<void> {
-  await adminDb.collection('bank_accounts').doc(bankId).update({
-    pinned_for_date: null,
-    updated_at: new Date().toISOString(),
-  });
+export async function unpinBank(bankId:string):Promise<void>{
+ const {error}=await db().from('bank_accounts').update({pinned_for_date:null,updated_at:new Date().toISOString()}).eq('id',bankId);checked(error);
 }
-
 /** ยกเลิกปักหมุดตามเลขท้าย (+ธนาคาร optional) ในรายการวันนี้ */
 export async function unpinPinnedByHint(
   hint: { last4?: string | null; bank?: string | null; index?: number | null },
@@ -287,43 +250,11 @@ export async function unpinPinnedByHint(
 }
 
 /** อัปเดตเลขบัญชี / ธนาคาร แล้วปักหมุดวันนี้ (สร้างใหม่ถ้ายังไม่มี) */
-export async function upsertAndPinBank(input: {
-  bank: string;
-  accountNumber: string;
-  label?: string;
-}): Promise<BankAccount> {
-  const last4 = last4OfAccount(input.accountNumber);
-  if (!last4) throw new Error('เลขบัญชีต้องมีอย่างน้อย 4 ตัว');
-  const bankCode = normalizeBankCode(input.bank) || 'OTHER';
-  const existing = await findBankByLast4(last4, bankCode);
-  const now = new Date().toISOString();
-
-  if (existing) {
-    await adminDb
-      .collection('bank_accounts')
-      .doc(existing.id)
-      .update({
-        bank_name: bankCode,
-        account_number: input.accountNumber.replace(/\s+/g, ''),
-        label: input.label || existing.label || `${bankCode} ••••${last4}`,
-        updated_at: now,
-      });
-    return pinBankForToday(existing.id);
-  }
-
-  const { randomUUID } = await import('crypto');
-  const id = randomUUID();
-  await adminDb
-    .collection('bank_accounts')
-    .doc(id)
-    .set({
-      label: input.label || `${bankCode} ••••${last4}`,
-      bank_name: bankCode,
-      account_number: input.accountNumber.replace(/\s+/g, ''),
-      current_balance: 0,
-      pinned_for_date: null,
-      created_at: now,
-      updated_at: now,
-    });
-  return pinBankForToday(id);
+export async function upsertAndPinBank(input:{bank:string;accountNumber:string;label?:string}):Promise<BankAccount>{
+ const last4=last4OfAccount(input.accountNumber);if(!last4)throw new Error('เลขบัญชีต้องมีอย่างน้อย 4 ตัว');
+ const bankCode=normalizeBankCode(input.bank)||'OTHER';const existing=await findBankByLast4(last4,bankCode);
+ const row={bank_name:bankCode,account_number:input.accountNumber.replace(/\s+/g,''),label:input.label||existing?.label||`${bankCode} ••••${last4}`,updated_at:new Date().toISOString()};
+ if(existing){const {error}=await db().from('bank_accounts').update(row).eq('id',existing.id);checked(error);return pinBankForToday(existing.id);}
+ const {data,error}=await db().from('bank_accounts').insert(row).select('id').single();checked(error);
+ if(!data)throw new Error('Bank insert returned no ID');return pinBankForToday(data.id);
 }
