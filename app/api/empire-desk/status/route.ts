@@ -5,7 +5,7 @@
  * Business/financial data must be served through an authenticated same-origin BFF.
  */
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,10 +24,11 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  let firestore = false;
+  let dbOk = false;
   try {
-    await adminDb.collection('admins').limit(1).get();
-    firestore = true;
+    const { error } = await createSupabaseAdminClient().from('admins').select('id').limit(1);
+    if (error) throw error;
+    dbOk = true;
   } catch {
     // Never publish underlying credential, connection or database errors.
   }
@@ -35,9 +36,12 @@ export async function GET() {
   return NextResponse.json({
     service: 'ce-vault-render',
     online: true,
-    firestore,
+    // legacy compat field (old monitor JS checks firestore === true) — reflects the Supabase probe
+    firestore: dbOk,
+    database: 'supabase',
+    db: dbOk,
     telegramWebhook: 'not_verified',
     financialData: 'requires_authenticated_session',
     checkedAt: new Date().toISOString(),
-  }, { status: firestore ? 200 : 503, headers: PUBLIC_HEADERS });
+  }, { status: dbOk ? 200 : 503, headers: PUBLIC_HEADERS });
 }

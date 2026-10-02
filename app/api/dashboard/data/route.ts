@@ -1,7 +1,7 @@
 // GET /api/dashboard/data — bootstrap สำหรับแดชบอร์ด (Admin SDK, ไม่พึ่ง client rules)
 import { NextRequest, NextResponse } from 'next/server';
 import { DASHBOARD_COOKIE, validDashboardSession } from '@/lib/dashboardSession';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,17 +12,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
   }
   try {
-    const [txSnap, adminSnap, rateSnap] = await Promise.all([
-      adminDb.collection('transactions').orderBy('created_at', 'desc').limit(100).get(),
-      adminDb.collection('admins').orderBy('name', 'asc').get(),
-      adminDb.collection('rates').orderBy('created_at', 'desc').limit(1).get(),
+    const [txRes, adminRes, rateRes] = await Promise.all([
+      createSupabaseAdminClient()
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100),
+      createSupabaseAdminClient().from('admins').select('*').order('name', { ascending: true }),
+      createSupabaseAdminClient()
+        .from('rates')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1),
     ]);
+    if (txRes.error || adminRes.error || rateRes.error) {
+      throw txRes.error || adminRes.error || rateRes.error;
+    }
 
     return NextResponse.json({
       ok: true,
-      transactions: txSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      admins: adminSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      rate: rateSnap.empty ? null : rateSnap.docs[0]!.data(),
+      transactions: (txRes.data ?? []).map((r: any) => ({ ...r, id: String(r.id) })),
+      admins: (adminRes.data ?? []).map((r: any) => ({ ...r, id: String(r.id) })),
+      rate: rateRes.data?.[0] ?? null,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? String(e) }, { status: 500 });

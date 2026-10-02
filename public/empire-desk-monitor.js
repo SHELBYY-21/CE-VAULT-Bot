@@ -25,10 +25,11 @@
           update('unverified', 'ยังยืนยันการเชื่อมต่อ Backend ไม่ได้');
           return;
         }
-        if (response.ok && value.online === true && value.firestore === true) {
-          update('connected', 'Backend ออนไลน์ · Firebase เชื่อมต่อแล้ว');
+        const dbOk = value.db === true || value.firestore === true;
+        if (response.ok && value.online === true && dbOk) {
+          update('connected', 'Backend ออนไลน์ · ฐานข้อมูลเชื่อมต่อแล้ว');
         } else if (value.online === true) {
-          update('degraded', 'Backend ออนไลน์ · Firebase ยังไม่ผ่านการตรวจสอบ');
+          update('degraded', 'Backend ออนไลน์ · ฐานข้อมูลยังไม่ผ่านการตรวจสอบ');
         } else {
           update('unverified', 'ยังยืนยันการเชื่อมต่อ Backend ไม่ได้');
         }

@@ -1,6 +1,6 @@
-// GET /api/health — เช็คว่า API ออนไลน์ + ต่อ Firestore ได้
+// GET /api/health — เช็คว่า API ออนไลน์ + ต่อ Supabase ได้
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
 export const revalidate = 0;
@@ -11,7 +11,8 @@ export async function GET() {
   let detail: string | undefined;
 
   try {
-    await adminDb.collection('admins').limit(1).get();
+    const { error } = await createSupabaseAdminClient().from('admins').select('id').limit(1);
+    if (error) throw error;
   } catch (e: any) {
     db = 'error';
     detail = e?.message ?? String(e);
@@ -24,10 +25,11 @@ export async function GET() {
     {
       status: isHealthy ? 'ok' : 'degraded',
       service: 'ce-vault-bot-api',
+      database: 'supabase',
       db,
       detail,
       latencyMs: latency,
-      version: '3.0-firebase',
+      version: '4.0-supabase',
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
     },

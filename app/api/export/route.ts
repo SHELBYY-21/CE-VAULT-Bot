@@ -2,9 +2,8 @@
 import { NextRequest } from 'next/server';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { DASHBOARD_COOKIE, validDashboardSession } from '@/lib/dashboardSession';
-import type { Query } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebaseAdmin';
-import { exportRoomCsv, isFirestoreIndexError } from '@/lib/transactions';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { exportRoomCsv } from '@/lib/transactions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,33 +62,17 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    let q: Query = adminDb
-      .collection('transactions')
-      .where('type', '==', 'THB_DEPOSIT')
-      .orderBy('created_at', 'desc')
+    let query = createSupabaseAdminClient()
+      .from('transactions')
+      .select('*')
+      .eq('type', 'THB_DEPOSIT')
+      .order('created_at', { ascending: false })
       .limit(5000);
-    if (since) {
-      q = adminDb
-        .collection('transactions')
-        .where('type', '==', 'THB_DEPOSIT')
-        .where('created_at', '>=', since)
-        .orderBy('created_at', 'desc')
-        .limit(5000);
-    }
+    if (since) query = query.gte('created_at', since);
 
-    let data: any[];
-    try {
-      const snap = await q.get();
-      data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch (e) {
-      if (!isFirestoreIndexError(e)) throw e;
-      const snap = await adminDb.collection('transactions').where('type', '==', 'THB_DEPOSIT').get();
-      data = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((r: any) => !since || String(r.created_at || '') >= since)
-        .sort((a: any, b: any) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
-        .slice(0, 5000);
-    }
+    const { data: rowsData, error: rowsError } = await query;
+    if (rowsError) throw rowsError;
+    const data = (rowsData ?? []) as any[];
 
     const header = ['staff', ...COLS].join(',');
     const lines = data.map((r: any) =>
