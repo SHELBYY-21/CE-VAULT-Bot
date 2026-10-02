@@ -2,7 +2,7 @@
 // Netlify Scheduled Function (netlify/functions/day-cut-cron.ts) ยิงตอน 22:00 เวลาไทย (15:00 UTC)
 // ทุกห้อง: โพสต์สรุปวันเก่าเข้าห้อง → ตั้ง day_cut_at = ตอนนี้ (เริ่มวันใหม่อัตโนมัติ)
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { sendMessage } from '@/lib/telegram';
 import { getRoomDaySummary } from '@/lib/transactions';
 import * as UI from '@/lib/botUi';
@@ -20,8 +20,11 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const roomsSnap = await adminDb.collection('chat_settings').get();
-  const rooms = roomsSnap.docs.map((d) => d.data());
+  const { data: roomsData, error: roomsError } = await createSupabaseAdminClient()
+    .from('chat_settings')
+    .select('*');
+  if (roomsError) throw roomsError;
+  const rooms = (roomsData ?? []) as any[];
 
   let posted = 0;
   for (const room of rooms) {
@@ -52,11 +55,14 @@ export async function GET(req: NextRequest) {
     } catch {
       /* skip room */
     }
-    await adminDb
-      .collection('chat_settings')
-      .doc(String(chatId))
-      .set({ day_cut_at: now, updated_at: now }, { merge: true })
-      .catch(() => undefined);
+    await createSupabaseAdminClient()
+      .from('chat_settings')
+      .update({ day_cut_at: now, updated_at: now })
+      .eq('chat_id', chatId)
+      .then(
+        () => undefined,
+        () => undefined,
+      );
   }
 
   return NextResponse.json({ ok: true, rooms: rooms.length, posted, at: now });

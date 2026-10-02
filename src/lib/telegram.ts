@@ -1,7 +1,7 @@
 // ============================================================
 // Telegram Bot API helper (ฝั่ง server, ใช้ fetch — เหมาะกับ webhook/serverless)
 // ============================================================
-import { adminStorage, storageBucketName } from './firebaseAdmin';
+import { createSupabaseAdminClient } from './supabase/admin';
 
 const TOKEN = process.env.BOT_TOKEN || '';
 const API = `https://api.telegram.org/bot${TOKEN}`;
@@ -102,8 +102,8 @@ export async function sendSticker(chatId: number, fileId: string): Promise<void>
   }
 }
 
-/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Firebase Storage → คืน public URL
- *  ถ้า Storage/Billing ยังไม่พร้อม → fallback เป็น Telegram file URL (ชั่วคราว สำหรับ OCR)
+/** ดาวน์โหลดรูปจาก Telegram แล้วอัปโหลดขึ้น Supabase Storage (bucket "slips") → คืน public URL
+ *  ถ้า bucket ยังไม่พร้อม → fallback เป็น Telegram file URL (ชั่วคราว สำหรับ OCR)
  */
 export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const file = await tg<{ file_path: string }>('getFile', { file_id: fileId });
@@ -111,26 +111,25 @@ export async function uploadSlipFromTelegram(fileId: string): Promise<string> {
   const fileRes = await fetch(telegramUrl);
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
-  const path = `slips/${Date.now()}_${fileId}.jpg`;
+  const path = `${Date.now()}_${fileId}.jpg`;
   try {
-    const bucket = adminStorage.bucket(storageBucketName());
-    const f = bucket.file(path);
-    await f.save(buffer, {
-      contentType: 'image/jpeg',
-      resumable: false,
-      metadata: { cacheControl: 'public,max-age=31536000' },
-    });
+    const supabase = createSupabaseAdminClient();
+    const { error: uploadError } = await supabase.storage
+      .from('slips')
+      .upload(path, buffer, {
+        contentType: 'image/jpeg',
+        cacheControl: '31536000',
+        upsert: false,
+      });
+    if (uploadError) throw uploadError;
 
-    if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
-      const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-      return `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`;
-    }
-    await f.makePublic().catch(() => undefined);
-    return `https://storage.googleapis.com/${bucket.name}/${path}`;
+    const { data: publicUrlData } = supabase.storage.from('slips').getPublicUrl(path);
+    if (!publicUrlData?.publicUrl) throw new Error('Supabase storage returned no public URL');
+    return publicUrlData.publicUrl;
   } catch (e) {
-    // OR_BACR2_44 / billing absent / bucket missing — อย่าให้ทั้งดีลพัง
+    // bucket ยังไม่มี / policy ไม่ผ่าน — อย่าให้ทั้งดีลพัง
     console.warn(
-      '[uploadSlip] Firebase Storage unavailable, using Telegram file URL:',
+      '[uploadSlip] Supabase Storage unavailable, using Telegram file URL:',
       e instanceof Error ? e.message : e,
     );
     return telegramUrl;

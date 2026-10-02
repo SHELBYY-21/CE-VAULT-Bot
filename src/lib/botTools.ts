@@ -15,7 +15,7 @@ import {
   last4OfAccount,
   type BankAccount,
 } from './banks';
-import { adminDb } from './firebaseAdmin';
+import { createSupabaseAdminClient } from './supabase/admin';
 
 export type LiveToolsSnapshot = {
   nowLabel: string;
@@ -59,11 +59,15 @@ export async function getLiveToolsSnapshot(opts: {
   if (!bank) {
     const id = await getDefaultBankAccountId();
     if (id) {
-      const doc = await adminDb.collection('bank_accounts').doc(id).get();
-      if (doc.exists) {
-        const d = doc.data()!;
+      const { data, error } = await createSupabaseAdminClient()
+        .from('bank_accounts')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (!error && data) {
+        const d = data as Record<string, any>;
         bank = {
-          id: doc.id,
+          id: String(d.id),
           label: String(d.label || ''),
           bank_name: String(d.bank_name || ''),
           account_number: d.account_number != null ? String(d.account_number) : null,
@@ -80,26 +84,27 @@ export async function getLiveToolsSnapshot(opts: {
 
   let lastCustomer: LiveToolsSnapshot['lastCustomer'] = null;
   try {
-    let snap;
+    let row: Record<string, any> | null = null;
     try {
-      snap = await adminDb
-        .collection('transactions')
-        .where('chat_id', '==', opts.chatId)
-        .where('type', '==', 'THB_DEPOSIT')
-        .orderBy('created_at', 'desc')
+      const { data, error } = await createSupabaseAdminClient()
+        .from('transactions')
+        .select('receiver_name,receiver_bank,receiver_last4,thb_amount,created_at')
+        .eq('chat_id', opts.chatId)
+        .eq('type', 'THB_DEPOSIT')
+        .order('created_at', { ascending: false })
         .limit(1)
-        .get();
+        .maybeSingle();
+      row = !error && data ? (data as Record<string, any>) : null;
     } catch {
-      snap = null;
+      row = null;
     }
-    if (snap && !snap.empty) {
-      const d = snap.docs[0]!.data();
+    if (row) {
       lastCustomer = {
-        name: d.receiver_name != null ? String(d.receiver_name) : null,
-        bank: d.receiver_bank != null ? String(d.receiver_bank) : null,
-        last4: d.receiver_last4 != null ? String(d.receiver_last4) : null,
-        thb: Number(d.thb_amount || 0),
-        at: String(d.created_at || ''),
+        name: row.receiver_name != null ? String(row.receiver_name) : null,
+        bank: row.receiver_bank != null ? String(row.receiver_bank) : null,
+        last4: row.receiver_last4 != null ? String(row.receiver_last4) : null,
+        thb: Number(row.thb_amount || 0),
+        at: String(row.created_at || ''),
       };
     }
   } catch {

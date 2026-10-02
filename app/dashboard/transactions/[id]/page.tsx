@@ -1,6 +1,6 @@
 // หน้า Transaction Detail — dark glass (ธีม CE Vault)
 import Link from 'next/link';
-import { adminDb } from '@/lib/firebaseAdmin';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import type { Transaction } from '@/types/transactions';
 import MarkCompletedButton from '@/components/MarkCompletedButton';
 
@@ -13,8 +13,13 @@ export default async function TransactionDetailPage({
 }) {
   const { id } = await params;
 
-  const snap = await adminDb.collection('transactions').doc(id).get();
-  const t = snap.exists ? ({ id: snap.id, ...snap.data() } as Transaction) : null;
+  const { data, error } = await createSupabaseAdminClient()
+    .from('transactions')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  const t = data ? ({ ...(data as any), id: String((data as any).id) } as Transaction) : null;
 
   if (!t) {
     return (

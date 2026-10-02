@@ -3,7 +3,7 @@
  * Receiver · Transactions · Volume · Last · Risk · Duplicate
  */
 import type { ReceiverStats } from './receivers';
-import { adminDb } from './firebaseAdmin';
+import { createSupabaseAdminClient } from './supabase/admin';
 
 export type RiskLevel = 'LOW' | 'MED' | 'HIGH';
 
@@ -127,15 +127,16 @@ export async function checkReceiverDuplicate(input: {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const sinceIso = start.toISOString();
-    const snap = await adminDb
-      .collection('transactions')
-      .where('receiver_last4', '==', last4)
-      .where('created_at', '>=', sinceIso)
-      .limit(40)
-      .get();
+    const { data, error } = await createSupabaseAdminClient()
+      .from('transactions')
+      .select('thb_amount,receiver_bank')
+      .eq('receiver_last4', last4)
+      .gte('created_at', sinceIso)
+      .limit(40);
+    if (error) throw error;
     const thb = Number(input.thb);
-    return snap.docs.some((d) => {
-      const row = d.data();
+    return (data ?? []).some((d: any) => {
+      const row: any = d;
       const amt = Number(row.thb_amount || 0);
       if (Math.abs(amt - thb) > 0.01) return false;
       if (input.bank && row.receiver_bank) {
