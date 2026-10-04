@@ -2,9 +2,10 @@ name: Recover Netlify Telegram webhook
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - '.github/workflows/recover-netlify-webhook.yml'
+      - .github/workflows/recover-netlify-webhook.yml
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,6 @@ permissions:
 
 jobs:
   recover:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ops: recover Netlify Telegram webhook'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -47,10 +47,11 @@ jobs:
           set -euo pipefail
           WEBHOOK_SECRET="${TELEGRAM_WEBHOOK_SECRET:-${API_SECRET:-}}"
           TARGET_URL="$TARGET_ORIGIN/api/telegram/webhook"
+          payload="$(jq -cn --arg url "$TARGET_URL" --arg secret "$WEBHOOK_SECRET" '{url:$url,secret_token:$secret,allowed_updates:["message","edited_message","callback_query"],drop_pending_updates:false}')"
           response="$(curl --silent --show-error --fail-with-body \
             --request POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
             --header 'content-type: application/json' \
-            --data "$(jq -cn --arg url "$TARGET_URL" --arg secret "$WEBHOOK_SECRET" '{url:$url,secret_token:$secret,allowed_updates:["message","edited_message","callback_query"],drop_pending_updates:false}')")"
+            --data "$payload")"
           if [ "$(jq -r '.ok // false' <<<"$response")" != 'true' ]; then
             echo '::error::Telegram setWebhook failed.'
             exit 1
