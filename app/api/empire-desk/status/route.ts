@@ -19,6 +19,41 @@ const PUBLIC_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
 };
 
+const TELEGRAM_STATUS_TTL_MS = 60_000;
+let telegramStatusCache: { value: 'verified' | 'not_verified' | 'not_configured' | 'unavailable'; checkedAt: number } | null = null;
+
+async function getTelegramWebhookStatus() {
+  const now = Date.now();
+  if (telegramStatusCache && now - telegramStatusCache.checkedAt < TELEGRAM_STATUS_TTL_MS) {
+    return telegramStatusCache.value;
+  }
+
+  const token = process.env.BOT_TOKEN ?? '';
+  const appUrl = (process.env.APP_URL ?? '').replace(/\/$/, '');
+  if (!token || !appUrl) {
+    telegramStatusCache = { value: 'not_configured', checkedAt: now };
+    return telegramStatusCache.value;
+  }
+
+  const expectedUrl = `${appUrl}/api/telegram/webhook`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8_000),
+    });
+    const payload = await response.json().catch(() => null) as { ok?: boolean; result?: { url?: string } } | null;
+    const value = response.ok && payload?.ok === true && payload.result?.url === expectedUrl
+      ? 'verified'
+      : 'not_verified';
+    telegramStatusCache = { value, checkedAt: now };
+    return value;
+  } catch {
+    telegramStatusCache = { value: 'unavailable', checkedAt: now };
+    return telegramStatusCache.value;
+  }
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: PUBLIC_HEADERS });
 }
@@ -33,6 +68,8 @@ export async function GET() {
     // Never publish underlying credential, connection or database errors.
   }
 
+  const telegramWebhook = await getTelegramWebhookStatus();
+
   return NextResponse.json({
     service: 'ce-vault-render',
     online: true,
@@ -40,7 +77,7 @@ export async function GET() {
     firestore: dbOk,
     database: 'supabase',
     db: dbOk,
-    telegramWebhook: 'not_verified',
+    telegramWebhook,
     financialData: 'requires_authenticated_session',
     checkedAt: new Date().toISOString(),
   }, { status: dbOk ? 200 : 503, headers: PUBLIC_HEADERS });
