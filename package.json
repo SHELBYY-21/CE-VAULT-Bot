@@ -1,10 +1,10 @@
 {
   "name": "cevault-manus-deploy",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/bootstrap.mjs",
+    "build": "node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && cd appsrc && npm run check",
     "start": "node scripts/start.mjs"
   }
 }
