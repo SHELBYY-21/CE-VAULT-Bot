@@ -13,52 +13,55 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     env:
-      WEBHOOK_URL: https://zesty-semolina-b169fc.netlify.app/api/telegram/webhook
+      TARGET_URL: https://zesty-semolina-b169fc.netlify.app/api/telegram/set-webhook
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
     steps:
-      - name: Validate secret availability
+      - name: Validate bot secret availability
         shell: bash
         run: |
           set -euo pipefail
-          missing=0
-          if [ -z "${BOT_TOKEN:-}" ]; then echo '::error::Missing Actions secret BOT_TOKEN'; missing=1; fi
-          if [ -z "${TELEGRAM_WEBHOOK_SECRET:-}" ]; then echo '::error::Missing Actions secret TELEGRAM_WEBHOOK_SECRET'; missing=1; fi
-          if [ "$missing" -ne 0 ]; then exit 1; fi
+          if [ -z "${BOT_TOKEN:-}" ]; then
+            echo '::error::Missing Actions secret BOT_TOKEN'
+            exit 1
+          fi
 
-      - name: Rebind and verify Telegram webhook
+      - name: Wait for canonical host and repair webhook
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.telegram.org/bot${BOT_TOKEN}"
+          repair_key="$(printf 'ce-vault:set-webhook:%s' "$BOT_TOKEN" | sha256sum | awk '{print $1}')"
           body="$(mktemp)"
+          success=0
 
-          curl --fail --silent --show-error --connect-timeout 15 --max-time 45 \
-            --request POST \
-            --header 'content-type: application/json' \
-            --data "$(node -e 'process.stdout.write(JSON.stringify({url:process.env.WEBHOOK_URL,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:[\"message\",\"edited_message\",\"callback_query\"],drop_pending_updates:false}))')" \
-            "${api}/setWebhook" > "$body"
+          for attempt in $(seq 1 24); do
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --output "$body" --write-out '%{http_code}' \
+              --request POST \
+              --header "x-ce-repair-key: ${repair_key}" \
+              --header 'content-type: application/json' \
+              --data '{}' \
+              "$TARGET_URL" || true)"
 
-          node - "$body" <<'NODE'
+            if [ "$status" = '200' ]; then
+              if node - "$body" <<'NODE'
           const fs = require('fs');
           const json = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (json.ok !== true) {
-            console.error('Telegram setWebhook failed');
-            process.exit(1);
-          }
+          if (json.ok !== true || !String(json.webhookUrl || '').startsWith('https://zesty-semolina-b169fc.netlify.app/')) process.exit(1);
+          console.log(`Webhook verified on canonical Netlify host: ${json.webhookUrl}`);
           NODE
+              then
+                success=1
+                break
+              fi
+            fi
 
-          curl --fail --silent --show-error --connect-timeout 15 --max-time 45 \
-            "${api}/getWebhookInfo" > "$body"
-          node - "$body" <<'NODE'
-          const fs = require('fs');
-          const json = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const expected = process.env.WEBHOOK_URL;
-          if (json.ok !== true || json.result?.url !== expected) {
-            console.error('Telegram webhook verification failed');
-            process.exit(1);
-          }
-          console.log(`Webhook verified on canonical Netlify host; pending updates: ${Number(json.result?.pending_update_count || 0)}`);
-          NODE
+            echo "Canonical host not ready for repair yet (attempt ${attempt}, HTTP ${status})."
+            sleep 10
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo '::error::Could not verify Netlify Telegram webhook repair'
+            exit 1
+          fi
