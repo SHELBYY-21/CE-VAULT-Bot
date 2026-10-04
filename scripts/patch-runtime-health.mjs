@@ -17,10 +17,6 @@ source = source.replace(servicesPattern, `let services = [
 
 const freshnessMeta`);
 
-const uiMarker = `const ui = {\n  freshness: "DEGRADED",`;
-if (!source.includes(uiMarker)) throw new Error('RUNTIME_HEALTH_UI_BLOCK_NOT_FOUND');
-source = source.replace(uiMarker, `const ui = {\n  freshness: "DEGRADED",`);
-
 const hydrateMarker = `async function hydrateWorkflowProjection() {`;
 if (!source.includes(hydrateMarker)) throw new Error('RUNTIME_HEALTH_HYDRATE_MARKER_NOT_FOUND');
 source = source.replace(hydrateMarker, `async function hydrateRuntimeHealth() {
@@ -57,7 +53,7 @@ ${hydrateMarker}`);
 
 source = source.replace(
   `<div class="health-footer"><span>Source revision <code>184</code></span><span>As of 19:36 ICT / UTC stored</span></div>`,
-  `<div class="health-footer"><span>Source <code>runtime API</code></span><span>Checked \${ui.healthCheckedAt ? formatBangkokTime(ui.healthCheckedAt) : "pending"}</span></div>`,
+  '<div class="health-footer"><span>Source <code>runtime API</code></span><span>Checked ${ui.healthCheckedAt ? formatBangkokTime(ui.healthCheckedAt) : "pending"}</span></div>',
 );
 
 source = source.replace(
