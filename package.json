@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/bootstrap.mjs",
-    "start": "node appsrc/server/index.mjs"
+    "start": "node scripts/start.mjs"
   }
 }
