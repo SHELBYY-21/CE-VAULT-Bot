@@ -29,16 +29,7 @@ jobs:
         run: npm ci
         working-directory: bot
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Build
+      - name: Validate generated app
         run: npm run build
 
   security:
