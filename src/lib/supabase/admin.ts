@@ -1,5 +1,6 @@
 import 'server-only';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
 const GATEWAY_FORWARD_HEADERS = [
@@ -15,6 +16,11 @@ const GATEWAY_FORWARD_HEADERS = [
   'x-client-info',
   'x-upsert',
 ] as const;
+const GATEWAY_AUTH_CONTEXT = 'ce-vault-data-gateway-v1';
+
+function derivedGatewayAuth(botToken: string): string {
+  return createHash('sha256').update(`${GATEWAY_AUTH_CONTEXT}:${botToken}`).digest('hex');
+}
 
 function createGatewayFetch(options: {
   supabaseUrl: string;
@@ -70,7 +76,7 @@ function createGatewayFetch(options: {
  * Privileged backend client. Never import from browser code or expose the secret key.
  *
  * Primary mode uses SUPABASE_SECRET_KEY directly. A production fallback is available
- * for hosts that already contain the Telegram/API secrets but cannot safely receive a
+ * for hosts that already contain the Telegram bot token but cannot safely receive a
  * Supabase service-role key: requests are tunnelled through the CE Supabase Edge
  * Gateway, which applies the service-role key inside Supabase after signed auth.
  */
@@ -86,7 +92,8 @@ export function createSupabaseAdminClient() {
   }
 
   const gatewayUrl = process.env.SUPABASE_GATEWAY_URL;
-  const gatewayAuth = process.env.CE_DATA_GATEWAY_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
+  const botToken = process.env.BOT_TOKEN ?? '';
+  const gatewayAuth = process.env.CE_DATA_GATEWAY_SECRET || (botToken ? derivedGatewayAuth(botToken) : '');
   const anonKey = process.env.SUPABASE_ANON_KEY;
 
   if (url && gatewayUrl && gatewayAuth && anonKey) {
@@ -99,6 +106,6 @@ export function createSupabaseAdminClient() {
   }
 
   throw new Error(
-    'Supabase backend not configured: provide SUPABASE_SECRET_KEY or SUPABASE_GATEWAY_URL + SUPABASE_ANON_KEY + gateway auth',
+    'Supabase backend not configured: provide SUPABASE_SECRET_KEY or SUPABASE_GATEWAY_URL + SUPABASE_ANON_KEY + BOT_TOKEN/gateway auth',
   );
 }
