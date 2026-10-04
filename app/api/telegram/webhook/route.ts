@@ -1,0 +1,1502 @@
+// ============================================================
+// POST /api/telegram/webhook — ตัวรับ update จาก Telegram (รันใน Next.js โปรดักชัน)
+// รวม logic ทั้งหมด: onboarding (ถามชื่อ) + อัปโหลดสลิป + บันทึกธุรกรรม + ธีม CE Vault
+// ============================================================
+import { NextRequest, NextResponse } from 'next/server';
+import * as UI from '@/lib/botUi';
+import {
+  sendMessage,
+  sendChatAction,
+  answerCallback,
+  uploadSlipFromTelegram,
+  sendSticker,
+} from '@/lib/telegram';
+import {
+  liveError,
+  liveIntelVerified,
+  liveOcr,
+  liveReceiving,
+  liveSettled,
+  liveWaiting,
+  receiverIntelCard,
+  upsertLive,
+} from '@/lib/liveMessage';
+import {
+  checkReceiverDuplicate,
+  isTodayProfitQuestion,
+  parseLast4Query,
+  toReceiverIntel,
+  formatVolumeThb,
+  type ReceiverIntel,
+} from '@/lib/receiverIntel';
+import { getSession, setSession, clearSession } from '@/lib/botSessions';
+import {
+  getAdminByTelegramId,
+  upsertAdmin,
+  getLatestRates,
+  getDefaultBankAccountId,
+  insertRate,
+  editTransaction,
+  deleteTransaction,
+  getTodayLedger,
+  recordDeal,
+  resetRoom,
+  getStaffLeaderboard,
+  exportRoomCsv,
+  recordIncoming,
+  recordOutgoing,
+  getRecentPairs,
+} from '@/lib/transactions';
+import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
+import { adminDb } from '@/lib/firebaseAdmin';
+import { sendDocument } from '@/lib/telegram';
+import { notifyDailySummary } from '@/lib/notifier';
+import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
+import { parseAmounts } from '@/lib/amounts';
+import { convertThbUsdt, parseConvertQuery } from '@/lib/convert';
+import { getReceiver, findReceiversByLast4, upsertReceiverOnDeposit } from '@/lib/receivers';
+import { getSticker, getWebmMotionSticker, validateStickers, type StickerState } from '@/config/stickers';
+import { ceMessage, ceEscape, ceAmount } from '@/lib/ceReplyTheme';
+import {
+  bangkokDate,
+  bangkokNowLabel,
+  listPinnedBanksForToday,
+  last4OfAccount,
+  findMatchingPinnedBank,
+  pinBankForToday,
+  unpinPinnedByHint,
+  upsertAndPinBank,
+  listBankAccounts,
+  PinLimitError,
+  MAX_PINNED_TODAY,
+} from '@/lib/banks';
+import { getLiveToolsSnapshot } from '@/lib/botTools';
+import { ComposioSessionError, createComposioSession, normalizeToolkits } from '@/lib/composioSession';
+import { commandName, escapeTelegramHtml } from '@/lib/botSecurity';
+
+// ตรวจ USDT (OCR vs พิมพ์เอง) ต้องตรงกันในระดับ 0.0001 (req 13)
+const USDT_TOLERANCE = 0.0001;
+// OCR มั่นใจ >= ค่านี้ → บันทึกขาเข้าทันที ไม่ต้องถาม
+const OCR_AUTO_MIN = Number(process.env.OCR_AUTO_MIN || 90);
+
+// fire-and-forget — ไม่ block flow หลัก ไม่ throw
+function sticker(chatId: number, key: StickerState): void {
+  if (process.env.CE_MOTION_FX === '0') return; // quiet menu-first presentation
+  const motion = getWebmMotionSticker(key);
+  const fallback = getSticker(key);
+  if (motion) {
+    void sendSticker(chatId, motion).catch(() => {
+      if (fallback && fallback !== motion) return sendSticker(chatId, fallback).catch(() => undefined);
+      return undefined;
+    });
+  } else if (fallback) {
+    void sendSticker(chatId, fallback).catch(() => undefined);
+  }
+}
+
+export const runtime = 'nodejs';
+export const maxDuration = 30; // request timeout hint (platform-dependent)
+
+// Validate sticker config at cold-start (logs warning, never crashes the webhook)
+try {
+  validateStickers();
+} catch (e: any) {
+  console.warn(`[sticker config] ${e.message}`);
+}
+
+const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+const log = (msg: string, data?: any) => {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] ${msg}`, data || '');
+};
+
+const parseNums = (s: string): number[] =>
+  s
+    .trim()
+    .split(/\s+/)
+    .map(Number)
+    .filter((n) => Number.isFinite(n));
+
+export async function POST(req: NextRequest) {
+  // Never accept unsigned Telegram traffic, even during incomplete deployment.
+  if (!WEBHOOK_SECRET) return NextResponse.json({ ok: false, error: 'webhook_not_configured' }, { status: 503 });
+  if (req.headers.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) {
+    log('❌ Invalid webhook secret');
+    return NextResponse.json({ ok: false }, { status: 401 });
+  }
+
+  let replyChatId: number | undefined;
+  try {
+    const update = await req.json();
+    replyChatId = update?.message?.chat?.id ?? update?.edited_message?.chat?.id ?? update?.callback_query?.message?.chat?.id;
+    const updateId = update?.update_id || '?';
+    log(`📨 incoming update #${updateId}`);
+
+    // Timeout protection: 25s (under maxDuration 30s)
+    await Promise.race([
+      handleUpdate(update),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('WEBHOOK_TIMEOUT')), 25000)),
+    ]);
+    log(`✅ update #${updateId} processed`);
+  } catch (e: any) {
+    log('⚠️ webhook handler failed; no financial error details published');
+    if (replyChatId) {
+      await sendMessage(replyChatId, { text: '⚠️ <b>CE VAULT</b> · ไม่สามารถยืนยันผลคำสั่งได้ โปรดตรวจ Ledger ก่อนส่งรายการซ้ำ หรือพิมพ์ /ce' }).catch(() => undefined);
+    }
+  }
+  // Keep legacy at-most-once acknowledgment: financial updates must not be retried blindly.
+  return NextResponse.json({ ok: true });
+}
+
+
+// Menu-first entrypoint: Telegram replies continue even while Firebase is unavailable.
+async function menuRoomPreview(chatId: number): Promise<{ name: string; rate: number | null; connected: boolean }> {
+  if (process.env.CE_BOT_MENU_ONLY === '1') {
+    return { name: 'ROOM CONTROL', rate: null, connected: false };
+  }
+  try {
+    const room = await Promise.race([
+      getRoom(chatId),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('database_timeout')), 2500)),
+    ]);
+    return { name: room.name || 'ROOM CONTROL', rate: room.rate ?? null, connected: true };
+  } catch {
+    return { name: 'ROOM CONTROL', rate: null, connected: false };
+  }
+}
+
+async function sendCeMenu(chatId: number): Promise<void> {
+  const room = await menuRoomPreview(chatId);
+  // One canonical reply template for /start, /help, /menu, /ce and inline Home.
+  // Never show an invented rate when Firebase is offline.
+  await sendMessage(chatId, UI.roomControlCard({
+    roomName: room.name,
+    rate: room.rate,
+    connected: room.connected,
+  }));
+}
+
+async function handleUpdate(update: any): Promise<void> {
+  // ----- callback_query จากปุ่ม แก้ไข/ลบ -----
+  if (update?.callback_query) {
+    await handleCallback(update.callback_query);
+    return;
+  }
+
+  const msg = update?.message ?? update?.edited_message;
+  if (!msg) return;
+  const chatId: number = msg.chat?.id;
+  const userId: number | undefined = msg.from?.id;
+  if (!chatId || !userId) return;
+  const text: string | undefined = msg.text?.trim();
+  const chatType: string = msg.chat?.type ?? 'private';
+  const isGroup = chatType === 'group' || chatType === 'supergroup';
+
+  // One clean entry point. /start and /help never reset an existing deal session.
+  if (text && /^\/(?:start|help|menu|ce)(?:@\w+)?$/i.test(text)) {
+    await sendCeMenu(chatId);
+    return;
+  }
+
+  // ----- /summary : สรุปวันนี้ (ส่งไปกลุ่มแจ้งเตือน CEempire) -----
+  if (text && text.startsWith('/summary')) {
+    if (process.env.CE_BOT_MENU_ONLY === '1') {
+      await sendMessage(chatId, { text: '⚠️ ระบบรายงานยังปิดอยู่จนกว่า Firebase จะได้รับการยืนยัน · พิมพ์ /ce เพื่อดูเมนู' });
+    } else {
+      await notifyDailySummary();
+    }
+    return;
+  }
+  // Direct bot acknowledgement: does not depend on Firebase or a notification channel.
+  if (text && /^\/(?:ping|status)(?:@\w+)?$/i.test(text)) {
+    await sendMessage(chatId, {
+      text: `◈ <b>CE VAULT · ONLINE</b>\n✅ Telegram รับข้อความแล้ว\n${process.env.CE_BOT_MENU_ONLY === '1' ? '⚠️ โหมดเมนู · รอเชื่อมต่อ Firebase' : 'ℹ️ ตรวจยอดจริงผ่าน /ledger'}\nเปิดเมนู: /ce`,
+    });
+    return;
+  }
+  if (text && /^\/id(?:@\w+)?$/i.test(text)) {
+    await sendMessage(chatId, { text: `◈ <b>CE VAULT · Telegram IDs</b>\nChat: <code>${chatId}</code>\nUser: <code>${userId}</code>` });
+    return;
+  }
+  // Until verified Firebase credentials are configured, do not run financial flows.
+  if (process.env.CE_BOT_MENU_ONLY === '1') {
+    if (text || msg.photo || msg.document) {
+      await sendMessage(chatId, {
+        text: '⚠️ <b>CE VAULT · MENU MODE</b>\nบอตตอบกลับได้แล้ว แต่ OCR / Ledger / การบันทึกยอดยังปิดอยู่จนกว่าจะยืนยัน Firebase\nพิมพ์ /ce เพื่อเปิดเมนู หรือ /ping เพื่อตรวจการตอบกลับ',
+      });
+    }
+    return;
+  }
+
+  // ----- /receiver <last4> : Receiver Intelligence -----
+  if (text && text.startsWith('/receiver')) {
+    const last4 = (text.replace('/receiver', '').trim().match(/\d{4}/) || [])[0];
+    if (!last4) {
+      await sendMessage(chatId, { text: 'พิมพ์ <code>/receiver 3376</code> หรือแค่ <code>3376</code>' });
+      return;
+    }
+    await replyReceiverIntel(chatId, last4);
+    return;
+  }
+
+  // ----- Assistant: "วันนี้กำไรเท่าไร" → ตอบทันที -----
+  if (text && isTodayProfitQuestion(text)) {
+    await replyTodayProfit(chatId);
+    return;
+  }
+
+  // ----- Assistant: พิมพ์ 3376 → Receiver Intelligence ทันที -----
+  if (text && !text.startsWith('/')) {
+    const q = parseLast4Query(text);
+    if (q) {
+      await replyReceiverIntel(chatId, q.last4, q.bankHint);
+      return;
+    }
+  }
+
+  // ----- /cancel : ออกจากโหมดใดๆ -----
+  if (text && text.startsWith('/cancel')) {
+    await clearSession(chatId, userId);
+    await sendMessage(chatId, UI.cancelled());
+    return;
+  }
+
+  // ----- /setrate <n> : ตั้งเรตแลกของ "ห้องนี้" -----
+  if (text && (text.startsWith('/setrate') || text.startsWith('/เรต'))) {
+    const nums = parseNums(text.replace('/setrate', '').replace('/เรต', ''));
+    if (nums.length >= 1 && nums[0] > 0) {
+      await setChatRate(chatId, nums[0]);
+      await sendMessage(chatId, UI.chatRateSet(nums[0]));
+    } else {
+      const cur = await getChatRate(chatId);
+      await sendMessage(chatId, { text: cur != null && cur > 0 ? `💱 เรตห้องนี้: <b>${cur} THB/USDT</b>\nตั้งใหม่: <code>/setrate 32.49</code>` : '💱 ห้องนี้ยังไม่ตั้งเรต\nตั้งค่า: <code>/setrate 32.49</code>' });
+    }
+    return;
+  }
+
+  // ----- /ce, /menu, /help: one compact room-scoped entrypoint -----
+  if (text && /^\/(?:ce|menu|help)(?:@\w+)?$/i.test(text)) {
+    const room = await getRoom(chatId);
+    await sendMessage(chatId, UI.roomControlCard({ roomName: room.name, rate: room.rate }));
+    return;
+  }
+
+  // ----- /tools · /info · /สด : alias ไปยอดวันนี้ (เกณฑ์แสดงผลข้อมูลจริงอยู่ใน ledger) -----
+  if (text && (text.startsWith('/tools') || text.startsWith('/info') || text.startsWith('/สด'))) {
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- /pin · /unpin : เซ็ตบัญชีรับวันนี้ (สูงสุด 3) -----
+  if (text && (text.startsWith('/pin') || text.startsWith('/ปักหมุด'))) {
+    await handlePinCommand(chatId, text);
+    return;
+  }
+  if (text && (text.startsWith('/unpin') || text.startsWith('/เลิกปัก'))) {
+    await handleUnpinCommand(chatId, text);
+    return;
+  }
+
+  // ----- /ยอด , /today , /ledger : สรุปยอดห้องนี้วันนี้ (แยกห้อง) -----
+  if (
+    text &&
+    (text.startsWith('/ยอด') ||
+      text.startsWith('/today') ||
+      text.startsWith('/ledger') ||
+      text.startsWith('/สรุป'))
+  ) {
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- /newday : เริ่มวันใหม่ (day-cut) — โพสต์สรุปวันเก่าก่อน -----
+  if (text && text.startsWith('/newday')) {
+    await doNewDay(chatId);
+    return;
+  }
+
+  // ----- /reset : ล้างยอดห้องนี้ (ถามยืนยันก่อน) -----
+  if (text && text.startsWith('/reset')) {
+    const room = await getRoom(chatId);
+    await sendMessage(chatId, UI.resetAsk(room.name));
+    return;
+  }
+
+  // ----- /setroom <ชื่อ> : ตั้งชื่อห้อง -----
+  if (text && (text.startsWith('/setroom') || text.startsWith('/ห้อง'))) {
+    const name = text.replace('/setroom', '').replace('/ห้อง', '').trim().slice(0, 40);
+    if (!name) {
+      await sendMessage(chatId, {
+        text: 'พิมพ์ <code>/setroom ห้อง A</code> เพื่อตั้งชื่อห้องนี้',
+      });
+      return;
+    }
+    await setRoomName(chatId, name);
+    await sendMessage(chatId, UI.roomNameSet(name));
+    return;
+  }
+
+  // ----- /export : ดาวน์โหลด CSV ยอดห้องนี้ (ส่งเป็นไฟล์ในแชต) -----
+  if (text && text.startsWith('/export')) {
+    const room = await getRoom(chatId);
+    // /export all = ทั้งหมด, ไม่งั้นเฉพาะช่วงวันนี้ (จาก day-cut)
+    const wantAll = /all|ทั้งหมด/.test(text);
+    const { csv, rows } = await exportRoomCsv(chatId, wantAll ? null : room.dayCutAt);
+    if (rows === 0) {
+      await sendMessage(chatId, { text: 'ยังไม่มีธุรกรรมให้ export' });
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    await sendDocument(
+      chatId,
+      `ce-vault-${room.name || chatId}-${stamp}.csv`,
+      csv,
+      `📄 <b>${rows} รายการ</b> · ${room.name || 'ห้องนี้'}${wantAll ? ' (ทั้งหมด)' : ' (วันนี้)'}`,
+    );
+    return;
+  }
+
+  // ----- /start , /help , /register -----
+  if (
+    text &&
+    (text.startsWith('/start') || text.startsWith('/register'))
+  ) {
+    const existing = await getAdminByTelegramId(userId);
+    if (existing) {
+      await setSession(chatId, userId, {
+        state: 'AWAITING_NAME',
+        admin_id: existing.id,
+        admin_name: existing.name,
+      });
+      await sendMessage(chatId, UI.welcomeRegistered(existing.name));
+    } else {
+      await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+      await sendMessage(chatId, UI.askName());
+    }
+    sticker(chatId, 'WELCOME');
+    return;
+  }
+
+  const [session, admin] = await Promise.all([
+    getSession(chatId, userId),
+    getAdminByTelegramId(userId),
+  ]);
+
+  // ----- /ai [toolkit,toolkit] : สร้าง Composio MCP session ผ่าน n8n -----
+  if (text && (commandName(text) === 'ai' || commandName(text) === 'composio')) {
+    if (chatType !== 'private') {
+      await sendMessage(chatId, { text: '🔒 เพื่อปกป้อง MCP URL ให้ใช้คำสั่งนี้ในแชตส่วนตัวกับบอทเท่านั้น' });
+      return;
+    }
+    if (!admin) {
+      await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+      await sendMessage(chatId, UI.askName());
+      return;
+    }
+
+    try {
+      const requested = text.replace(/^\/(?:ai|composio)(?:@[a-z0-9_]+)?/i, '').trim();
+      const toolkits = normalizeToolkits(requested || process.env.CE_COMPOSIO_DEFAULT_TOOLKITS);
+      await sendChatAction(chatId, 'typing');
+      const created = await createComposioSession({
+        userId: `telegram:${userId}`,
+        toolkits,
+      });
+      await sendMessage(chatId, {
+        text:
+          `⚡ <b>Composio MCP พร้อมใช้งาน</b>\n` +
+          `<code>${escapeTelegramHtml(created.sessionId)}</code>\n\n` +
+          `<i>กดปุ่มด้านล่างเพื่อเปิด session</i>`,
+        reply_markup: {
+          inline_keyboard: [[{ text: 'เปิด MCP Session →', url: created.mcpUrl }]],
+        },
+      });
+    } catch (error) {
+      const reason =
+        error instanceof ComposioSessionError && error.code === 'INVALID_INPUT'
+          ? 'รูปแบบ toolkit ไม่ถูกต้อง — ตัวอย่าง <code>/ai github,gmail</code>'
+          : 'ยังสร้าง MCP session ไม่สำเร็จ กรุณาลองใหม่ภายหลัง';
+      await sendMessage(chatId, { text: `⚠️ ${reason}` });
+    }
+    return;
+  }
+
+  // ----- /rate : ดูเรต (ตลาด=Binance TH สด) / ตั้งเรตขาย -----
+  if (text && text.startsWith('/rate')) {
+    const nums = parseNums(text.replace('/rate', ''));
+    const r = await getLatestRates(); // marketUsdtRate = Binance TH real-time
+    if (nums.length >= 1) {
+      if (!admin) {
+        await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+        await sendMessage(chatId, UI.askName());
+        return;
+      }
+      const sell = nums[0];
+      const fallbackMarket = Number(process.env.DEFAULT_MARKET_RATE);
+      const market: number = (nums[1] ??
+        r.marketUsdtRate ??
+        (Number.isFinite(fallbackMarket) ? fallbackMarket : 34.8)) as number;
+      await insertRate(admin.id, sell, market);
+      await sendMessage(chatId, UI.rateSet(admin.name, sell, market));
+    } else {
+      await sendMessage(chatId, UI.rateShow(r.sellRate, r.marketUsdtRate, r.marketSource));
+    }
+    return;
+  }
+
+  // ----- /convert <ยอด> [thb|usdt] : เครื่องคำนวณแปลงหน่วย (ไม่บันทึกธุรกรรม) -----
+  if (text && (text.startsWith('/convert') || text.startsWith('/แปลง'))) {
+    const query = parseConvertQuery(text.replace('/convert', '').replace('/แปลง', ''));
+    if (!query) {
+      await sendMessage(chatId, UI.convertUsage());
+      return;
+    }
+    const r = await getLatestRates();
+    const rate = r.sellRate;
+    const result = convertThbUsdt(query.amount, query.currency, rate);
+    await sendMessage(chatId, UI.convertResult(result));
+    return;
+  }
+
+  // ----- รูปภาพ: Live Message (send once → editMessage ตลอด) -----
+  if (msg.photo) {
+    if (!admin) {
+      await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+      await sendMessage(chatId, UI.askName());
+      return;
+    }
+    const fileId = msg.photo[msg.photo.length - 1].file_id;
+    sendChatAction(chatId, 'upload_photo').catch(() => undefined);
+
+    // Reuse open Live Message when waiting USDT; otherwise start a new one (single send)
+    const ledgerRef = session?.ledger_ref || UI.newLedgerRef();
+    let liveId =
+      session?.state === 'WAITING_USDT' && session.live_message_id
+        ? session.live_message_id
+        : await upsertLive(chatId, null, liveReceiving(ledgerRef));
+
+    try {
+      liveId = await upsertLive(chatId, liveId, liveOcr(ledgerRef));
+      const imgUrl = await uploadSlipFromTelegram(fileId);
+
+      // USDT proof while THB deal is open → settle on same Live Message
+      if (session?.state === 'WAITING_USDT' && Number(session.ocr_thb) > 0) {
+        const u = await analyzeUsdtScreenshot(imgUrl);
+        if (u?.amount && u.amount > 0) {
+          await commitOutgoing(chatId, userId, u.amount, {
+            slipUrl: imgUrl,
+            network: u.network ?? null,
+            txid: u.txid ?? null,
+            liveMessageId: liveId,
+            ledgerRef: session.ledger_ref ?? ledgerRef,
+          });
+          await clearSession(chatId, userId);
+          return;
+        }
+        // not USDT — fall through as new THB slip on same message
+      }
+
+      // Caption last4 → Receiver Intelligence ทันที (ก่อน/คู่กับ OCR)
+      const captionLast4 = (msg.caption || '').match(/\d{4}/)?.[0] ?? null;
+      if (captionLast4) {
+        const early = await loadReceiverIntel(captionLast4, null, null);
+        liveId = await upsertLive(
+          chatId,
+          liveId,
+          liveIntelVerified({
+            ledgerRef,
+            intel: early,
+            skippedOcr: early.known,
+          }),
+        );
+      }
+
+      const slip = await analyzeSlip(imgUrl);
+      const last4 = slip?.receiverLast4 || captionLast4 || null;
+      const intel = last4
+        ? await loadReceiverIntel(last4, slip?.bank ?? null, slip?.thbAmount ?? null)
+        : null;
+
+      // Known receiver → เติม bank/name จาก DB, ผ่อน OCR threshold (ไม่ต้อง OCR ใหม่หนัก)
+      const bank = slip?.bank || intel?.bank || null;
+      const receiverName = slip?.receiverName || intel?.name || null;
+      const thbOk = !!slip?.thbAmount && slip.thbAmount > 0;
+      const confOk =
+        thbOk &&
+        (intel?.known ||
+          slip!.confidence == null ||
+          slip!.confidence >= OCR_AUTO_MIN);
+
+      if (thbOk && last4 && intel) {
+        liveId = await upsertLive(
+          chatId,
+          liveId,
+          liveIntelVerified({
+            ledgerRef,
+            thb: slip!.thbAmount,
+            confidence: slip!.confidence,
+            intel,
+            skippedOcr: intel.known,
+          }),
+        );
+      }
+
+      if (confOk) {
+        const pinnedList = await listPinnedBanksForToday();
+        const slipHint = {
+          bank,
+          last4,
+          receiverName,
+        };
+        const matched = findMatchingPinnedBank(slipHint, pinnedList);
+
+        // Known receiver + มียอด → ข้าม pin ask ถ้าเคยใช้บัญชีนี้ (รอ USDT / หรือ settle ถ้า pin ตรง)
+        // ตรงบัญชีที่เซ็ตไว้ → Settled on same Live Message
+        if (matched) {
+          await clearSession(chatId, userId);
+          await commitIncoming(chatId, userId, slip!.thbAmount!, {
+            slipUrl: imgUrl,
+            bank: bank ?? matched.bank_name,
+            last4: last4 ?? last4OfAccount(matched.account_number),
+            receiverName,
+            confidence: slip!.confidence ?? null,
+            time: slip!.time ?? null,
+            date: slip!.date ?? null,
+            pinMatched: true,
+            bankAccountId: matched.id,
+            liveMessageId: liveId,
+            ledgerRef,
+          });
+          return;
+        }
+
+        // มีบัญชีเซ็ตไว้แต่เลขไม่ตรง → Waiting + intel
+        if (pinnedList.length > 0 && !intel?.known) {
+          const first = pinnedList[0]!;
+          await setSession(chatId, userId, {
+            state: 'WAITING_USDT',
+            pending_type: 'THB_DEPOSIT',
+            slip_url: imgUrl,
+            ocr_thb: slip!.thbAmount ?? null,
+            slip_date: slip!.date ?? null,
+            slip_time: slip!.time ?? null,
+            slip_last4: last4,
+            slip_bank: bank,
+            slip_receiver_name: receiverName,
+            ocr_conf: slip!.confidence ?? null,
+            ledger_ref: ledgerRef,
+            admin_id: admin.id,
+            admin_name: admin.name,
+            live_message_id: liveId,
+          });
+          await upsertLive(
+            chatId,
+            liveId,
+            {
+              // MSG-05: visual-only mismatch. Do not offer RECHECK/OVERRIDE
+              // callbacks until the permission and ledger handlers exist.
+              text: ceMessage('MSG-05',
+                '📄 บัญชีในสลิป\n' +
+                '🏦 ' + ceEscape(bank ?? '-') + ' · ••••' + ceEscape(last4 ?? '????') + '\n\n' +
+                '📌 บัญชี PIN วันนี้\n' +
+                '🏦 ' + ceEscape(first.bank_name) + ' · ••••' +
+                  ceEscape(last4OfAccount(first.account_number) ?? '????') + '\n\n' +
+                '❌ บัญชีไม่ตรงกัน\n' +
+                '📥 ' + ceAmount(slip!.thbAmount!) + ' THB\n' +
+                '<i>พิมพ์ +ยอด เพื่อบันทึกเอง หรือใช้ /pin เปลี่ยนบัญชี</i>\n' +
+                '🆔 <code>#' + ceEscape(ledgerRef) + '</code>'),
+            },
+          );
+          return;
+        }
+
+        // Known account หรือยังไม่เซ็ต pin → Waiting + Receiver Intelligence
+        await setSession(chatId, userId, {
+          state: 'WAITING_USDT',
+          pending_type: 'THB_DEPOSIT',
+          slip_url: imgUrl,
+          ocr_thb: slip!.thbAmount ?? null,
+          slip_date: slip!.date ?? null,
+          slip_time: slip!.time ?? null,
+          slip_last4: last4,
+          slip_bank: bank,
+          slip_receiver_name: receiverName,
+          ocr_conf: slip!.confidence ?? null,
+          ledger_ref: ledgerRef,
+          admin_id: admin.id,
+          admin_name: admin.name,
+          live_message_id: liveId,
+        });
+        await upsertLive(
+          chatId,
+          liveId,
+          liveWaiting({
+            ledgerRef,
+            thb: slip!.thbAmount,
+            bank,
+            last4,
+            confidence: slip!.confidence,
+            intel,
+            hint: intel?.known
+              ? `<i>Known account — profile loaded. Send USDT or type</i> <code>-13.6U</code>`
+              : `Set receive bank: <code>/pin ${bank ?? 'kbank'} ${last4 ?? '1234'}</code>\n` +
+                `<i>or type</i> <code>+${slip!.thbAmount}</code>`,
+          }),
+        );
+        return;
+      }
+
+      // (B) ไม่ใช่สลิปบาท → สกรีนช็อต USDT → Settled on Live Message
+      const u = await analyzeUsdtScreenshot(imgUrl);
+      if (u?.amount && u.amount > 0) {
+        await commitOutgoing(chatId, userId, u.amount, {
+          slipUrl: imgUrl,
+          network: u.network ?? null,
+          txid: u.txid ?? null,
+          liveMessageId: liveId,
+          ledgerRef,
+        });
+        return;
+      }
+
+      // (C) อ่านไม่ชัด — Waiting + intel ถ้ามี last4
+      await setSession(chatId, userId, {
+        state: 'WAITING_USDT',
+        pending_type: 'THB_DEPOSIT',
+        slip_url: imgUrl,
+        ocr_thb: slip?.thbAmount ?? null,
+        slip_last4: last4,
+        slip_bank: bank,
+        slip_receiver_name: receiverName,
+        ocr_conf: slip?.confidence ?? null,
+        ledger_ref: ledgerRef,
+        admin_id: admin.id,
+        admin_name: admin.name,
+        live_message_id: liveId,
+      });
+      await upsertLive(
+        chatId,
+        liveId,
+        liveWaiting({
+          ledgerRef,
+          thb: slip?.thbAmount ?? null,
+          bank,
+          last4,
+          intel,
+          hint: slip?.thbAmount != null && slip.thbAmount > 0
+            ? `<i>OCR ยังไม่มั่นใจ — ตรวจยอดแล้วพิมพ์</i> <code>+${slip.thbAmount}</code>`
+            : '<i>OCR อ่านยอดไม่ได้ — ตรวจยอดจากสลิปจริงแล้วพิมพ์ +ยอด (เช่น +1200)</i>',
+        }),
+      );
+    } catch (e: any) {
+      await upsertLive(chatId, liveId, liveError(e?.message ?? 'upload failed', ledgerRef));
+    }
+    return;
+  }
+
+  // ----- ข้อความตัวอักษร -----
+  if (!text) return;
+
+  // (ก) รอชื่อ → ลงทะเบียน
+  if (session?.state === 'AWAITING_NAME') {
+    const name = text.slice(0, 60);
+    const created = await upsertAdmin(userId, name);
+    await clearSession(chatId, userId);
+    await sendMessage(chatId, UI.registered(created.name));
+    return;
+  }
+
+  // (ข.5) กำลังแก้ไขธุรกรรม → อัปเดต tx เดิม (ใช้รูปแบบ +500B / -13.6U เหมือนกัน)
+  if (session?.state === 'EDITING' && session.caption) {
+    const amt = parseAmounts(text);
+    if (!amt.thb && !amt.usdt) {
+      return; // ไม่รู้จักรูปแบบ → เงียบ (ไม่ถามกลับ)
+    }
+    const txId = session.caption; // เก็บ tx_id ไว้ในฟิลด์ caption
+    await clearSession(chatId, userId);
+    try {
+      const oldDoc = await adminDb.collection('transactions').doc(txId).get();
+      const old = oldDoc.exists ? oldDoc.data() : null;
+      if (!old) throw new Error('ไม่พบธุรกรรมเดิม');
+
+      const newUsdt = amt.usdt ? amt.usdt.value : Number(old.usdt_amount);
+      const patch = amt.thb ? { newThb: amt.thb.value, newUsdt } : { newUsdt };
+      const r = await editTransaction(txId, patch);
+      await sendMessage(
+        chatId,
+        UI.editSuccess({
+          transactionId: txId,
+          adminName: r.admin.name,
+          type: old.type,
+          thb: Number(r.tx.thb_amount),
+          usdt: Number(r.tx.usdt_amount),
+          netProfitThb: Number(r.tx.netProfitThb ?? r.tx.net_profit_thb),
+          profitPercent: Number(r.tx.profitPercent ?? r.tx.profit_percent),
+          feeUsdt: Number(r.tx.feeUsdt ?? r.tx.fee_usdt),
+          feePercent: Number(r.tx.feePercent ?? r.tx.fee_percent),
+          holdingUsdt: r.admin.holdingUsdt,
+        }),
+      );
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'edit failed'));
+    }
+    return;
+  }
+
+  // (ข) พิมพ์ยอด: +500 = บาทเข้า · -13.6 = USDT ออก · อย่างอื่นเงียบ (ไม่ถามกลับ)
+  {
+    const amt = parseAmounts(text);
+    if (amt.thb && amt.thb.sign > 0) {
+      // ขาเข้า — ผูก meta จากสลิปที่ค้างอยู่ (ถ้ามี)
+      const meta =
+        session?.state === 'WAITING_USDT'
+          ? {
+              slipUrl: session.slip_url ?? null,
+              bank: session.slip_bank ?? null,
+              last4: session.slip_last4 ?? null,
+              receiverName: session.slip_receiver_name ?? null,
+              confidence: session.ocr_conf != null ? Number(session.ocr_conf) : null,
+              time: session.slip_time ?? null,
+              date: session.slip_date ?? null,
+              liveMessageId: session.live_message_id ?? null,
+              ledgerRef: session.ledger_ref ?? null,
+            }
+          : {};
+      const liveId = meta.liveMessageId ?? null;
+      if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
+      try {
+        // ถ้าปักหมุดไว้แล้วและเลขตรง → ติดธง pinMatched
+        const pinnedList = await listPinnedBanksForToday();
+        const matched = findMatchingPinnedBank(
+          { bank: meta.bank ?? null, last4: meta.last4 ?? null },
+          pinnedList,
+        );
+        await commitIncoming(chatId, userId, amt.thb.value, {
+          ...meta,
+          pinMatched: !!matched,
+          bankAccountId: matched?.id ?? null,
+        });
+      } catch (e: any) {
+        await upsertLive(chatId, liveId, liveError(e?.message ?? 'record failed', meta.ledgerRef));
+      }
+      return;
+    }
+    if (amt.usdt && amt.usdt.sign < 0) {
+      const liveId = session?.live_message_id ?? null;
+      const ledgerRef = session?.ledger_ref ?? null;
+      try {
+        await commitOutgoing(chatId, userId, amt.usdt.value, {
+          liveMessageId: liveId,
+          ledgerRef,
+        });
+        if (session?.state === 'WAITING_USDT') await clearSession(chatId, userId);
+      } catch (e: any) {
+        await upsertLive(chatId, liveId, liveError(e?.message ?? 'record failed', ledgerRef));
+      }
+      return;
+    }
+    // ไม่มีเครื่องหมายชัดเจน → เงียบ (กันรกแชท)
+    if (amt.thb || amt.usdt) return;
+  }
+
+  // (ค) ไม่มี session — ในแชตส่วนตัวถามชื่ออัตโนมัติ / ในกลุ่มปล่อยผ่าน (กันสแปมคนอื่นในกลุ่ม)
+  if (!admin && !isGroup) {
+    await setSession(chatId, userId, { state: 'AWAITING_NAME' });
+    await sendMessage(chatId, UI.askName());
+  }
+}
+
+async function loadReceiverIntel(
+  last4: string,
+  bank: string | null,
+  thb: number | null,
+): Promise<ReceiverIntel> {
+  const clean = last4.replace(/\D/g, '').slice(-4);
+  let row = bank ? await getReceiver(bank, clean) : null;
+  if (!row) {
+    const found = await findReceiversByLast4(clean);
+    row = found[0] ?? null;
+  }
+  // Enrich today stats when found via last4-only (getReceiver already adds them)
+  if (row && row.todayCount == null && bank) {
+    row = (await getReceiver(row.bank || bank, clean)) ?? row;
+  }
+  const duplicate = await checkReceiverDuplicate({ last4: clean, thb, bank: bank || row?.bank });
+  return toReceiverIntel(row, clean, { duplicate });
+}
+
+async function replyReceiverIntel(
+  chatId: number,
+  last4: string,
+  bankHint?: string | null,
+): Promise<void> {
+  const intel = await loadReceiverIntel(last4, bankHint ?? null, null);
+  await sendMessage(chatId, receiverIntelCard(intel));
+}
+
+async function replyTodayProfit(chatId: number): Promise<void> {
+  try {
+    const room = await getRoom(chatId);
+    const led = await getTodayLedger(room.dayCutAt, chatId);
+    const profit = Number(led.netProfitThb) || 0;
+    await sendMessage(chatId, {
+      text:
+        `<b>CE VAULT</b>\n` +
+        `<i>Today · Profit</i>\n` +
+        `────────────────\n` +
+        `Profit     <code>${formatVolumeThb(profit)}</code>\n` +
+        `Volume     <code>${formatVolumeThb(led.totalThb)}</code>\n` +
+        `In USDT    <code>${Number(led.totalIncomingUsdt || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</code>\n` +
+        `Out USDT   <code>${Number(led.totalOutgoingUsdt || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</code>` +
+        (room.name ? `\nRoom       <code>${room.name}</code>` : ''),
+    });
+  } catch (e: any) {
+    await sendMessage(chatId, UI.error(e?.message ?? 'profit lookup failed'));
+  }
+}
+
+/** บันทึกขาเข้า — Live Message → Settled (editMessage, ไม่ส่งข้อความใหม่) */
+async function commitIncoming(
+  chatId: number,
+  userId: number,
+  thb: number,
+  meta: {
+    slipUrl?: string | null;
+    bank?: string | null;
+    last4?: string | null;
+    receiverName?: string | null;
+    confidence?: number | null;
+    time?: string | null;
+    date?: string | null;
+    pinMatched?: boolean;
+    bankAccountId?: string | null;
+    liveMessageId?: number | null;
+    ledgerRef?: string | null;
+  },
+): Promise<void> {
+  const [room, rates] = await Promise.all([getRoom(chatId), getLatestRates()]);
+  const sellRate = room.rate ?? rates.sellRate;
+  const ledgerRef = meta.ledgerRef || UI.newLedgerRef();
+
+  const r = await recordIncoming({
+    adminTelegramId: userId,
+    chatId,
+    thb,
+    sellRate,
+    marketRate: rates.marketUsdtRate,
+    roomName: room.name,
+    ledgerRef,
+    ocrConfidence: meta.confidence ?? null,
+    slipImageUrl: meta.slipUrl ?? null,
+    receiver: {
+      name: meta.receiverName ?? null,
+      bank: meta.bank ?? null,
+      last4: meta.last4 ?? null,
+    },
+    bankAccountId: meta.bankAccountId ?? null,
+  });
+
+  // Receiver History (fire-and-forget)
+  if (meta.last4) {
+    upsertReceiverOnDeposit({
+      bank: meta.bank ?? null,
+      last4: meta.last4,
+      receiverName: meta.receiverName ?? null,
+      thb,
+      usdt: r.usdtOwed,
+      ledgerRef,
+    })
+      .then((rid) => {
+        if (rid)
+          return adminDb
+            .collection('transactions')
+            .doc(r.transactionId)
+            .update({ receiver_id: rid })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+      })
+      .catch(() => undefined);
+  }
+
+  await upsertLive(
+    chatId,
+    meta.liveMessageId,
+    liveSettled({
+      ledgerRef,
+      thb,
+      usdt: r.usdtOwed,
+      sellRate,
+      adminName: r.adminName,
+      bank: meta.bank ?? null,
+      last4: meta.last4 ?? null,
+      transactionId: r.transactionId,
+    }),
+  );
+}
+
+/** บันทึกขาออก — Live Message → Settled */
+async function commitOutgoing(
+  chatId: number,
+  userId: number,
+  usdt: number,
+  meta: {
+    slipUrl?: string | null;
+    network?: string | null;
+    txid?: string | null;
+    liveMessageId?: number | null;
+    ledgerRef?: string | null;
+  },
+): Promise<void> {
+  const ledgerRef = meta.ledgerRef || UI.newLedgerRef();
+  const r = await recordOutgoing({
+    adminTelegramId: userId,
+    chatId,
+    usdt,
+    ledgerRef,
+    slipImageUrl: meta.slipUrl ?? null,
+    usdtNetwork: meta.network ?? null,
+    usdtTxid: meta.txid ?? null,
+  });
+
+  await upsertLive(
+    chatId,
+    meta.liveMessageId,
+    liveSettled({
+      ledgerRef,
+      usdt,
+      adminName: r.adminName,
+      transactionId: r.transactionId,
+    }),
+  );
+}
+
+async function replyPinOk(
+  chatId: number,
+  today: string,
+  bank: { bank_name: string; account_number: string | null; label: string },
+) {
+  const list = await listPinnedBanksForToday(today);
+  await sendMessage(
+    chatId,
+    UI.pinSetOk({
+      today,
+      bank_name: bank.bank_name,
+      last4: last4OfAccount(bank.account_number) || '????',
+      label: bank.label,
+      count: list.length,
+      max: MAX_PINNED_TODAY,
+    }),
+  );
+}
+
+/** /pin [BANK] [account] — เซ็ตบัญชีรับวันนี้ (สูงสุด 3) */
+async function handlePinCommand(chatId: number, text: string): Promise<void> {
+  const today = bangkokDate();
+  const raw = text
+    .replace(/^\/pin(@\w+)?/i, '')
+    .replace(/^\/ปักหมุด(@\w+)?/i, '')
+    .trim();
+
+  if (!raw || raw === 'status' || raw === 'สถานะ') {
+    const banks = await listPinnedBanksForToday(today);
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks, max: MAX_PINNED_TODAY }));
+    return;
+  }
+
+  const pinOrLimit = async (
+    fn: () => Promise<{ bank_name: string; account_number: string | null; label: string }>,
+  ) => {
+    try {
+      const bank = await fn();
+      await replyPinOk(chatId, today, bank);
+    } catch (e: any) {
+      if (e instanceof PinLimitError || e?.name === 'PinLimitError') {
+        await sendMessage(
+          chatId,
+          UI.pinLimitCard({ today, banks: e.pinned ?? [], max: MAX_PINNED_TODAY }),
+        );
+        return;
+      }
+      await sendMessage(chatId, UI.error(e?.message ?? 'pin failed'));
+    }
+  };
+
+  if (raw === 'default' || raw === 'หลัก') {
+    const id = await getDefaultBankAccountId();
+    if (!id) {
+      await sendMessage(chatId, {
+        text: 'ยังไม่มีบัญชีในระบบ — พิมพ์ <code>/pin kbank 1234567890</code>',
+      });
+      return;
+    }
+    await pinOrLimit(() => pinBankForToday(id, today));
+    return;
+  }
+
+  // /pin kbank 1234567890 | /pin SCB 1234 | /pin 1234567890 | /pin 1234
+  const parts = raw.split(/\s+/);
+  let bankCode = 'KBANK';
+  let account = '';
+  if (parts.length >= 2) {
+    bankCode = parts[0]!;
+    account = parts.slice(1).join('');
+  } else {
+    account = parts[0] || '';
+  }
+
+  const digits = account.replace(/\D/g, '');
+  if (digits.length === 4) {
+    const all = await listBankAccounts();
+    const hit = all.find((b) => last4OfAccount(b.account_number) === digits);
+    if (!hit) {
+      await sendMessage(chatId, {
+        text:
+          `ไม่พบบัญชีท้าย <code>${digits}</code> ในระบบ\n` +
+          `พิมพ์เต็ม เช่น <code>/pin kbank 1234567890</code>`,
+      });
+      return;
+    }
+    await pinOrLimit(() => pinBankForToday(hit.id, today));
+    return;
+  }
+
+  if (digits.length < 4) {
+    await sendMessage(chatId, {
+      text:
+        `รูปแบบ: <code>/pin kbank 1234567890</code>\n` +
+        `<i>คำย่อ: scb · kbank · ktb · bbl · tmn</i> · สูงสุด ${MAX_PINNED_TODAY} บัญชี`,
+    });
+    return;
+  }
+
+  await pinOrLimit(() => upsertAndPinBank({ bank: bankCode, accountNumber: digits }));
+}
+
+/** /unpin [n|last4|bank last4] — ลบบัญชีรับที่เซ็ตไว้ */
+async function handleUnpinCommand(chatId: number, text: string): Promise<void> {
+  const today = bangkokDate();
+  const raw = text
+    .replace(/^\/unpin(@\w+)?/i, '')
+    .replace(/^\/เลิกปัก(@\w+)?/i, '')
+    .trim();
+
+  const banks = await listPinnedBanksForToday(today);
+  if (banks.length === 0) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks: [], max: MAX_PINNED_TODAY }));
+    return;
+  }
+
+  if (!raw) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks, max: MAX_PINNED_TODAY }));
+    return;
+  }
+
+  const parts = raw.split(/\s+/);
+  let removed = null as Awaited<ReturnType<typeof unpinPinnedByHint>>;
+
+  if (/^\d+$/.test(parts[0]!) && parts[0]!.length <= 2) {
+    removed = await unpinPinnedByHint({ index: Number(parts[0]) }, today);
+  } else if (parts.length >= 2) {
+    removed = await unpinPinnedByHint(
+      { bank: parts[0], last4: parts[1]!.replace(/\D/g, '').slice(-4) },
+      today,
+    );
+  } else {
+    const digits = parts[0]!.replace(/\D/g, '');
+    removed = await unpinPinnedByHint({ last4: digits.slice(-4) }, today);
+  }
+
+  if (!removed) {
+    await sendMessage(chatId, {
+      text: `ไม่พบรายการที่ตรง — ดูรายการด้วย <code>/pin</code> แล้วใช้ <code>/unpin 1</code>`,
+    });
+    return;
+  }
+
+  const left = await listPinnedBanksForToday(today);
+  await sendMessage(chatId, {
+    text:
+      `🗑 ลบ <b>${removed.bank_name}</b> <code>••••${last4OfAccount(removed.account_number) || '????'}</code> แล้ว\n` +
+      `เหลือ ${left.length}/${MAX_PINNED_TODAY} บัญชี`,
+  });
+  if (left.length) {
+    await sendMessage(chatId, UI.pinStatusCard({ today, banks: left, max: MAX_PINNED_TODAY }));
+  }
+}
+
+/** เริ่มวันใหม่: โพสต์สรุปวันเก่าก่อน → ตั้ง day-cut → ยืนยัน */
+async function doNewDay(chatId: number): Promise<void> {
+  await sendMessage(chatId, { text: '🗓 <b>สรุปยอดก่อนเริ่มวันใหม่</b>' });
+  await sendLedger(chatId); // สรุปวันเก่า (ก่อนตัด)
+  await startNewDay(chatId);
+  const label = new Date().toLocaleString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Bangkok',
+  });
+  await sendMessage(chatId, UI.newDayStarted(label));
+}
+
+/** ส่งการ์ดสรุปยอด "ห้องนี้" + เกณฑ์แสดงผลจริง (เวลา · ลูกค้า · บช · USDT · recent 5) */
+async function sendLedger(chatId: number): Promise<void> {
+  try {
+    const room = await getRoom(chatId);
+    const [led, staff, recent, tools] = await Promise.all([
+      getTodayLedger(room.dayCutAt, chatId),
+      getStaffLeaderboard(room.dayCutAt, chatId),
+      getRecentPairs(chatId, room.dayCutAt, 5),
+      getLiveToolsSnapshot({ chatId }).catch(() => null),
+    ]);
+    await sendMessage(
+      chatId,
+      UI.ledgerCard({
+        incomingList: led.incomingList,
+        outgoingList: led.outgoingList,
+        totalThb: led.totalThb,
+        totalIncomingUsdt: led.totalIncomingUsdt,
+        totalOutgoingUsdt: led.totalOutgoingUsdt,
+        fixedRate: room.rate,
+        feePercent: 0,
+        netProfitThb: led.netProfitThb,
+        lastAdminName: led.lastAdminName,
+        roomName: room.name,
+        staff,
+        recent,
+        nowLabel: tools?.nowLabel ?? bangkokNowLabel(),
+        pinnedBanks:
+          tools?.pinnedBanks ??
+          (await listPinnedBanksForToday().then((list) =>
+            list.map((b) => ({
+              bank_name: b.bank_name,
+              last4: last4OfAccount(b.account_number) || '????',
+              balance: b.current_balance,
+            })),
+          )),
+        lastCustomer: tools?.lastCustomer
+          ? {
+              name: tools.lastCustomer.name,
+              bank: tools.lastCustomer.bank,
+              last4: tools.lastCustomer.last4,
+              thb: tools.lastCustomer.thb,
+            }
+          : null,
+      }),
+    );
+  } catch (e: any) {
+    console.error('[sendLedger]', e?.message || e);
+    await sendMessage(chatId, {
+      text:
+        `⚠️ <b>บันทึกแล้ว แต่สรุปยอดยังโหลดไม่ครบ</b>\n` +
+        `<i>${UI.sanitizeErrorDetail(e?.message ?? String(e))}</i>\n` +
+        `ลองพิมพ์ /today อีกครั้ง`,
+    }).catch(() => undefined);
+  }
+}
+
+// รวมฟิลด์ deal ของ session เดิม (setSession เขียนทับทุกคอลัมน์ ต้องส่งครบกันหาย)
+function dealSessionFields(session: any): any {
+  return {
+    pending_type: 'THB_DEPOSIT',
+    slip_url: session.slip_url ?? null,
+    ocr_thb: session.ocr_thb ?? null,
+    slip_date: session.slip_date ?? null,
+    slip_time: session.slip_time ?? null,
+    slip_last4: session.slip_last4 ?? null,
+    slip_bank: session.slip_bank ?? null,
+    slip_receiver_name: session.slip_receiver_name ?? null,
+    ocr_conf: session.ocr_conf ?? null,
+    ledger_ref: session.ledger_ref ?? null,
+    pending_usdt: session.pending_usdt ?? null,
+    usdt_network: session.usdt_network ?? null,
+    usdt_txid: session.usdt_txid ?? null,
+    usdt_image_url: session.usdt_image_url ?? null,
+    admin_id: session.admin_id ?? null,
+    admin_name: session.admin_name ?? null,
+  };
+}
+
+/** บันทึกดีลจริง + การ์ดสำเร็จ + ledger รวมของวัน (รวม recent pairs) */
+async function finalizeDeal(
+  chatId: number,
+  userId: number,
+  session: any,
+  thb: number,
+  usdt: number,
+  sellRate: number,
+  roomName: string | null,
+): Promise<void> {
+  const [bankAccountId, room] = await Promise.all([getDefaultBankAccountId(), getRoom(chatId)]);
+  const ledgerRef = session.ledger_ref || UI.newLedgerRef();
+
+  const r = await recordDeal({
+    adminTelegramId: userId,
+    chatId,
+    thb,
+    usdt,
+    sellRate,
+    roomName: roomName ?? room.name,
+    ocrConfidence: session.ocr_conf ?? null,
+    ledgerRef,
+    slipImageUrl: session.slip_url ?? null,
+    usdtImageUrl: session.usdt_image_url ?? null,
+    usdtNetwork: session.usdt_network ?? null,
+    usdtTxid: session.usdt_txid ?? null,
+    receiver: {
+      name: session.slip_receiver_name,
+      bank: session.slip_bank,
+      last4: session.slip_last4,
+    },
+    bankAccountId,
+  });
+
+  // Receiver History (fire-and-forget)
+  if (session.slip_last4) {
+    upsertReceiverOnDeposit({
+      bank: session.slip_bank ?? null,
+      last4: session.slip_last4,
+      receiverName: session.slip_receiver_name ?? null,
+      thb,
+      usdt,
+      ledgerRef,
+    })
+      .then((receiverId) => {
+        if (receiverId)
+          return adminDb
+            .collection('transactions')
+            .doc(r.transactionId)
+            .update({ receiver_id: receiverId })
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+      })
+      .catch(() => undefined);
+  }
+
+  await sendMessage(
+    chatId,
+    UI.dealSuccess({
+      transactionId: r.transactionId,
+      ledgerRef,
+      adminName: r.adminName,
+      thb,
+      usdt,
+      buyRate: r.buyRate,
+      sellRate: r.sellRate,
+      profitThb: r.profitThb,
+      receiverName: session.slip_receiver_name,
+      bank: session.slip_bank,
+      last4: session.slip_last4,
+    }),
+  );
+  sticker(chatId, 'SUCCESS');
+
+  // แสดง ledger สดรวม recent (หลัง recordDeal แล้ว → ข้อมูลครบ)
+  await sendLedger(chatId);
+
+  // Brand Success Card — ส่งต่อท้ายหลังข้อความปกติเสร็จทั้งหมด (fire-and-forget)
+  sendMessage(
+    chatId,
+    UI.brandCard({
+      usdt,
+      txid: session.usdt_txid ?? null,
+      network: session.usdt_network ?? null,
+      ledgerRef,
+      transactionId: r.transactionId,
+    }),
+  ).catch(() => undefined);
+}
+
+/** จัดการปุ่ม inline: edit:<txId> / del:<txId> / confirm:<usdt> */
+async function handleCallback(cb: any): Promise<void> {
+  const id: string = cb.id;
+  const chatId: number = cb.message?.chat?.id;
+  const userId: number = cb.from?.id;
+  const data: string = cb.data || '';
+  if (!chatId || !userId) return await answerCallback(id);
+
+  const [action, arg] = data.split(':');
+  if (action === 'ce') {
+    await answerCallback(id);
+    if (arg === 'home') { await sendCeMenu(chatId); return; }
+    if (arg === 'help') {
+      await sendMessage(chatId, {
+        text: '◈ <b>CE VAULT · QUICK GUIDE</b>\n/ce · เมนูหลัก\n/ping · ทดสอบการตอบกลับ\n/id · ตรวจ Telegram ID\n📷 ส่งสลิปเมื่อ Firebase พร้อม\n⚠️ OCR / RECORDED ไม่เท่ากับ SETTLED',
+      });
+      return;
+    }
+    if (process.env.CE_BOT_MENU_ONLY === '1') {
+      await sendMessage(chatId, { text: '⚠️ ยังไม่เชื่อม Firebase · เมนูนี้จะพร้อมหลังเปิดระบบ Ledger โปรดใช้ /ce หรือ /ping ในระหว่างนี้' });
+      return;
+    }
+    try {
+      if (arg === 'report') { await sendLedger(chatId); return; }
+      if (arg === 'bank') {
+        await sendMessage(chatId, { text: '🏦 ข้อมูลบัญชีในระบบยังไม่ใช่ข้อความ Telegram PIN จริง โปรดตรวจข้อความปักหมุดของกลุ่มก่อนรับเงิน' });
+        await handlePinCommand(chatId, '/pin');
+        return;
+      }
+      if (arg === 'rate') {
+        const room = await menuRoomPreview(chatId);
+        await sendMessage(chatId, { text: `💱 <b>THB/USDT</b> · ${room.rate != null ? ceAmount(room.rate) : 'ยังไม่ตั้งค่า'}\nตั้งเรตเฉพาะห้อง: <code>/setrate 32.49</code>` });
+        return;
+      }
+    } catch {
+      await sendMessage(chatId, { text: '⚠️ ข้อมูลนี้ยังไม่พร้อม โปรดลองใหม่เมื่อ Firebase เชื่อมต่อแล้ว' });
+    }
+    return;
+  }
+  if (!arg) return await answerCallback(id);
+
+  // ----- dealok:<ledgerRef> : ยืนยันดีล → บันทึกจริง -----
+  if (action === 'dealok') {
+    const session = await getSession(chatId, userId);
+    if (!session || session.state !== 'WAITING_USDT' || !session.pending_usdt) {
+      return await answerCallback(id, 'รายการหมดอายุ/ต้องตรวจสอบ — ส่งสลิปใหม่');
+    }
+    await answerCallback(id, '✅ กำลังบันทึก...');
+    await clearSession(chatId, userId);
+    const thb = Number(session.ocr_thb) || 0;
+    const usdt = Number(session.pending_usdt) || 0;
+    const room = await getRoom(chatId);
+    const sellRate = room.rate ?? (await getLatestRates()).sellRate;
+    try {
+      await finalizeDeal(chatId, userId, session, thb, usdt, sellRate, room.name);
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'record failed'));
+    }
+    return;
+  }
+
+  // ----- dealedit : แก้ USDT (รอรับใหม่) -----
+  if (action === 'dealedit') {
+    const session = await getSession(chatId, userId);
+    if (!session || session.state !== 'WAITING_USDT') {
+      return await answerCallback(id, 'รายการหมดอายุ');
+    }
+    await answerCallback(id, '✏️ แก้ USDT');
+    // ล้างค่า USDT เดิม (รวม cross-check state) แล้วรอรับใหม่
+    await setSession(chatId, userId, {
+      ...dealSessionFields(session),
+      state: 'WAITING_USDT',
+      pending_usdt: null,
+      usdt_network: null,
+      usdt_txid: null,
+      usdt_image_url: null,
+    });
+    await sendMessage(chatId, {
+      text: '⏳ ส่ง <b>สกรีนช็อต USDT</b> ใหม่ หรือพิมพ์ <b>จำนวน USDT</b>',
+    });
+    sticker(chatId, 'WAITING');
+    return;
+  }
+
+  // ----- cancelop : ยกเลิกก่อนยืนยัน -----
+  if (action === 'cancelop') {
+    await clearSession(chatId, userId);
+    await answerCallback(id, 'ยกเลิกแล้ว');
+    await sendMessage(chatId, UI.cancelled());
+    return;
+  }
+
+  // ----- newday : เริ่มวันใหม่ (day-cut) → โพสต์สรุปวันเก่าก่อน -----
+  if (action === 'newday') {
+    await answerCallback(id, '🔄 เริ่มวันใหม่');
+    await doNewDay(chatId);
+    return;
+  }
+
+  // ----- menu_today : ปุ่มดูยอดจากเมนู -----
+  if (action === 'menu_today') {
+    await answerCallback(id);
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- tools : alias → ยอดวันนี้ -----
+  if (action === 'tools') {
+    await answerCallback(id);
+    await sendLedger(chatId);
+    return;
+  }
+
+  // ----- pin_status : สถานะบัญชีรับที่เซ็ตไว้ -----
+  if (action === 'pin_status') {
+    await answerCallback(id);
+    const banks = await listPinnedBanksForToday();
+    await sendMessage(
+      chatId,
+      UI.pinStatusCard({ today: bangkokDate(), banks, max: MAX_PINNED_TODAY }),
+    );
+    return;
+  }
+
+  // ----- resetask : ถามยืนยันล้างยอดห้อง -----
+  if (action === 'resetask') {
+    await answerCallback(id);
+    const room = await getRoom(chatId);
+    await sendMessage(chatId, UI.resetAsk(room.name));
+    return;
+  }
+
+  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) — โพสต์สรุปเก็บไว้ก่อนลบ -----
+  if (action === 'resetgo') {
+    await answerCallback(id, '🗑 กำลังล้าง...');
+    try {
+      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
+      await sendLedger(chatId);
+      const n = await resetRoom(chatId);
+      await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
+      await sendMessage(chatId, UI.resetDone(n));
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
+    }
+    return;
+  }
+
+  const txId = arg;
+
+  // ตรวจว่าคนกดปุ่มเป็นเจ้าของธุรกรรมนี้
+  const txSnap = await adminDb.collection('transactions').doc(txId).get();
+  const tx = txSnap.exists
+    ? ({ id: txSnap.id, ...(txSnap.data() as any) } as {
+        id: string;
+        type: 'THB_DEPOSIT' | 'USDT_SEND';
+        admins: { telegram_user_id: number; name: string } | null;
+        admin_id?: string;
+      })
+    : null;
+  // denormalized admins may lack telegram_user_id — fall back to admins collection
+  let ownerTg = tx?.admins?.telegram_user_id;
+  if (tx && ownerTg == null && tx.admin_id) {
+    const a = await adminDb.collection('admins').doc(tx.admin_id).get();
+    ownerTg = a.data()?.telegram_user_id;
+  }
+  if (!tx || ownerTg !== userId) {
+    return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
+  }
+
+  await answerCallback(id, action === 'edit' ? '⚡ เข้าโหมดแก้ไข' : '🗑 กำลังลบ...');
+
+  if (action === 'edit') {
+    await setSession(chatId, userId, {
+      state: 'EDITING',
+      pending_type: tx.type,
+      caption: txId, // เก็บ tx_id ไว้ในฟิลด์ caption (ไม่ต้องแก้ schema)
+    });
+    await sendMessage(chatId, UI.editPrompt(tx.type));
+  } else if (action === 'del') {
+    try {
+      const r = await deleteTransaction(txId);
+      await sendMessage(chatId, UI.deleteSuccess(r.name, r.holdingUsdt));
+    } catch (e: any) {
+      await sendMessage(chatId, UI.error(e?.message ?? 'delete failed'));
+    }
+  }
+}
