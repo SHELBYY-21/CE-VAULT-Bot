@@ -36,6 +36,65 @@ async function telegramCall(token, method, payload) {
   return { http: res.status, ok: res.ok && reply.ok === true, result: reply.result };
 }
 
+async function handoffWebhookIfConfigured() {
+  if (process.env.RENDER !== 'true') return false;
+  const targetOrigin = (process.env.CE_CANONICAL_WEBHOOK_ORIGIN || '').replace(/\/$/, '');
+  if (!targetOrigin) return false;
+
+  const token = process.env.BOT_TOKEN;
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!token || !secret || !/^https:\/\/[^/]+(?:\:\d+)?$/.test(targetOrigin) || !/^[A-Za-z0-9_-]{1,256}$/.test(secret)) {
+    console.error('[CE Bot] Canonical webhook handoff configuration invalid; webhook unchanged.');
+    return false;
+  }
+
+  const targetUrl = `${targetOrigin}/api/telegram/webhook`;
+  try {
+    // Fail closed: prove the canonical receiver accepts this exact secret before moving Telegram.
+    const probe = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Telegram-Bot-Api-Secret-Token': secret,
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(12000),
+    });
+    if (probe.status !== 200) {
+      console.error(`[CE Bot] Canonical receiver rejected handoff probe (HTTP ${probe.status}); webhook unchanged.`);
+      return false;
+    }
+
+    const me = await telegramCall(token, 'getMe');
+    if (!me.ok || String(me.result?.id) !== token.split(':')[0]) {
+      console.error('[CE Bot] Telegram token validation failed during canonical handoff; webhook unchanged.');
+      return false;
+    }
+
+    const set = await telegramCall(token, 'setWebhook', {
+      url: targetUrl,
+      secret_token: secret,
+      allowed_updates: ['message', 'edited_message', 'callback_query'],
+      drop_pending_updates: false,
+    });
+    if (!set.ok) {
+      console.error(`[CE Bot] Canonical setWebhook failed (HTTP ${set.http}); pending updates preserved.`);
+      return false;
+    }
+
+    const info = await telegramCall(token, 'getWebhookInfo');
+    if (!info.ok || info.result?.url !== targetUrl) {
+      console.error('[CE Bot] Canonical webhook verification failed.');
+      return false;
+    }
+    console.info(`[CE Bot] Canonical webhook verified; queued updates: ${Number(info.result.pending_update_count || 0)}.`);
+    return true;
+  } catch {
+    console.error('[CE Bot] Canonical webhook handoff unavailable; webhook unchanged.');
+    return false;
+  }
+}
+
 async function registerWebhook() {
   // Render is retained only as a legacy/fallback runtime. A sleeping Render instance
   // must never wake up and silently steal the single Telegram production webhook
@@ -137,4 +196,9 @@ async function registerWebhook() {
   }
 }
 
-void registerWebhook();
+async function bootstrapWebhook() {
+  if (await handoffWebhookIfConfigured()) return;
+  await registerWebhook();
+}
+
+void bootstrapWebhook();
