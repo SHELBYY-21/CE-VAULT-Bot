@@ -1,0 +1,73 @@
+name: Recover Netlify Telegram webhook
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-netlify-webhook.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ops: recover Netlify Telegram webhook'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_ORIGIN: https://zesty-semolina-b169fc.netlify.app
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+      API_SECRET: ${{ secrets.API_SECRET }}
+    steps:
+      - name: Validate secret against Netlify receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEBHOOK_SECRET="${TELEGRAM_WEBHOOK_SECRET:-${API_SECRET:-}}"
+          if [ -z "${BOT_TOKEN:-}" ] || [ -z "$WEBHOOK_SECRET" ]; then
+            echo '::error::Required GitHub Actions secrets are not configured.'
+            exit 1
+          fi
+          status="$(curl --silent --show-error --output /tmp/probe.json --write-out '%{http_code}' \
+            --request POST "$TARGET_ORIGIN/api/telegram/webhook" \
+            --header 'content-type: application/json' \
+            --header "x-telegram-bot-api-secret-token: $WEBHOOK_SECRET" \
+            --data '{}')"
+          if [ "$status" != '200' ]; then
+            echo "::error::Netlify webhook receiver rejected the configured secret (HTTP $status). Telegram webhook was not changed."
+            exit 1
+          fi
+          echo 'Netlify receiver accepted the configured webhook secret.'
+
+      - name: Point Telegram webhook to Netlify
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEBHOOK_SECRET="${TELEGRAM_WEBHOOK_SECRET:-${API_SECRET:-}}"
+          TARGET_URL="$TARGET_ORIGIN/api/telegram/webhook"
+          response="$(curl --silent --show-error --fail-with-body \
+            --request POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+            --header 'content-type: application/json' \
+            --data "$(jq -cn --arg url "$TARGET_URL" --arg secret "$WEBHOOK_SECRET" '{url:$url,secret_token:$secret,allowed_updates:["message","edited_message","callback_query"],drop_pending_updates:false}')")"
+          if [ "$(jq -r '.ok // false' <<<"$response")" != 'true' ]; then
+            echo '::error::Telegram setWebhook failed.'
+            exit 1
+          fi
+          echo 'Telegram setWebhook accepted the Netlify target.'
+
+      - name: Verify webhook target
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_URL="$TARGET_ORIGIN/api/telegram/webhook"
+          response="$(curl --silent --show-error --fail-with-body \
+            "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
+          actual="$(jq -r '.result.url // empty' <<<"$response")"
+          pending="$(jq -r '.result.pending_update_count // 0' <<<"$response")"
+          if [ "$actual" != "$TARGET_URL" ]; then
+            echo '::error::Telegram webhook verification did not match Netlify.'
+            exit 1
+          fi
+          echo "Verified Netlify webhook; pending updates: $pending"
