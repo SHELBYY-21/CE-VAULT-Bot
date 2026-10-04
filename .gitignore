@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+.next/
+out/
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+.env
+.env.local
+.env.*.local
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Netlify
+.netlify
+
+# Local dev
+.supabase/
+
+# Session-continuity notes from the "remember" skill (tooling state, not code)
+.remember/
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Circle entity-secret recovery files (never commit)
+*-recovery-file.json
+*entity-secret*recovery*
+# Firebase emulators
+firestore-debug.log
+firebase-debug.log
+storage-debug.log
+ui-debug.log
+*.log
+
+# Firebase service account (local only)
+.firebase-sa.json
+*-firebase-adminsdk*.json

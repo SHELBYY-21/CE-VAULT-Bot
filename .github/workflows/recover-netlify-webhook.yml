@@ -1,0 +1,83 @@
+name: Recover Netlify Telegram webhook
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/recover-netlify-webhook.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_ORIGIN: https://zesty-semolina-b169fc.netlify.app
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+    steps:
+      - name: Inspect current Telegram webhook
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BOT_TOKEN:-}" ]; then
+            echo '::error::BOT_TOKEN GitHub Actions secret is not configured.'
+            exit 1
+          fi
+          response="$(curl --silent --show-error --fail-with-body \
+            "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
+          current="$(jq -r '.result.url // empty' <<<"$response")"
+          pending="$(jq -r '.result.pending_update_count // 0' <<<"$response")"
+          echo "Current webhook host: $(node -e 'try{console.log(new URL(process.argv[1]).host)}catch{console.log("none")}' "$current")"
+          echo "Pending updates: $pending"
+
+      - name: Validate derived recovery secret against Netlify
+        shell: bash
+        run: |
+          set -euo pipefail
+          RECOVERY_SECRET="$(node -e "const {createHash}=require('node:crypto'); process.stdout.write(createHash('sha256').update('ce-vault-telegram-webhook-recovery-v1:'+process.env.BOT_TOKEN).digest('base64url'))")"
+          status="$(curl --silent --show-error --output /tmp/probe.json --write-out '%{http_code}' \
+            --request POST "$TARGET_ORIGIN/api/telegram/webhook" \
+            --header 'content-type: application/json' \
+            --header "x-telegram-bot-api-secret-token: $RECOVERY_SECRET" \
+            --data '{}')"
+          if [ "$status" != '200' ]; then
+            echo "::error::Netlify has not deployed the recovery bridge yet (HTTP $status). Telegram webhook was not changed."
+            exit 1
+          fi
+          echo 'Netlify recovery bridge accepted the derived secret.'
+
+      - name: Point Telegram webhook to Netlify
+        shell: bash
+        run: |
+          set -euo pipefail
+          RECOVERY_SECRET="$(node -e "const {createHash}=require('node:crypto'); process.stdout.write(createHash('sha256').update('ce-vault-telegram-webhook-recovery-v1:'+process.env.BOT_TOKEN).digest('base64url'))")"
+          TARGET_URL="$TARGET_ORIGIN/api/telegram/webhook"
+          payload="$(jq -cn --arg url "$TARGET_URL" --arg secret "$RECOVERY_SECRET" '{url:$url,secret_token:$secret,allowed_updates:["message","edited_message","callback_query"],drop_pending_updates:false}')"
+          response="$(curl --silent --show-error --fail-with-body \
+            --request POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+            --header 'content-type: application/json' \
+            --data "$payload")"
+          if [ "$(jq -r '.ok // false' <<<"$response")" != 'true' ]; then
+            echo '::error::Telegram setWebhook failed.'
+            exit 1
+          fi
+          echo 'Telegram setWebhook accepted the Netlify target.'
+
+      - name: Verify webhook target
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_URL="$TARGET_ORIGIN/api/telegram/webhook"
+          response="$(curl --silent --show-error --fail-with-body \
+            "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
+          actual="$(jq -r '.result.url // empty' <<<"$response")"
+          pending="$(jq -r '.result.pending_update_count // 0' <<<"$response")"
+          if [ "$actual" != "$TARGET_URL" ]; then
+            echo '::error::Telegram webhook verification did not match Netlify.'
+            exit 1
+          fi
+          echo "Verified Netlify webhook; pending updates: $pending"
