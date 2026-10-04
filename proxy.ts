@@ -35,3 +35,5 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/api/telegram/webhook'],
 };
+
+// Deployment sync marker: 2026-10-04 — no runtime behavior change.
