@@ -1,6 +1,7 @@
 name: Repair Netlify Telegram webhook
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
