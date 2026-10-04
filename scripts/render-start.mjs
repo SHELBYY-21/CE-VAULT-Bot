@@ -37,6 +37,13 @@ async function telegramCall(token, method, payload) {
 }
 
 async function registerWebhook() {
+  // Render is retained only as a legacy/fallback runtime. A sleeping Render instance
+  // must never wake up and silently steal the single Telegram production webhook
+  // from the canonical host. Explicit opt-in is still available for emergency failover.
+  if (process.env.RENDER === 'true' && process.env.CE_ALLOW_RENDER_WEBHOOK !== '1') {
+    console.info('[CE Bot] Render auto-webhook disabled; legacy host will not claim production webhook.');
+    return;
+  }
   if (process.env.CE_AUTO_WEBHOOK !== '1') {
     console.info('[CE Bot] Manual webhook mode; auto-registration disabled.');
     return;
@@ -82,11 +89,11 @@ async function registerWebhook() {
     try {
       const health = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(9000) });
       if (!health.ok || (await health.json()).db !== 'ok') {
-        console.error('[CE Bot] Firebase health not verified; webhook unchanged.');
+        console.error('[CE Bot] Database health not verified; webhook unchanged.');
         return;
       }
     } catch {
-      console.error('[CE Bot] Firebase health unavailable; webhook unchanged.');
+      console.error('[CE Bot] Database health unavailable; webhook unchanged.');
       return;
     }
   }
@@ -121,7 +128,7 @@ async function registerWebhook() {
         { command: 'ping', description: 'ตรวจสอบการตอบกลับ' },
         { command: 'help', description: 'คู่มือใช้งานบอต' },
         { command: 'id', description: 'ดู Telegram IDs' },
-        { command: 'ledger', description: 'ยอดห้อง (เมื่อ Firebase พร้อม)' },
+        { command: 'ledger', description: 'ยอดห้อง' },
       ],
     });
     if (!commands.ok) console.warn('[CE Bot] setMyCommands unsuccessful; basic replies still available.');
