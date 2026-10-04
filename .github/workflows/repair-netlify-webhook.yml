@@ -1,0 +1,55 @@
+name: Repair Netlify Telegram webhook
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-netlify-webhook.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_URL: https://zesty-semolina-b169fc.netlify.app/api/telegram/set-webhook
+      API_SECRET: ${{ secrets.API_SECRET }}
+    steps:
+      - name: Validate secret availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${API_SECRET:-}" ]; then
+            echo '::error::Missing Actions secret API_SECRET'
+            exit 1
+          fi
+
+      - name: Rebind Telegram webhook to Netlify
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          status="$(curl --silent --show-error --connect-timeout 15 --max-time 45 \
+            --output "$body" --write-out '%{http_code}' \
+            --request POST \
+            --header "x-api-key: ${API_SECRET}" \
+            --header 'content-type: application/json' \
+            --data '{}' \
+            "$TARGET_URL")"
+          if [ "$status" != '200' ]; then
+            echo "::error::Netlify set-webhook returned HTTP $status"
+            cat "$body"
+            exit 1
+          fi
+          node - "$body" <<'NODE'
+          const fs = require('fs');
+          const path = process.argv[2];
+          const json = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (json.ok !== true || !String(json.webhookUrl || '').startsWith('https://zesty-semolina-b169fc.netlify.app/')) {
+            console.error('Webhook verification failed');
+            process.exit(1);
+          }
+          console.log(`Webhook repaired: ${json.webhookUrl}`);
+          NODE
