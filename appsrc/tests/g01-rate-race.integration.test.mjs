@@ -87,7 +87,7 @@ async function publish(cycleId, rateValue, expiresAt = futureIso()) {
   });
 }
 
-async function quote(transactionId, expectedTransactionStatus = "ocr_success", quoteExpiresAt = futureIso()) {
+async function quote(transactionId, expectedTransactionStatus = "ocr_success", quoteExpiresAt = futureIso(30_000)) {
   return engine.createOrRequote({
     transactionId,
     actorId,
@@ -261,6 +261,17 @@ test("integration: rate expires before confirm -> QUOTE_EXPIRED", { skip: !enabl
   await sql`select pg_sleep(1.15)`;
 
   await expectCode(confirm(transactionId, createdQuote.id), "QUOTE_EXPIRED");
+});
+
+test("integration: quote cannot outlive the active rate snapshot", { skip: !enabled }, async () => {
+  const cycleId = await seedCycle();
+  const transactionId = await seedTransaction(cycleId);
+  await publish(cycleId, "34.50", futureIso(2000));
+
+  await expectCode(
+    quote(transactionId, "ocr_success", futureIso(5000)),
+    "QUOTE_EXPIRY_INVALID",
+  );
 });
 
 test("integration: quote expiry and financial fields are immutable after quote creation", { skip: !enabled }, async () => {
