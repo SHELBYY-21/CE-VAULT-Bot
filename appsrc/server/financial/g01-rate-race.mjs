@@ -28,7 +28,7 @@ function nonEmpty(value, code) {
   return text;
 }
 
-function decimalString(value, code, { positive = false } = {}) {
+function decimalValue(value, code, { positive = false } = {}) {
   const text = nonEmpty(value, code);
   let parsed;
   try {
@@ -60,8 +60,8 @@ export function createRoundingPolicy({ version, scale, mode }) {
 }
 
 export function calculateExpectedUsdt(thbAmount, rateValue, policy) {
-  const thb = decimalString(thbAmount, "THB_AMOUNT_INVALID", { positive: true });
-  const rate = decimalString(rateValue, "RATE_VALUE_INVALID", { positive: true });
+  const thb = decimalValue(thbAmount, "THB_AMOUNT_INVALID", { positive: true });
+  const rate = decimalValue(rateValue, "RATE_VALUE_INVALID", { positive: true });
   return thb.div(rate).toDecimalPlaces(policy.scale, policy.decimalMode).toFixed(policy.scale);
 }
 
@@ -84,14 +84,14 @@ export async function withSerializableRetry(beginTransaction, work, options = {}
   }
 }
 
-function normalizeRoles(value) {
+function normalizeRoles(value, code) {
   const roles = Array.isArray(value) ? value : String(value ?? "").split(",");
   const normalized = roles.map((role) => String(role).trim().toLowerCase()).filter(Boolean);
-  if (!normalized.length) fail("RATE_CONFIRM_ROLES_REQUIRED");
+  if (!normalized.length) fail(code);
   return new Set(normalized);
 }
 
-async function assertActorCanConfirm(tx, actorId, allowedRoles) {
+async function assertActorCapability(tx, actorId, allowedRoles, capability) {
   const id = nonEmpty(actorId, "ACTOR_ID_REQUIRED");
   const rows = await tx`
     select id, role, is_active
@@ -101,7 +101,9 @@ async function assertActorCanConfirm(tx, actorId, allowedRoles) {
   `;
   const actor = rows[0];
   if (!actor || actor.is_active !== true) fail("ACTOR_NOT_AUTHORIZED");
-  if (!allowedRoles.has(String(actor.role ?? "").trim().toLowerCase())) fail("ACTOR_NOT_AUTHORIZED");
+  if (!allowedRoles.has(String(actor.role ?? "").trim().toLowerCase())) {
+    fail("ACTOR_CAPABILITY_DENIED", capability);
+  }
   return actor;
 }
 
@@ -127,12 +129,16 @@ function json(value) {
 
 export function createG01FinancialEngine({
   databaseUrl,
+  allowedPublishRoles,
+  allowedQuoteRoles,
   allowedConfirmRoles,
   roundingPolicy,
   sqlOptions = {},
 }) {
   const connectionString = nonEmpty(databaseUrl, "DATABASE_URL_REQUIRED");
-  const allowedRoles = normalizeRoles(allowedConfirmRoles);
+  const publishRoles = normalizeRoles(allowedPublishRoles, "RATE_PUBLISH_ROLES_REQUIRED");
+  const quoteRoles = normalizeRoles(allowedQuoteRoles, "RATE_QUOTE_ROLES_REQUIRED");
+  const confirmRoles = normalizeRoles(allowedConfirmRoles, "RATE_CONFIRM_ROLES_REQUIRED");
   const policy = createRoundingPolicy(roundingPolicy);
   const sql = postgres(connectionString, {
     prepare: false,
@@ -149,11 +155,13 @@ export function createG01FinancialEngine({
     const actorId = nonEmpty(input.actorId, "ACTOR_ID_REQUIRED");
     const currencyPair = nonEmpty(input.currencyPair, "CURRENCY_PAIR_REQUIRED");
     const requestId = nonEmpty(input.requestId, "REQUEST_ID_REQUIRED");
-    const rate = decimalString(input.rateValue, "RATE_VALUE_INVALID", { positive: true }).toFixed(12);
+    const rate = decimalValue(input.rateValue, "RATE_VALUE_INVALID", { positive: true }).toFixed(12);
     const effectiveAt = nonEmpty(input.effectiveAt, "RATE_EFFECTIVE_AT_REQUIRED");
     const expiresAt = nonEmpty(input.expiresAt, "RATE_EXPIRES_AT_REQUIRED");
 
     return withSerializableRetry(beginSerializable, async (tx) => {
+      await assertActorCapability(tx, actorId, publishRoles, "rate.publish");
+
       const [cycle] = await tx`
         select id, status
         from public.vault_cycles
@@ -162,8 +170,6 @@ export function createG01FinancialEngine({
       `;
       if (!cycle) fail("CYCLE_NOT_FOUND");
       if (cycle.status !== "OPEN") fail("CYCLE_NOT_OPEN");
-
-      await assertActorCanConfirm(tx, actorId, allowedRoles);
 
       const active = await tx`
         select id, version, status
@@ -208,10 +214,7 @@ export function createG01FinancialEngine({
         )
       `;
 
-      return {
-        ...snapshot,
-        rate_value: String(snapshot.rate_value),
-      };
+      return { ...snapshot, rate_value: String(snapshot.rate_value) };
     });
   }
 
@@ -233,7 +236,7 @@ export function createG01FinancialEngine({
       if (transaction.confirmation_idempotency_key) fail("TRANSACTION_ALREADY_CONFIRMED");
       if (transaction.status !== expectedStatus) fail("TRANSACTION_STATE_CONFLICT");
 
-      await assertActorCanConfirm(tx, actorId, allowedRoles);
+      await assertActorCapability(tx, actorId, quoteRoles, "rate.quote");
 
       const [cycle] = await tx`
         select id, status
@@ -322,11 +325,7 @@ export function createG01FinancialEngine({
         )
       `;
 
-      return {
-        ...quote,
-        rate_value: String(quote.rate_value),
-        expected_usdt: String(quote.expected_usdt),
-      };
+      return { ...quote, rate_value: String(quote.rate_value), expected_usdt: String(quote.expected_usdt) };
     });
   }
 
@@ -354,7 +353,7 @@ export function createG01FinancialEngine({
       }
       if (transaction.confirmation_idempotency_key) fail("CONFIRMATION_CONFLICT");
 
-      await assertActorCanConfirm(tx, actorId, allowedRoles);
+      await assertActorCapability(tx, actorId, confirmRoles, "rate.confirm");
 
       const [cycle] = await tx`
         select id, status
@@ -483,6 +482,8 @@ export function createG01FinancialEngine({
 export function g01ConfigFromEnv(env = process.env) {
   return {
     databaseUrl: env.DATABASE_URL,
+    allowedPublishRoles: env.CE_RATE_PUBLISH_ROLES,
+    allowedQuoteRoles: env.CE_RATE_QUOTE_ROLES,
     allowedConfirmRoles: env.CE_RATE_CONFIRM_ROLES,
     roundingPolicy: {
       version: env.CE_ROUNDING_POLICY_VERSION,
