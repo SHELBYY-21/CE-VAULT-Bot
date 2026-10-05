@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mainPath = path.join(root, 'appsrc', 'src', 'main.js');
 let source = readFileSync(mainPath, 'utf8');
-const marker = '/* CE_BRAND_UI_V2 */';
+const marker = '/* CE_BRAND_UI_V3 */';
 if (source.includes(marker)) process.exit(0);
 
 const css = [
@@ -39,17 +39,16 @@ const icons = {
   settings:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/></svg>'
 };
 
-const injected = [
-  '',marker,
-  'const CE_BRAND_SVG='+JSON.stringify(brandSvg)+';',
-  'const CE_ICON_SVGS='+JSON.stringify(icons)+';',
-  'const CE_BRAND_CSS='+JSON.stringify(css)+';',
-  'function ceIconFor(text){const t=String(text||"").trim().toLowerCase();if(/หน้าหลัก|home/.test(t))return"home";if(/vault|ฐานข้อมูล/.test(t))return"vault";if(/ธุรกรรม|transaction|รายการ/.test(t))return"tx";if(/บัญชี|account|bank/.test(t))return"bank";if(/ทีมงาน|team/.test(t))return"team";if(/ai agent|agent/.test(t))return"ai";if(/รายงาน|report|analytics/.test(t))return"report";if(/ตั้งค่า|setting/.test(t))return"settings";return null;}',
-  'function installCEBrandUI(){if(!document.getElementById("ce-brand-ui-style")){const s=document.createElement("style");s.id="ce-brand-ui-style";s.textContent=CE_BRAND_CSS;document.head.appendChild(s);}const brand=[...document.querySelectorAll("header *,nav *,aside *,[class*=brand] *,[class*=logo] *")];for(const el of brand){if(el.children.length)continue;const t=(el.textContent||"").trim().replace(/\\s+/g," ");if(t==="CE VAULT"||t==="CE"||t==="YOUNGBOSS OS"){const h=document.createElement("span");h.className="ce-brand-mark";h.innerHTML=CE_BRAND_SVG+"<span class=\"ce-brand-copy\"><b>CE VAULT</b><small>YOUNGBOSS OS</small></span>";el.replaceWith(h);break;}}const items=[...document.querySelectorAll("nav a,nav button,aside a,aside button,[class*=sidebar] a,[class*=sidebar] button,[class*=bottom] a,[class*=bottom] button")];for(const el of items){if(el.querySelector(".ce-menu-icon"))continue;const key=ceIconFor(el.textContent);if(!key)continue;const i=document.createElement("span");i.className="ce-menu-icon";i.innerHTML=CE_ICON_SVGS[key];el.prepend(i);el.classList.add("ce-menu-enhanced");}}',
-  'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",installCEBrandUI,{once:true});else queueMicrotask(installCEBrandUI);',
-  'new MutationObserver(function(){installCEBrandUI();}).observe(document.documentElement,{childList:true,subtree:true});',''
-].join('\n');
+const lines = [];
+lines.push('', marker);
+lines.push('const CE_BRAND_SVG='+JSON.stringify(brandSvg)+';');
+lines.push('const CE_ICON_SVGS='+JSON.stringify(icons)+';');
+lines.push('const CE_BRAND_CSS='+JSON.stringify(css)+';');
+lines.push('function ceIconFor(text){const t=String(text||"").trim().toLowerCase();if(/หน้าหลัก|home/.test(t))return"home";if(/vault|ฐานข้อมูล/.test(t))return"vault";if(/ธุรกรรม|transaction|รายการ/.test(t))return"tx";if(/บัญชี|account|bank/.test(t))return"bank";if(/ทีมงาน|team/.test(t))return"team";if(/ai agent|agent/.test(t))return"ai";if(/รายงาน|report|analytics/.test(t))return"report";if(/ตั้งค่า|setting/.test(t))return"settings";return null;}');
+lines.push('function installCEBrandUI(){if(!document.getElementById("ce-brand-ui-style")){const s=document.createElement("style");s.id="ce-brand-ui-style";s.textContent=CE_BRAND_CSS;document.head.appendChild(s);}const brand=[...document.querySelectorAll("header *,nav *,aside *,[class*=brand] *,[class*=logo] *")];for(const el of brand){if(el.children.length)continue;const t=(el.textContent||"").trim().replace(/\\s+/g," ");if(t==="CE VAULT"||t==="CE"||t==="YOUNGBOSS OS"){const h=document.createElement("span");h.className="ce-brand-mark";const icon=document.createElement("span");icon.innerHTML=CE_BRAND_SVG;while(icon.firstChild)h.appendChild(icon.firstChild);const copy=document.createElement("span");copy.className="ce-brand-copy";const b=document.createElement("b");b.textContent="CE VAULT";const small=document.createElement("small");small.textContent="YOUNGBOSS OS";copy.appendChild(b);copy.appendChild(small);h.appendChild(copy);el.replaceWith(h);break;}}const items=[...document.querySelectorAll("nav a,nav button,aside a,aside button,[class*=sidebar] a,[class*=sidebar] button,[class*=bottom] a,[class*=bottom] button")];for(const el of items){if(el.querySelector(".ce-menu-icon"))continue;const key=ceIconFor(el.textContent);if(!key)continue;const i=document.createElement("span");i.className="ce-menu-icon";i.innerHTML=CE_ICON_SVGS[key];el.prepend(i);el.classList.add("ce-menu-enhanced");}}');
+lines.push('if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",installCEBrandUI,{once:true});else queueMicrotask(installCEBrandUI);');
+lines.push('new MutationObserver(function(){installCEBrandUI();}).observe(document.documentElement,{childList:true,subtree:true});','');
 
-source += injected;
+source += lines.join('\n');
 writeFileSync(mainPath, source);
 console.log('Patched CE brand logo, menu icon set and responsive UI layer.');
