@@ -11,6 +11,34 @@ Product: Thai-first Telegram finance operations bot. Next.js 16 webhook at `app/
 6. Never silently mutate balances, delete ledger rows, expose secrets, or deploy as part of a UI-only task.
 7. Prefer one visible menu and inline callbacks over unsolicited stickers/status message floods. Do not change financial logic to satisfy a visual redesign.
 
+## Agent Security v2
+Execution is classified before work starts:
+
+- **AUTO**: read-only inspection, code edits on a branch, lint/typecheck/test/build, documentation, log analysis, dependency research, preview-safe verification, and pull-request creation.
+- **APPROVAL**: production deployment, production environment-variable changes, database migrations, RLS/auth/permission changes, destructive database operations, DNS/domain changes, and major dependency upgrades with broad runtime impact.
+- **BLOCK**: money or USDT transfer, wallet/private-key access, manual ledger/balance mutation, production secret export, audit-log disabling, force-push to `main`, or bypassing required security controls.
+
+Role boundaries:
+
+- `DEV`: code, tests, build, PR only.
+- `OPS`: logs, health, deployment status, diagnostics. Production mutation requires approval.
+- `RESEARCH`: docs, APIs, libraries, MCP research. No production credentials.
+- `FINANCE_ANALYST`: calculations, reconciliation checks, anomaly detection, summaries. Read-only. Never executes transfers or ledger mutations.
+
+When running Codex, Claude Code, or another coding agent on Linux, prefer Grith supervision with a workspace fence, for example `grith exec --workspace-only codex` or `grith exec --workspace-only claude`. Grith is an additional enforcement layer, not a replacement for containers/VMs, least-privilege credentials, database authorization, or human approval for high-risk actions.
+
+Operational rules:
+
+1. Work on a branch. Do not write directly to `main` for agent-authored changes.
+2. Retry reversible failures at most 3 times. Then stop, report root cause, and preserve the last known-good state.
+3. Do not read or copy production secrets unless the task explicitly requires a human-approved secret operation.
+4. Do not give coding agents direct Telegram/email/webhook send capability. Return structured results to the orchestrator instead.
+5. Production actions require one explicit approval after code, tests, rollback plan, and evidence are ready.
+6. Every completion claim must include evidence: changed files, checks run, result, and any unverified live dependency.
+
+Machine-readable policy: `ops/agent-control-policy.json`.
+Detailed operating model: `docs/AGENT_SECURITY_V2.md`.
+
 ## Before merging
 ```bash
 npm ci && npm run typecheck && npm run lint && npm test && npm run build
