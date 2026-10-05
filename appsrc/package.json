@@ -1,0 +1,22 @@
+{
+  "name": "cevault-mobile-patch",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.mjs",
+    "build": "vite build",
+    "preview": "NODE_ENV=production node server/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "simulate:callback": "node scripts/simulate-callback.mjs",
+    "check": "node scripts/check-contract.mjs && npm run test && npm run build",
+    "start": "node server/index.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0"
+  }
+}
