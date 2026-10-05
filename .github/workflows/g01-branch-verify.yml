@@ -1,0 +1,56 @@
+name: G01 branch verify
+
+on:
+  push:
+    branches:
+      - codex/canonical-source-20261006
+    paths:
+      - appsrc/package.json
+      - appsrc/package-lock.json
+      - appsrc/server/financial/**
+      - appsrc/tests/g01-rate-race.test.mjs
+      - supabase/migrations/202610060001_g01_rate_race_condition.sql
+      - .github/workflows/g01-branch-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate deterministic app lockfile
+        working-directory: appsrc
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Clean install
+        working-directory: appsrc
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Unit and contract tests
+        working-directory: appsrc
+        run: npm test
+
+      - name: Build
+        working-directory: appsrc
+        run: npm run build
+
+      - name: Upload generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g01-package-lock-${{ github.sha }}
+          path: appsrc/package-lock.json
+          if-no-files-found: error
+          retention-days: 3
