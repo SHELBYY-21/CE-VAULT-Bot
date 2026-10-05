@@ -1,5 +1,6 @@
 name: Test
 
+# Security gate: production dependencies must remain free of high-severity audit findings.
 on:
   push:
     branches: [main]
