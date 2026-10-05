@@ -1,8 +1,5 @@
 # เปิดแดชบอร์ดสาธารณะผ่าน Cloudflare quick tunnel
 # (แยกจาก Bot 24h — ไม่ cancel บอท)
-#
-# ใช้: Actions → "Dashboard 24h" → Run workflow
-# ดู URL ใน Job Summary / artifact `dashboard-url` / issue "CE VAULT Dashboard URL"
 name: Dashboard 24h
 
 on:
@@ -63,7 +60,7 @@ jobs:
           chmod +x /tmp/cloudflared
           /tmp/cloudflared --version
 
-      - name: Start Next.js + public tunnel
+      - name: Start CE VAULT + public tunnel
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           API_SECRET: ${{ secrets.API_SECRET }}
@@ -83,17 +80,31 @@ jobs:
         run: |
           set -e
           npm run start -- --hostname 127.0.0.1 --port 3000 &
-          NEXT_PID=$!
+          APP_PID=$!
+          READY=0
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then
-              echo "Next.js healthy"
+            if curl -fsS http://127.0.0.1:3000/api/v1/health >/tmp/health.json; then
+              READY=1
+              echo "CE VAULT healthy"
+              cat /tmp/health.json
               break
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "CE VAULT process exited before health became ready"
+              wait "$APP_PID" || true
+              exit 1
             fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:3000/api/health
+          if [ "$READY" != "1" ]; then
+            echo "CE VAULT health endpoint did not become ready"
+            exit 1
+          fi
+
+          # Verify the runtime contract actually used by the current dashboard.
+          curl -fsS http://127.0.0.1:3000/api/v1/telegram/status | head -c 800
           echo
-          curl -fsS http://127.0.0.1:3000/api/dashboard/data | head -c 400
+          curl -fsS 'http://127.0.0.1:3000/api/v1/jobs?limit=1' | head -c 800
           echo
 
           rm -f /tmp/cf.log
@@ -112,32 +123,32 @@ jobs:
             exit 1
           fi
 
-          DASH="${URL}/dashboard"
+          DASH="${URL}/"
           echo "Public dashboard: $DASH"
           echo "$DASH" > /tmp/dashboard-url.txt
           {
             echo "## CE VAULT Dashboard"
             echo ""
             echo "- Open: [$DASH]($DASH)"
-            echo "- API: \`${URL}/api/dashboard/data\`"
-            echo "- Tunnel URL rotates each run (~5h)"
+            echo "- Health: \`${URL}/api/v1/health\`"
+            echo "- Telegram: \`${URL}/api/v1/telegram/status\`"
+            echo "- Tunnel URL rotates when the Actions job restarts"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Publish / update a single tracking issue with the live URL
           TITLE='CE VAULT Dashboard URL'
           EXISTING=$(gh issue list --search "in:title \"$TITLE\"" --state open --json number,title --jq ".[] | select(.title==\"$TITLE\") | .number" | head -1)
-          BODY=$(printf '## Live dashboard\n\n%s\n\nUpdated: %s\nRun: %s\n\n> URL rotates when the Actions job restarts (~every 5 hours).\n' "$DASH" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
+          BODY=$(printf '## Live dashboard\n\n%s\n\nUpdated: %s\nRun: %s\n\n> Runtime contract: /api/v1/health + /api/v1/telegram/status.\n' "$DASH" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
           if [ -n "$EXISTING" ]; then
             gh issue edit "$EXISTING" --body "$BODY"
           else
             gh issue create --title "$TITLE" --body "$BODY"
           fi
 
-          while kill -0 "$NEXT_PID" 2>/dev/null && kill -0 "$CF_PID" 2>/dev/null; do
+          while kill -0 "$APP_PID" 2>/dev/null && kill -0 "$CF_PID" 2>/dev/null; do
             sleep 30
           done
-          echo "Process exited — failing so schedule restarts"
-          kill "$NEXT_PID" "$CF_PID" 2>/dev/null || true
+          echo "Runtime/tunnel exited; scheduled workflow will replace it"
+          kill "$APP_PID" "$CF_PID" 2>/dev/null || true
           exit 1
 
       - name: Upload dashboard URL
