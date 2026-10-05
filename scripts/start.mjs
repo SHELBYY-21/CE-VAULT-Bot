@@ -1,11 +1,15 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { setDefaultResultOrder } from 'node:dns';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+setDefaultResultOrder('ipv4first');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverPath = path.join(root, 'appsrc', 'server', 'index.mjs');
 const GATEWAY_AUTH_CONTEXT = 'ce-vault-data-gateway-v1';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function supabaseHeaders(key) {
   const headers = { apikey: key, 'content-type': 'application/json' };
@@ -15,6 +19,10 @@ function supabaseHeaders(key) {
 
 function derivedGatewayAuth(botToken) {
   return createHash('sha256').update(`${GATEWAY_AUTH_CONTEXT}:${botToken}`).digest('hex');
+}
+
+function safeErrorCode(error) {
+  return String(error?.cause?.code || error?.code || error?.message || 'unknown').slice(0, 80);
 }
 
 async function loadVaultSecret(name) {
@@ -55,13 +63,34 @@ async function buildRuntimeEnv() {
   return env;
 }
 
-async function telegramApi(token, method, body = {}) {
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(`${method} failed`);
-  return payload.result;
+async function telegramApi(token, method, body = {}, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 3));
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs || 8000));
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.ok) return payload.result;
+      lastError = new Error(`${method}_HTTP_${response.status}`);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (attempt < attempts) await sleep(Math.min(1500 * (2 ** (attempt - 1)), 6000));
+  }
+
+  throw new Error(`${method} transport failed: ${safeErrorCode(lastError)}`);
 }
 
 function gatewayConfig(env) {
@@ -161,16 +190,16 @@ function startOutboxDispatcher(env) {
           } catch (error) {
             await supabaseRpc(env, 'ce_fail_outbox', {
               p_id: item.id,
-              p_error_code: String(error?.message || 'DISPATCH_FAILED').slice(0, 64),
+              p_error_code: safeErrorCode(error),
               p_retry_seconds: 5,
             }).catch(() => null);
             console.error(`[CE Outbox] Delivery failed for ${item.id}; retry scheduled.`);
           }
         }
       } catch (error) {
-        console.error(`[CE Outbox] Poll failed: ${error?.message || 'unknown error'}`);
+        console.error(`[CE Outbox] Poll failed: ${safeErrorCode(error)}`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await sleep(2000);
     }
   };
   setTimeout(() => void run(), 2500);
@@ -184,33 +213,57 @@ async function claimCanonicalWebhook(env) {
   const target = `${base}/api/telegram/webhook`;
   if (!token || !secret) {
     console.warn('[CE Bot] Webhook cutover skipped: bot token or webhook secret missing.');
-    return;
+    return false;
   }
-  try {
-    const before = await telegramApi(token, 'getWebhookInfo');
-    if (before?.url !== target) {
-      await telegramApi(token, 'setWebhook', {
-        url: target, secret_token: secret,
-        allowed_updates: ['message', 'edited_message', 'callback_query'], drop_pending_updates: false,
-      });
+
+  const rounds = 5;
+  for (let round = 1; round <= rounds; round += 1) {
+    try {
+      const before = await telegramApi(token, 'getWebhookInfo', {}, { attempts: 2, timeoutMs: 8000 });
+      if (before?.url !== target) {
+        await telegramApi(token, 'setWebhook', {
+          url: target,
+          secret_token: secret,
+          allowed_updates: ['message', 'edited_message', 'callback_query'],
+          drop_pending_updates: false,
+        }, { attempts: 2, timeoutMs: 8000 });
+      }
+      const after = await telegramApi(token, 'getWebhookInfo', {}, { attempts: 2, timeoutMs: 8000 });
+      if (after?.url !== target) throw new Error('WEBHOOK_VERIFICATION_MISMATCH');
+      console.log(`[CE Bot] Canonical Render webhook verified; queued updates: ${after?.pending_update_count ?? 0}.`);
+      return true;
+    } catch (error) {
+      console.error(`[CE Bot] Webhook verify ${round}/${rounds} failed: ${safeErrorCode(error)}`);
+      if (round < rounds) await sleep(Math.min(2000 * (2 ** (round - 1)), 30000));
     }
-    const after = await telegramApi(token, 'getWebhookInfo');
-    if (after?.url !== target) throw new Error('Webhook verification mismatch');
-    console.log(`[CE Bot] Canonical Render webhook verified; queued updates: ${after?.pending_update_count ?? 0}.`);
-  } catch (error) {
-    console.error(`[CE Bot] Webhook cutover failed: ${error.message}`);
   }
+
+  console.error('[CE Bot] Canonical webhook remains unverified after bounded retries.');
+  return false;
+}
+
+function startWebhookMaintainer(env) {
+  let stopped = false;
+  const run = async () => {
+    while (!stopped) {
+      await claimCanonicalWebhook(env);
+      if (!stopped) await sleep(5 * 60 * 1000);
+    }
+  };
+  setTimeout(() => void run(), 1800);
+  return () => { stopped = true; };
 }
 
 async function main() {
   const env = await buildRuntimeEnv();
   const child = spawn(process.execPath, [serverPath, ...process.argv.slice(2)], { cwd: root, env, stdio: 'inherit' });
-  setTimeout(() => void claimCanonicalWebhook(env), 1800);
+  const stopWebhookMaintainer = startWebhookMaintainer(env);
   const stopDispatcher = startOutboxDispatcher(env);
   for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.on(signal, () => { stopDispatcher(); child.kill(signal); });
+    process.on(signal, () => { stopWebhookMaintainer(); stopDispatcher(); child.kill(signal); });
   }
   child.on('exit', (code, signal) => {
+    stopWebhookMaintainer();
     stopDispatcher();
     if (signal) process.kill(process.pid, signal);
     else process.exit(code ?? 1);
