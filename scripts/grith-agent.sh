@@ -48,6 +48,21 @@ EOF
   exit 78
 fi
 
-# Fail closed by delegating launch to Grith. --workspace-only denies access
-# outside this repository/worktree rather than merely scoring it.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(git -C "${script_dir}/.." rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [ -z "$repo_root" ] || [ "$repo_root" = "/" ] || [ "$repo_root" = "$HOME" ]; then
+  echo "Unable to resolve a safe CE VAULT repository root. Refusing launch." >&2
+  exit 78
+fi
+
+if [ ! -f "$repo_root/ops/agent-control-policy.json" ]; then
+  echo "Agent control policy not found at repository root. Refusing launch." >&2
+  exit 78
+fi
+
+cd "$repo_root"
+
+# Fail closed by launching from the canonical repository/worktree root.
+# --workspace-only denies access outside this explicit workspace boundary.
 exec grith exec --workspace-only "$agent" "$@"
