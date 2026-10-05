@@ -13,6 +13,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationPath = path.resolve(__dirname, "../../supabase/migrations/202610060001_g01_rate_race_condition.sql");
 const migration = fs.readFileSync(migrationPath, "utf8");
+const executableMigration = migration.replace(/--.*$/gm, "");
 
 test("Decimal policy computes expected USDT without JS Number money arithmetic", () => {
   const policy = createRoundingPolicy({ version: "USDT-v1", scale: 6, mode: "HALF_UP" });
@@ -69,10 +70,10 @@ test("non-serialization failure is not retried", async () => {
 });
 
 test("G-01 migration uses NUMERIC and never PostgreSQL floating types", () => {
-  assert.match(migration, /rate_value numeric\(30,12\)/i);
-  assert.match(migration, /expected_usdt numeric\(30,12\)/i);
-  assert.match(migration, /confirmed_rate numeric\(30,12\)/i);
-  assert.doesNotMatch(migration, /\b(real|double precision|float\d*)\b/i);
+  assert.match(executableMigration, /rate_value numeric\(30,12\)/i);
+  assert.match(executableMigration, /expected_usdt numeric\(30,12\)/i);
+  assert.match(executableMigration, /confirmed_rate numeric\(30,12\)/i);
+  assert.doesNotMatch(executableMigration, /\b(real|double precision|float\d*)\b/i);
 });
 
 test("rate changed during OCR is represented by immutable versioned snapshots", () => {
