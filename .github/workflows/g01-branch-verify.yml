@@ -19,6 +19,20 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      G01_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -38,7 +52,7 @@ jobs:
         working-directory: appsrc
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Unit and contract tests
+      - name: Unit, contract and disposable-Postgres integration tests
         working-directory: appsrc
         run: npm test
 
