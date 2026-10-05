@@ -1,0 +1,182 @@
+function imageFileId(message) {
+  if (Array.isArray(message?.photo) && message.photo.length) return message.photo[message.photo.length - 1]?.file_id || null;
+  if (message?.document?.file_id && /^image\//i.test(message.document.mime_type || "")) return message.document.file_id;
+  return null;
+}
+
+function roomNameFor(message) {
+  return String(message?.chat?.title || message?.chat?.username || "TELEGRAM").slice(0, 40);
+}
+
+function maskedBank(account) {
+  const last4 = accountLast4(account?.account_number);
+  return `${account?.bank_name || "BANK"} ${last4 ? `••••${last4}` : "••••"}`;
+}
+
+async function requireTelegramOperator(message) {
+  const operator = await repository.getOperatorByTelegramId(message?.from?.id);
+  if (!operator) {
+    if (message?.chat?.id) await telegram.sendMessage(message.chat.id, "CE VAULT · ACCESS DENIED\nบัญชี Telegram นี้ไม่ได้เป็น operator ที่เปิดใช้งาน").catch(() => undefined);
+    return null;
+  }
+  return operator;
+}
+
+async function handleTelegramRate(message) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  const chatId = message.chat.id;
+  const raw = String(message.text || "").replace(/^\/rate(?:@\w+)?/i, "").trim();
+  const market = await fetchBinanceThSpot().catch(() => null);
+  const current = await repository.getLatestDeskRate();
+  if (!raw) {
+    await telegram.sendMessage(chatId, [
+      "CE VAULT · RATE",
+      `DESK ${current?.sell_rate || "NOT SET"} THB/USDT`,
+      `MARKET ${market?.price || "UNAVAILABLE"} THB/USDT · BINANCE TH SPOT`,
+      market?.observed_at ? `AS OF ${market.observed_at}` : "AUTO-RECORD ปิดเมื่อ market feed ใช้ไม่ได้",
+    ].join("\n"));
+    return true;
+  }
+  const sellRate = Number(raw);
+  if (!Number.isFinite(sellRate) || sellRate < 10 || sellRate > 100) {
+    await telegram.sendMessage(chatId, "CE VAULT · RATE INVALID\nใช้ /rate 35.20 (ช่วง 10-100 THB/USDT)");
+    return true;
+  }
+  if (!market?.fresh) {
+    await telegram.sendMessage(chatId, "CE VAULT · MARKET UNAVAILABLE\nไม่บันทึก desk rate เพราะ Binance TH Spot ยังยืนยันไม่ได้");
+    return true;
+  }
+  const saved = await repository.insertDeskRate(operator.id, String(sellRate), market.price);
+  await telegram.sendMessage(chatId, `CE VAULT · RATE SET\nDESK ${saved.sell_rate} THB/USDT\nMARKET ${market.price} THB/USDT · BINANCE TH SPOT`);
+  return true;
+}
+
+async function handleTelegramPin(message, unpin = false) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  const chatId = message.chat.id;
+  const today = bangkokDateKey();
+  const command = unpin ? "unpin" : "pin";
+  const raw = String(message.text || "").replace(new RegExp(`^\/${command}(?:@\w+)?`, "i"), "").trim();
+  const accounts = await repository.listBankAccountsForPin();
+  const pinned = accounts.filter((account) => account.pinned_for_date === today);
+  if (!raw) {
+    const rows = accounts.length ? accounts.map((account, index) => `${index + 1}. ${maskedBank(account)} ${account.pinned_for_date === today ? "· PIN" : ""}`) : ["ยังไม่มี bank account ในระบบ"];
+    await telegram.sendMessage(chatId, [`CE VAULT · ${unpin ? "UNPIN" : "PIN"} · ${today}`, ...rows, unpin ? "ใช้ /unpin 7890" : "ใช้ /pin 7890"].join("\n"));
+    return true;
+  }
+  const last4 = accountLast4(raw);
+  const bankHint = normalizeBank(raw.replace(/\d/g, ""));
+  let candidates = accounts.filter((account) => !last4 || accountLast4(account.account_number) === last4);
+  if (bankHint) {
+    const byBank = candidates.filter((account) => normalizeBank(account.bank_name) === bankHint);
+    if (byBank.length) candidates = byBank;
+  }
+  if (candidates.length !== 1) {
+    await telegram.sendMessage(chatId, `CE VAULT · ${unpin ? "UNPIN" : "PIN"} FAILED\nระบุเลขท้าย 4 ตัวที่ตรงเพียงบัญชีเดียว`);
+    return true;
+  }
+  const target = candidates[0];
+  if (unpin) {
+    const changed = await repository.unpinBankForDate(target.id, today);
+    await telegram.sendMessage(chatId, changed ? `CE VAULT · UNPIN OK\n${maskedBank(target)}` : "CE VAULT · UNPIN\nบัญชีนี้ไม่ได้ PIN วันนี้");
+    return true;
+  }
+  if (target.pinned_for_date !== today && pinned.length >= 3) {
+    await telegram.sendMessage(chatId, "CE VAULT · PIN LIMIT\nวันนี้ PIN ได้สูงสุด 3 บัญชี");
+    return true;
+  }
+  await repository.pinBankForDate(target.id, today);
+  await telegram.sendMessage(chatId, `CE VAULT · PIN OK\n${maskedBank(target)}\nDATE ${today}`);
+  return true;
+}
+
+async function handleLiveSlipMessage(message) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return;
+  const fileId = imageFileId(message);
+  if (!fileId) return;
+  const chatId = message.chat.id;
+  await telegram.sendMessage(chatId, "CE VAULT · OCR\nรับภาพแล้ว · กำลังตรวจยอด / บัญชี / Binance TH Spot").catch(() => undefined);
+
+  const downloaded = await telegram.downloadFile(fileId);
+  const fingerprint = fingerprintImage(downloaded.buffer);
+  const duplicate = await repository.findIntakeDuplicate(fingerprint);
+  if (duplicate) {
+    const pending = duplicate.source === "pending_slips" ? duplicate : {
+      ledger_ref: duplicate.ledger_ref || "existing-transaction",
+      status: duplicate.status || "RECORDED",
+      thb_in: duplicate.thb_amount,
+      should_send: duplicate.expected_usdt,
+      account_masked: null,
+      bank: null,
+      pin_match: false,
+    };
+    await telegram.sendMessage(chatId, formatIntakeReply({ pending, duplicate: true }));
+    return;
+  }
+
+  const businessDate = bangkokDateKey();
+  const [slip, deskRate, pinnedBanks, market] = await Promise.all([
+    analyzeSlipBuffer(downloaded.buffer, downloaded.mimeType),
+    repository.getLatestDeskRate(),
+    repository.listPinnedBanksForDate(businessDate),
+    fetchBinanceThSpot().catch(() => null),
+  ]);
+  const pinnedMatch = findPinnedMatch(slip, pinnedBanks);
+  const decision = decideIntake({ slip, pinnedMatch, pinnedCount: pinnedBanks.length, deskRate, market, businessDate });
+  const amount = Number(slip?.thbAmount);
+  const shouldSend = Number.isFinite(amount) && amount > 0 && Number(deskRate?.sell_rate) > 0
+    ? divideDecimal(String(amount), String(deskRate.sell_rate), 6)
+    : null;
+  const identity = makeLedgerIdentity(fingerprint);
+  const receiverLast4 = accountLast4(slip?.receiverLast4);
+  const pending = await repository.createPendingSlip({
+    short_ref: identity.shortRef,
+    date_key: identity.dateKey,
+    ledger_ref: identity.ledgerRef,
+    chat_id: String(chatId),
+    admin_tg_id: String(message.from.id),
+    admin_name: operator.name,
+    status: decision.status,
+    thb_in: Number.isFinite(amount) && amount > 0 ? String(amount) : null,
+    should_send: shouldSend,
+    desk_rate: deskRate?.sell_rate ? String(deskRate.sell_rate) : null,
+    mkt_rate: market?.fresh ? String(market.price) : null,
+    bot_usd: shouldSend,
+    bank: normalizeBank(slip?.bank),
+    account_masked: receiverLast4 ? `••••${receiverLast4}` : null,
+    name: slip?.receiverName || null,
+    pin_match: Boolean(pinnedMatch),
+    ocr_confidence: slip?.confidence == null ? null : String(slip.confidence),
+    source_file_id: fileId,
+    slip_url: null,
+    slip_fingerprint: fingerprint,
+    message_id: message.message_id || null,
+    tx_id: null,
+    note: `OCR=${slip?.provider || "UNAVAILABLE"};SLIP_DATE=${slip?.date || ""};SLIP_TIME=${slip?.time || ""};MARKET=${market?.fresh ? "BINANCE_TH_SPOT" : "UNAVAILABLE"}`,
+    bank_account_id: pinnedMatch?.id || null,
+  });
+
+  if (pending.duplicate) {
+    await telegram.sendMessage(chatId, formatIntakeReply({ pending, market, deskRate, duplicate: true }));
+    return;
+  }
+
+  let recorded = null;
+  let finalPending = pending;
+  if (decision.promotable) {
+    try {
+      recorded = await repository.promotePendingSlip(pending.id, operator.id, roomNameFor(message));
+      finalPending = { ...pending, status: "RECORDED", tx_id: recorded.tx_id };
+      publishSse("activity", { type: "operational_intake", transaction_id: recorded.tx_id, ledger_ref: pending.ledger_ref });
+    } catch (error) {
+      finalPending = await repository.updatePendingSlip(pending.id, {
+        status: "PROMOTION_FAILED",
+        note: `PROMOTION_FAILED=${error?.code || error?.message || "UNKNOWN"}`,
+      });
+    }
+  }
+  await telegram.sendMessage(chatId, formatIntakeReply({ pending: finalPending, market, deskRate, recorded }));
+}

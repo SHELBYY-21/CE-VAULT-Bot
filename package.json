@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && cd appsrc && npm run check",
+    "build": "node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && cd appsrc && npm run check",
     "start": "node scripts/start.mjs"
   }
 }
