@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.1",
+  "schemaVersion": "2.2",
   "project": "CE VAULT",
   "defaultDecision": "approval",
   "maxReversibleRetries": 3,
@@ -135,6 +135,8 @@
     "wallet.private_key.read",
     "ledger.balance.mutate",
     "ledger.row.delete",
+    "transaction.execute",
+    "production.data.write",
     "production.secret.export",
     "audit.disable",
     "security_control.disable",
