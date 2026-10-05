@@ -62,9 +62,10 @@ async function seedTransaction(cycleId, status = "ocr_success", thbAmount = "100
   const id = randomUUID();
   await sql`
     insert into public.transactions (
-      id, admin_id, type, status, thb_amount, expected_usdt, confirmed_by
+      id, admin_id, type, status, thb_amount, expected_usdt, confirmed_by, cycle_id
     ) values (
-      ${id}::uuid, ${actorId}::uuid, 'THB_DEPOSIT', ${status}, ${thbAmount}::numeric, 0::numeric, null
+      ${id}::uuid, ${actorId}::uuid, 'THB_DEPOSIT', ${status}, ${thbAmount}::numeric,
+      0::numeric, null, ${cycleId}::uuid
     )
   `;
   return id;
@@ -107,16 +108,16 @@ before(async () => {
   sql = postgres(databaseUrl, { max: 10, prepare: false });
 
   await sql.unsafe(`
-    create extension if not exists pgcrypto;
     do $$ begin create role anon; exception when duplicate_object then null; end $$;
     do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
     do $$ begin create role service_role; exception when duplicate_object then null; end $$;
 
+    drop extension if exists pgcrypto cascade;
     drop schema if exists public cascade;
     create schema public;
     grant all on schema public to postgres;
     grant usage on schema public to anon, authenticated, service_role;
-    create extension if not exists pgcrypto with schema public;
+    create extension pgcrypto with schema public;
 
     create table public.admins (
       id uuid primary key,
@@ -250,7 +251,7 @@ test("integration: rate changes while operator quote is open -> REQUOTE_REQUIRED
 test("integration: rate expires before confirm -> QUOTE_EXPIRED", { skip: !enabled }, async () => {
   const cycleId = await seedCycle();
   const transactionId = await seedTransaction(cycleId);
-  await publish(cycleId, "34.50", futureIso(1200));
+  await publish(cycleId, "34.50", futureIso(5000));
   const createdQuote = await quote(transactionId, "ocr_success", futureIso(1000));
   await sql`select pg_sleep(1.15)`;
 
