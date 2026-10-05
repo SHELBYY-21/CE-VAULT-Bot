@@ -149,7 +149,36 @@ begin
       message = 'RATE_SNAPSHOT_IMMUTABLE';
   end if;
 
-  if old.status = 'ACTIVE' and new.status in ('ACTIVE','SUPERSEDED','REVOKED') then
+  if old.status = 'ACTIVE' and new.status = 'ACTIVE' then
+    if new.superseded_at is distinct from old.superseded_at
+      or new.revoked_at is distinct from old.revoked_at
+    then
+      raise exception using
+        errcode = '23514',
+        message = 'RATE_SNAPSHOT_IMMUTABLE';
+    end if;
+    return new;
+  end if;
+
+  if old.status = 'ACTIVE' and new.status = 'SUPERSEDED' then
+    if new.superseded_at is null
+      or new.revoked_at is distinct from old.revoked_at
+    then
+      raise exception using
+        errcode = '23514',
+        message = 'RATE_SNAPSHOT_SUPERSEDE_INVALID';
+    end if;
+    return new;
+  end if;
+
+  if old.status = 'ACTIVE' and new.status = 'REVOKED' then
+    if new.revoked_at is null
+      or new.superseded_at is distinct from old.superseded_at
+    then
+      raise exception using
+        errcode = '23514',
+        message = 'RATE_SNAPSHOT_REVOKE_INVALID';
+    end if;
     return new;
   end if;
 
