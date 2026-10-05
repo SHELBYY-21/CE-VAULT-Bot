@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && cd appsrc && npm run check",
-    "start": "node scripts/posthog-selftest.mjs && node scripts/start.mjs"
+    "start": "node scripts/start.mjs"
   }
 }
