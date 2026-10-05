@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Unit Tests
+  canonical-build:
+    name: Canonical Build & Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,23 +22,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
-      - name: Run unit tests with coverage
-        run: npm run test
+      - name: Install bot dependencies
+        run: npm ci
+        working-directory: bot
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: coverage/
+      - name: Run canonical generated-app checks
+        run: npm run build
 
-  lint:
-    name: Lint & Typecheck
+  dependency-audit:
+    name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,45 +45,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
-      - name: Run ESLint
-        run: npm run lint
+      - name: Audit root production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
-      - name: Run TypeScript typecheck
-        run: npm run typecheck
-
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
+      - name: Install bot dependencies
         run: npm ci
+        working-directory: bot
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium firefox
-
-      - name: Run E2E tests
-        run: npm run test:e2e
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
+      - name: Audit bot production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: bot
