@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "2.1",
   "project": "CE VAULT",
   "defaultDecision": "approval",
   "maxReversibleRetries": 3,
@@ -36,6 +36,7 @@
         "logs.read",
         "health.read",
         "deployment.status.read",
+        "board.production.read",
         "incident.diagnose",
         "rollback.prepare"
       ],
@@ -70,8 +71,13 @@
       ]
     },
     "FINANCE_ANALYST": {
-      "mode": "strict-read-only",
+      "mode": "production-read-only",
       "allow": [
+        "board.production.read",
+        "ledger.production.read",
+        "transactions.production.read",
+        "accounts.display.read",
+        "rates.production.read",
         "finance.calculate",
         "finance.reconcile.check",
         "finance.anomaly.detect",
@@ -86,9 +92,30 @@
         "wallet.private_key.read",
         "ledger.balance.mutate",
         "ledger.row.delete",
-        "transaction.execute"
+        "transaction.execute",
+        "production.data.write",
+        "production.secret.read",
+        "production.secret.export"
       ]
     }
+  },
+  "readOnlyProduction": {
+    "auto": true,
+    "scope": [
+      "dashboard_display_data",
+      "balances_for_display",
+      "ledger_rows",
+      "transaction_rows",
+      "account_display_metadata",
+      "exchange_rates",
+      "operational_status"
+    ],
+    "requirements": [
+      "credential_is_read_only_or_api_enforces_read_only",
+      "no_wallet_or_transaction_signing_capability",
+      "no_secret_export_capability",
+      "no_mutation_endpoint_in_board_context"
+    ]
   },
   "globalApproval": [
     "production.deploy",
