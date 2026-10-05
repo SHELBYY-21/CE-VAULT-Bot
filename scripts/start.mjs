@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { setDefaultResultOrder } from 'node:dns';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { safeWebhookInfo } from './webhook-info-safe.mjs';
 
 setDefaultResultOrder('ipv4first');
 
@@ -247,7 +248,11 @@ async function claimCanonicalWebhook(env) {
       }
       const after = await telegramApi(token, 'getWebhookInfo', {}, { attempts: 2, timeoutMs: 8000 });
       if (after?.url !== target) throw new Error('WEBHOOK_VERIFICATION_MISMATCH');
-      console.log(`[CE Bot] Canonical Render webhook verified; queued updates: ${after?.pending_update_count ?? 0}.`);
+      const diagnostics = safeWebhookInfo(after);
+      console.log(`[CE Bot] Canonical Render webhook verified; queued updates: ${diagnostics.pending_update_count}.`);
+      if (diagnostics.pending_update_count > 0 || diagnostics.last_error_message) {
+        console.warn(`[CE Bot] Webhook delivery diagnostics: ${JSON.stringify(diagnostics)}`);
+      }
       return true;
     } catch (error) {
       console.error(`[CE Bot] Webhook verify ${round}/${rounds} failed: ${safeErrorCode(error)}`);
