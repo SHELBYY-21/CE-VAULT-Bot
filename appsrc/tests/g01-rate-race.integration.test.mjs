@@ -21,6 +21,10 @@ const migration2 = fs.readFileSync(
   path.resolve(__dirname, "../../supabase/migrations/202610060002_g01_confirmed_snapshot_lifetime_guard.sql"),
   "utf8",
 );
+const migration3 = fs.readFileSync(
+  path.resolve(__dirname, "../../supabase/migrations/202610060003_g01_quote_immutability_and_confirmed_invariant.sql"),
+  "utf8",
+);
 
 let sql;
 let engine;
@@ -174,6 +178,7 @@ before(async () => {
 
   await sql.unsafe(migration1);
   await sql.unsafe(migration2);
+  await sql.unsafe(migration3);
 
   engine = createG01FinancialEngine({
     databaseUrl,
@@ -256,6 +261,31 @@ test("integration: rate expires before confirm -> QUOTE_EXPIRED", { skip: !enabl
   await sql`select pg_sleep(1.15)`;
 
   await expectCode(confirm(transactionId, createdQuote.id), "QUOTE_EXPIRED");
+});
+
+test("integration: quote expiry and financial fields are immutable after quote creation", { skip: !enabled }, async () => {
+  const cycleId = await seedCycle();
+  const transactionId = await seedTransaction(cycleId);
+  await publish(cycleId, "34.50");
+  const createdQuote = await quote(transactionId);
+
+  await assert.rejects(
+    sql`
+      update public.transaction_rate_quotes
+      set expires_at = expires_at + interval '1 day'
+      where id = ${createdQuote.id}::uuid
+    `,
+    (error) => error.code === "23514" && /TRANSACTION_RATE_QUOTE_IMMUTABLE/.test(error.message),
+  );
+
+  await assert.rejects(
+    sql`
+      update public.transaction_rate_quotes
+      set expected_usdt = 1::numeric
+      where id = ${createdQuote.id}::uuid
+    `,
+    (error) => error.code === "23514" && /TRANSACTION_RATE_QUOTE_IMMUTABLE/.test(error.message),
+  );
 });
 
 test("integration: two concurrent confirm requests with different keys produce one success and one conflict", { skip: !enabled }, async () => {
