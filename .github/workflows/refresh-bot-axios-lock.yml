@@ -1,0 +1,42 @@
+name: Refresh bot Axios lock
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/refresh-bot-axios-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bot/package-lock.json
+      - name: Refresh patched Axios lock
+        working-directory: bot
+        run: npm install axios@1.20.0 --package-lock-only --save=false
+      - name: Verify production dependency audit
+        working-directory: bot
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit lock and remove helper workflow
+        run: |
+          git config user.name "CE VAULT CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add bot/package-lock.json
+          git rm .github/workflows/refresh-bot-axios-lock.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "fix(deps): refresh Axios security lock"
+          git push origin HEAD:main
