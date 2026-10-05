@@ -13,7 +13,7 @@ on:
       - .github/workflows/g01-branch-verify.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -45,6 +45,25 @@ jobs:
       - name: Build
         working-directory: appsrc
         run: npm run build
+
+      - name: Commit generated lockfile to working branch
+        if: success() && github.actor != 'github-actions[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if git diff --quiet -- appsrc/package-lock.json; then
+            echo "package-lock.json already synchronized"
+            exit 0
+          fi
+          current_sha="$(gh api "repos/${REPO}/contents/appsrc/package-lock.json?ref=${BRANCH}" --jq .sha)"
+          content="$(base64 -w0 appsrc/package-lock.json)"
+          gh api --method PUT "repos/${REPO}/contents/appsrc/package-lock.json" \
+            -f message='chore(g01): sync generated package lock' \
+            -f content="$content" \
+            -f sha="$current_sha" \
+            -f branch="$BRANCH" >/dev/null
 
       - name: Upload generated lockfile
         if: always()
