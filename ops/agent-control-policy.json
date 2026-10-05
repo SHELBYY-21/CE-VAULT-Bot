@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "2.2",
+  "project": "CE VAULT",
+  "defaultDecision": "approval",
+  "maxReversibleRetries": 3,
+  "roles": {
+    "DEV": {
+      "mode": "write-branch-only",
+      "allow": [
+        "repo.read",
+        "repo.branch.write",
+        "test.run",
+        "lint.run",
+        "typecheck.run",
+        "build.run",
+        "pull_request.create",
+        "preview.verify"
+      ],
+      "approval": [
+        "production.deploy",
+        "database.migrate",
+        "auth.change",
+        "rls.change",
+        "production.env.change"
+      ],
+      "block": [
+        "finance.transfer",
+        "wallet.private_key.read",
+        "production.secret.export",
+        "ledger.balance.mutate"
+      ]
+    },
+    "OPS": {
+      "mode": "read-mostly",
+      "allow": [
+        "logs.read",
+        "health.read",
+        "deployment.status.read",
+        "board.production.read",
+        "incident.diagnose",
+        "rollback.prepare"
+      ],
+      "approval": [
+        "production.redeploy",
+        "production.rollback",
+        "production.scale",
+        "production.env.change",
+        "domain.change",
+        "dns.change"
+      ],
+      "block": [
+        "production.secret.export",
+        "audit.disable",
+        "security_control.disable"
+      ]
+    },
+    "RESEARCH": {
+      "mode": "read-only",
+      "allow": [
+        "docs.read",
+        "web.research",
+        "api.compare",
+        "library.review",
+        "mcp.review"
+      ],
+      "approval": [],
+      "block": [
+        "production.write",
+        "production.secret.read",
+        "finance.transfer"
+      ]
+    },
+    "FINANCE_ANALYST": {
+      "mode": "production-read-only",
+      "allow": [
+        "board.production.read",
+        "ledger.production.read",
+        "transactions.production.read",
+        "accounts.display.read",
+        "rates.production.read",
+        "finance.calculate",
+        "finance.reconcile.check",
+        "finance.anomaly.detect",
+        "finance.duplicate.detect",
+        "finance.summary"
+      ],
+      "approval": [],
+      "block": [
+        "finance.transfer",
+        "crypto.send",
+        "wallet.sign",
+        "wallet.private_key.read",
+        "ledger.balance.mutate",
+        "ledger.row.delete",
+        "transaction.execute",
+        "production.data.write",
+        "production.secret.read",
+        "production.secret.export"
+      ]
+    }
+  },
+  "readOnlyProduction": {
+    "auto": true,
+    "scope": [
+      "dashboard_display_data",
+      "balances_for_display",
+      "ledger_rows",
+      "transaction_rows",
+      "account_display_metadata",
+      "exchange_rates",
+      "operational_status"
+    ],
+    "requirements": [
+      "credential_is_read_only_or_api_enforces_read_only",
+      "no_wallet_or_transaction_signing_capability",
+      "no_secret_export_capability",
+      "no_mutation_endpoint_in_board_context"
+    ]
+  },
+  "globalApproval": [
+    "production.deploy",
+    "database.migrate",
+    "auth.change",
+    "rls.change",
+    "permission.change",
+    "production.env.change",
+    "database.destructive",
+    "domain.change",
+    "dns.change"
+  ],
+  "globalBlock": [
+    "finance.transfer",
+    "crypto.send",
+    "wallet.sign",
+    "wallet.private_key.read",
+    "ledger.balance.mutate",
+    "ledger.row.delete",
+    "transaction.execute",
+    "production.data.write",
+    "production.secret.export",
+    "audit.disable",
+    "security_control.disable",
+    "git.main.force_push"
+  ],
+  "completionEvidence": [
+    "branch_or_commit",
+    "files_changed",
+    "checks_run",
+    "check_results",
+    "verified_live_state_or_explicitly_unverified_dependencies"
+  ]
+}
