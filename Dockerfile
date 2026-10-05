@@ -1,32 +1,22 @@
-# CE VAULT — production Next.js (dashboard + Telegram webhook)
-FROM node:22-bookworm-slim AS deps
+FROM node:22-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
-# Lockfile currently contains eslint 9 and @eslint/js 10 peer conflict.
-RUN npm ci --legacy-peer-deps
 
-FROM node:22-bookworm-slim AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+COPY appsrc/package.json appsrc/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY appsrc/ ./
+RUN npm run check
+RUN npm prune --omit=dev
 
-FROM node:22-bookworm-slim AS runner
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/server ./server
+COPY --from=build /app/public ./public
 
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/scripts/render-start.mjs ./scripts/render-start.mjs
-
-USER nextjs
 EXPOSE 3000
-CMD ["node", "scripts/render-start.mjs"]
+CMD ["node", "server/index.mjs"]
