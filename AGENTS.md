@@ -1,20 +1,39 @@
-# CE VAULT — Agent Instructions (Menu-first)
+# CE VAULT — Agent Instructions
 
-Product: Thai-first Telegram finance operations bot. Next.js 16 webhook at `app/api/telegram/webhook/route.ts`; Firestore/Storage are the source of truth. `bot/` is a local bridge only.
+Product: Thai-first finance operations system with a Vite frontend, Express runtime, Supabase persistence, and Telegram webhook operations.
+
+## Canonical source
+
+- `appsrc/` is the production application source of truth.
+- `scripts/start.mjs` is the production runtime bootstrap and then launches `appsrc/server/index.mjs`.
+- `.manus-source/parts/` is recovery history only. Do not regenerate `appsrc/` from it during normal coding or builds.
+- `scripts/bootstrap.mjs` and `scripts/patch-*.mjs` are temporary migration/recovery tooling. Do not use them to overwrite canonical source changes.
+- Production host is Render unless an explicit migration task says otherwise.
+- Supabase is the canonical operational datastore for the current runtime.
 
 ## Invariants
-1. `/ce`, `/start`, `/menu`, `/help` open one concise inline menu. Do not reset pending sessions when navigating.
-2. Keep chat-specific settings isolated by Telegram `chat_id`. No placeholder financial data.
-3. OCR/extracted data is not a confirmed receipt. A ledger write (`RECORDED`) is not reconciled settlement (`SETTLED`).
-4. Never deduct an opening security deposit again per cycle. Snapshot exchange rates for transactions when implementing the new engine.
-5. Bank `pinned_for_date` in existing app code is NOT proof of a native Telegram pinned message. Do not claim sync until events, permissions and reconciliation exist.
-6. Never silently mutate balances, delete ledger rows, expose secrets, or deploy as part of a UI-only task.
-7. Prefer one visible menu and inline callbacks over unsolicited stickers/status message floods. Do not change financial logic to satisfy a visual redesign.
+
+1. OCR or extracted slip data is not a confirmed receipt. A recorded workflow event is not reconciled settlement.
+2. Keep sandbox safety locked unless a task explicitly authorizes a reviewed production settlement change. `CE_VAULT_SANDBOX=true`, `LIVE_SETTLEMENT=false`, and `LIVE_SETTLEMENT_ENABLED=false` are the safe baseline.
+3. Preserve idempotency, expected-version checks, signed Telegram callbacks, duplicate update protection, and the outbox delivery model.
+4. Never silently mutate balances, delete financial records, expose secrets, or weaken webhook/callback verification.
+5. Keep Telegram state isolated by chat/user binding where applicable. Do not introduce placeholder financial data into production flows.
+6. Do not change financial logic to satisfy a visual redesign.
+7. Production must have one canonical Telegram webhook target. Do not add a competing long-poll consumer.
+8. Keep secrets in environment variables or Supabase Vault. Never commit service-role keys, bot tokens, callback secrets, or webhook secrets.
+9. Runtime source and Git diff must stay aligned. Do not reintroduce build-time source rewriting as the normal deployment path.
 
 ## Before merging
-```bash
-npm ci && npm run typecheck && npm run lint && npm test && npm run build
-```
-Run E2E when environment supports it. Inspect checks; distinguish CI from live Telegram integration testing. Production must use one update-consumption mode (webhook OR long-poll).
 
-Backup baseline: `archive/pre-menu-first-20260929`. Legacy experiments remain in Git history and archive rather than being automatically merged.
+From repository root:
+
+```bash
+npm ci
+npm run build
+```
+
+`npm run build` installs locked `appsrc` dependencies and runs contract checks, tests, and the Vite production build.
+
+When a change touches Telegram or Supabase integration, also verify the relevant live or staging boundary separately. CI success is not evidence that a real Telegram update or production Supabase write was exercised.
+
+Backup baseline before the Manus migration remains `backup/pre-manus-2026-10-04`.
