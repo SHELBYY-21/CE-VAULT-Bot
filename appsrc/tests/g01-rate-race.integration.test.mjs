@@ -109,7 +109,7 @@ async function confirm(transactionId, quoteId, idempotencyKey = `confirm-${rando
 
 before(async () => {
   if (!enabled) return;
-  sql = postgres(databaseUrl, { max: 10, prepare: false });
+  sql = postgres(databaseUrl, { max: 1, prepare: false });
 
   await sql.unsafe(`
     do $$ begin create role anon; exception when duplicate_object then null; end $$;
