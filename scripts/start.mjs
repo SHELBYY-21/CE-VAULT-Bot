@@ -49,6 +49,16 @@ async function buildRuntimeEnv() {
     console.log('[CE Secret Hub] TELEGRAM_WEBHOOK_SECRET loaded from Supabase Vault.');
   }
 
+  if (!env.NOTIFY_CHAT_ID) {
+    const vaultNotifyChat = await loadVaultSecret('NOTIFY_CHAT_ID');
+    if (vaultNotifyChat) env.NOTIFY_CHAT_ID = vaultNotifyChat;
+  }
+
+  if (!env.ADMIN_TELEGRAM_IDS) {
+    const vaultAdminIds = await loadVaultSecret('ADMIN_TELEGRAM_IDS');
+    if (vaultAdminIds) env.ADMIN_TELEGRAM_IDS = vaultAdminIds;
+  }
+
   return env;
 }
 
@@ -61,6 +71,94 @@ async function telegramApi(token, method, body = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.ok) throw new Error(`${method} failed`);
   return payload.result;
+}
+
+async function supabaseRpc(env, name, body = {}) {
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!url || !key) throw new Error('SUPABASE_RPC_NOT_CONFIGURED');
+
+  const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: supabaseHeaders(key),
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`SUPABASE_RPC_${name}_FAILED`);
+  return payload;
+}
+
+function dispatcherChatId(env) {
+  const direct = String(env.NOTIFY_CHAT_ID || '').trim();
+  if (/^-?\d+$/.test(direct)) return direct;
+  const firstAdmin = String(env.ADMIN_TELEGRAM_IDS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .find((value) => /^-?\d+$/.test(value));
+  return firstAdmin || '';
+}
+
+function shouldNotifyOutbox(item) {
+  if (item.topic === 'workflow.job.created.v1') return true;
+  const state = String(item?.payload?.state || '');
+  return ['NEED_CONFIRMATION', 'COMPLETED', 'FAILED', 'DUPLICATE', 'TIMEOUT'].includes(state);
+}
+
+function renderOutboxMessage(item) {
+  const payload = item?.payload || {};
+  const ref = payload.public_ref || 'CE';
+  const state = payload.state || 'UPDATE';
+  const version = payload.state_version ?? '-';
+  const label = item.topic === 'workflow.job.created.v1' ? 'NEW SANDBOX JOB' : 'WORKFLOW UPDATE';
+  return `CE VAULT · ${label}\n${ref}\nSTATE ${state}\nVERSION ${version}\nSandbox safety remains locked.`;
+}
+
+function startOutboxDispatcher(env) {
+  const token = env.TELEGRAM_BOT_TOKEN || env.BOT_TOKEN || '';
+  const chatId = dispatcherChatId(env);
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '';
+  let stopped = false;
+
+  if (!token || !chatId || !url || !key) {
+    console.warn('[CE Outbox] Dispatcher disabled: Telegram destination or Supabase service credentials missing.');
+    return () => { stopped = true; };
+  }
+
+  const run = async () => {
+    console.log('[CE Outbox] Dispatcher online.');
+    while (!stopped) {
+      try {
+        const items = await supabaseRpc(env, 'ce_claim_outbox_batch', { p_limit: 10 });
+        for (const item of Array.isArray(items) ? items : []) {
+          try {
+            if (shouldNotifyOutbox(item)) {
+              await telegramApi(token, 'sendMessage', {
+                chat_id: chatId,
+                text: renderOutboxMessage(item),
+                disable_web_page_preview: true,
+              });
+            }
+            await supabaseRpc(env, 'ce_complete_outbox', { p_id: item.id });
+            console.log(`[CE Outbox] Dispatched ${item.topic} ${item.id}.`);
+          } catch (error) {
+            await supabaseRpc(env, 'ce_fail_outbox', {
+              p_id: item.id,
+              p_error_code: String(error?.message || 'DISPATCH_FAILED').slice(0, 64),
+              p_retry_seconds: 5,
+            }).catch(() => null);
+            console.error(`[CE Outbox] Delivery failed for ${item.id}; retry scheduled.`);
+          }
+        }
+      } catch (error) {
+        console.error(`[CE Outbox] Poll failed: ${error?.message || 'unknown error'}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
+  setTimeout(() => void run(), 2500);
+  return () => { stopped = true; };
 }
 
 async function claimCanonicalWebhook(env) {
@@ -101,12 +199,17 @@ async function main() {
   });
 
   setTimeout(() => void claimCanonicalWebhook(env), 1800);
+  const stopDispatcher = startOutboxDispatcher(env);
 
   for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.on(signal, () => child.kill(signal));
+    process.on(signal, () => {
+      stopDispatcher();
+      child.kill(signal);
+    });
   }
 
   child.on('exit', (code, signal) => {
+    stopDispatcher();
     if (signal) process.kill(process.pid, signal);
     else process.exit(code ?? 1);
   });
