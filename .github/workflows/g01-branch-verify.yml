@@ -8,8 +8,8 @@ on:
       - appsrc/package.json
       - appsrc/package-lock.json
       - appsrc/server/financial/**
-      - appsrc/tests/g01-rate-race.test.mjs
-      - supabase/migrations/202610060001_g01_rate_race_condition.sql
+      - appsrc/tests/g01*.test.mjs
+      - supabase/migrations/20261006000*_g01*.sql
       - .github/workflows/g01-branch-verify.yml
 
 permissions:
