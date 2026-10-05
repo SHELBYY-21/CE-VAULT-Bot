@@ -14,16 +14,18 @@ Product: Thai-first Telegram finance operations bot. Next.js 16 webhook at `app/
 ## Agent Security v2
 Execution is classified before work starts:
 
-- **AUTO**: read-only inspection, code edits on a branch, lint/typecheck/test/build, documentation, log analysis, dependency research, preview-safe verification, and pull-request creation.
+- **AUTO**: read-only inspection, including production board/display data; code edits on a branch; lint/typecheck/test/build; documentation; log analysis; dependency research; preview-safe verification; and pull-request creation.
 - **APPROVAL**: production deployment, production environment-variable changes, database migrations, RLS/auth/permission changes, destructive database operations, DNS/domain changes, and major dependency upgrades with broad runtime impact.
 - **BLOCK**: money or USDT transfer, wallet/private-key access, manual ledger/balance mutation, production secret export, audit-log disabling, force-push to `main`, or bypassing required security controls.
+
+Production board access is AUTO when the context is genuinely read-only and has no mutation/signing capability. This includes display balances, ledger/transaction rows, account display metadata, exchange rates, and operational status. Do not treat read access as permission to call write endpoints, export secrets, or execute transactions.
 
 Role boundaries:
 
 - `DEV`: code, tests, build, PR only.
-- `OPS`: logs, health, deployment status, diagnostics. Production mutation requires approval.
+- `OPS`: logs, health, deployment status, diagnostics, and read-only production board inspection. Production mutation requires approval.
 - `RESEARCH`: docs, APIs, libraries, MCP research. No production credentials.
-- `FINANCE_ANALYST`: calculations, reconciliation checks, anomaly detection, summaries. Read-only. Never executes transfers or ledger mutations.
+- `FINANCE_ANALYST`: production board/ledger/transaction reads, calculations, reconciliation checks, anomaly detection, summaries. Read-only. Never executes transfers or ledger mutations.
 
 When running Codex, Claude Code, or another coding agent on Linux, prefer Grith supervision with a workspace fence, for example `grith exec --workspace-only codex` or `grith exec --workspace-only claude`. Grith is an additional enforcement layer, not a replacement for containers/VMs, least-privilege credentials, database authorization, or human approval for high-risk actions.
 
