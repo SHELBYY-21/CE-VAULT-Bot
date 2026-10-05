@@ -29,29 +29,46 @@ async function loadVaultSecret(name) {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (!url || !key) return '';
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
   try {
     const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/ce_secret_get`, {
-      method: 'POST', headers: supabaseHeaders(key), body: JSON.stringify({ p_name: name }),
+      method: 'POST',
+      headers: supabaseHeaders(key),
+      body: JSON.stringify({ p_name: name }),
+      signal: controller.signal,
     });
     if (!response.ok) return '';
     const value = await response.json().catch(() => '');
     return typeof value === 'string' ? value : '';
-  } catch { return ''; }
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function buildRuntimeEnv() {
   const env = { ...process.env };
-  const vaultBotToken = await loadVaultSecret('BOT_TOKEN');
-  if (vaultBotToken) {
-    env.BOT_TOKEN = vaultBotToken;
-    env.TELEGRAM_BOT_TOKEN = vaultBotToken;
-    console.log('[CE Secret Hub] BOT_TOKEN loaded from Supabase Vault.');
+
+  if (!env.BOT_TOKEN && !env.TELEGRAM_BOT_TOKEN) {
+    const vaultBotToken = await loadVaultSecret('BOT_TOKEN');
+    if (vaultBotToken) {
+      env.BOT_TOKEN = vaultBotToken;
+      env.TELEGRAM_BOT_TOKEN = vaultBotToken;
+      console.log('[CE Secret Hub] BOT_TOKEN loaded from Supabase Vault.');
+    }
   }
-  const vaultWebhookSecret = await loadVaultSecret('TELEGRAM_WEBHOOK_SECRET');
-  if (vaultWebhookSecret) {
-    env.TELEGRAM_WEBHOOK_SECRET = vaultWebhookSecret;
-    console.log('[CE Secret Hub] TELEGRAM_WEBHOOK_SECRET loaded from Supabase Vault.');
+
+  if (!env.TELEGRAM_WEBHOOK_SECRET) {
+    const vaultWebhookSecret = await loadVaultSecret('TELEGRAM_WEBHOOK_SECRET');
+    if (vaultWebhookSecret) {
+      env.TELEGRAM_WEBHOOK_SECRET = vaultWebhookSecret;
+      console.log('[CE Secret Hub] TELEGRAM_WEBHOOK_SECRET loaded from Supabase Vault.');
+    }
   }
+
   if (!env.NOTIFY_CHAT_ID) {
     const value = await loadVaultSecret('NOTIFY_CHAT_ID');
     if (value) env.NOTIFY_CHAT_ID = value;
@@ -255,7 +272,9 @@ function startWebhookMaintainer(env) {
 }
 
 async function main() {
+  console.log('[CE Runtime] Bootstrap starting.');
   const env = await buildRuntimeEnv();
+  console.log('[CE Runtime] Bootstrap complete; starting server.');
   const child = spawn(process.execPath, [serverPath, ...process.argv.slice(2)], { cwd: root, env, stdio: 'inherit' });
   const stopWebhookMaintainer = startWebhookMaintainer(env);
   const stopDispatcher = startOutboxDispatcher(env);
