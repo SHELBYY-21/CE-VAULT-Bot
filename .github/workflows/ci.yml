@@ -29,7 +29,7 @@ jobs:
         run: npm ci
         working-directory: bot
 
-      - name: Validate generated app
+      - name: Validate canonical app source
         run: npm run build
 
   security:
@@ -42,6 +42,17 @@ jobs:
           cache: npm
       - name: Install root dependencies
         run: npm ci
-      - name: Dependency audit (high severity)
+      - name: Audit root production dependencies
         run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true
+      - name: Install app dependencies
+        run: npm ci
+        working-directory: appsrc
+      - name: Audit app production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: appsrc
+      - name: Install bot dependencies
+        run: npm ci
+        working-directory: bot
+      - name: Audit bot production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: bot
