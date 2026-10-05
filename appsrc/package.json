@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
-    "express": "^5.1.0"
+    "decimal.js": "10.6.0",
+    "express": "^5.1.0",
+    "postgres": "3.4.7"
   },
   "devDependencies": {
     "vite": "^6.1.0"
