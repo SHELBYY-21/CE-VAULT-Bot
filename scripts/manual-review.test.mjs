@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseManualReviewCommand,
   validateManualReviewGate,
-} from '../runtime-patches/live-intake.mjs';
+} from '../runtime-patches/manual-review.mjs';
 
 test('manual review parses REF amount bank and last4 without using JS Number for money', () => {
   assert.deepEqual(
