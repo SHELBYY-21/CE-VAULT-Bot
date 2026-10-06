@@ -1,7 +1,0 @@
-# RETIRED PERMANENTLY
-#
-# This file is intentionally inert. It contains no GitHub Actions triggers or jobs.
-# The former recovery workflow could repoint Telegram away from the canonical Render webhook.
-# That fallback is disabled to keep a single production owner for Telegram delivery.
-#
-# Canonical runtime documentation: docs/TELEGRAM-RENDER-LIVE.md
