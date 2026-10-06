@@ -1,7 +1,0 @@
-# RETIRED PERMANENTLY
-#
-# This file is intentionally inert. It contains no GitHub Actions triggers or jobs.
-# CE VAULT Telegram production is webhook-only and owned by the canonical Render runtime.
-# Do not restore long polling, deleteWebhook calls, or a second Telegram consumer here.
-#
-# Canonical runtime documentation: docs/TELEGRAM-RENDER-LIVE.md
