@@ -59,3 +59,5 @@ ui-debug.log
 # Firebase service account (local only)
 .firebase-sa.json
 *-firebase-adminsdk*.json
+appsrc/
+.manus-source/cevault.tgz
