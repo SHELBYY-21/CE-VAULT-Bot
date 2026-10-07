@@ -1,0 +1,30 @@
+# CE VAULT environment policy
+# Safe to commit: names and handling rules only. Never place secret values here.
+strict true
+
+# Core Telegram runtime secrets. Platform secret stores remain the source of values.
+env "BOT_TOKEN", encrypted: false, redacted: true
+env "TELEGRAM_WEBHOOK_SECRET", encrypted: false, redacted: true
+
+# Server-side auth and integration secrets.
+env "API_SECRET", optional: true, encrypted: false, redacted: true
+env "CE_API_TOKEN", optional: true, encrypted: false, redacted: true
+env "CIRCLE_API_KEY", optional: true, encrypted: false, redacted: true
+env "ENTITY_SECRET", optional: true, encrypted: false, redacted: true
+env "FIREBASE_SERVICE_ACCOUNT_JSON", optional: true, encrypted: false, redacted: true
+env "GROK_API_KEY", optional: true, encrypted: false, redacted: true
+env "OCR_SPACE_API_KEY", optional: true, encrypted: false, redacted: true
+env "SUPABASE_SECRET_KEY", optional: true, encrypted: false, redacted: true
+env "SUPABASE_SERVICE_ROLE_KEY", optional: true, encrypted: false, redacted: true
+
+# Non-secret runtime configuration.
+env "APP_URL", optional: true, type: "url", encrypted: false, redacted: false
+env "PORT", optional: true, type: "port", encrypted: false, redacted: false
+env "NODE_ENV", optional: true, enum: ["development", "test", "production"], encrypted: false, redacted: false
+
+# If CE VAULT later adopts a committed production env file, every inherited
+# secret/value in that file must be encrypted. This does not change today's
+# Railway/Vercel/Supabase secret-store runtime path.
+file ".env.production" do
+  encrypted true
+end
