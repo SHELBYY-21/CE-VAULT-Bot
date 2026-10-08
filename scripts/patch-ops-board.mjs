@@ -240,7 +240,7 @@ server = replaceOnce(
   'import { runSandboxE2E } from "./e2e.mjs";\nimport { buildOpsOverview } from "./ops-summary.mjs";',
   'OPS_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
-server = replaceOnce(server, 'import { buildOpsOverview } from "./ops-summary.mjs";', 'import { buildOpsOverview } from "./ops-summary.mjs";\\nimport { timingSafeEqual } from "node:crypto";', 'OPS_CRYPTO_IMPORT_ANCHOR_NOT_FOUND');
+server = replaceOnce(server, 'import { buildOpsOverview } from "./ops-summary.mjs";', 'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { timingSafeEqual } from "node:crypto";', 'OPS_CRYPTO_IMPORT_ANCHOR_NOT_FOUND');
 const jobsRouteAnchor = 'app.get("/api/v1/jobs", async (req, res) => {';
 const opsRoute = String.raw`app.get("/api/v1/ops/overview", async (req, res) => {
   // Fail closed until a dedicated read-only operations token is configured.
