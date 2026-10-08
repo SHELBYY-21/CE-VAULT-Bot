@@ -95,9 +95,12 @@ export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract
       return { amount: null, network: null, txid: null, time: null, confidence: null, raw: text };
     const data = JSON.parse(cleaned.slice(first, last + 1));
     const num = (v: any) => {
-      if (v == null || (typeof v === 'string' && !v.trim())) return null;
-      const n = typeof v === 'number' ? v : Number(v);
-      return Number.isFinite(n) ? n : null;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      if (typeof v === 'string' && v.trim()) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
     };
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
     return {
@@ -169,12 +172,14 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
     const jsonStr = cleaned.slice(first, last + 1);
     const data = JSON.parse(jsonStr);
 
-    const num = (v: any) =>
-      typeof v === 'number' && Number.isFinite(v)
-        ? v
-        : Number.isFinite(parseFloat(v))
-          ? parseFloat(v)
-          : null;
+const num = (v: any) => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      if (typeof v === 'string' && v.trim()) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    };
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
     return {
