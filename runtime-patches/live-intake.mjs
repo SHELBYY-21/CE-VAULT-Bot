@@ -1038,3 +1038,79 @@ export function formatIntakeRichMessage({
 
   return { html };
 }
+
+// V4 is presentation-only. Financial decisions remain in decideIntake/promotePendingSlip.
+export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,pinnedAccount=null,pinnedAccounts=[]}) {
+  const status = String(pending?.status || 'NEEDS_REVIEW');
+  const isRecorded = !duplicate && status === 'RECORDED' && Boolean(recorded?.tx_id || pending?.tx_id);
+  const verified = status === 'VERIFIED';
+  const titles = {
+    OCR_FAILED: ['🔴 อ่านสลิปไม่สำเร็จ', 'ส่งภาพสลิปใหม่ที่ชัดขึ้น'],
+    BANK_MISMATCH: ['🔴 บัญชีในสลิปไม่ตรง', 'ตรวจเลขบัญชีในสลิปเทียบกับบัญชี PIN'],
+    NEEDS_REVIEW: ['🟡 ต้องตรวจข้อมูลสลิป', 'ตรวจยอดและความมั่นใจ OCR ด้วยตา'],
+    PIN_REQUIRED: ['🟡 ยังไม่ได้ PIN บัญชี', 'เลือกบัญชีรับเงินก่อนบันทึก'],
+    STALE_SLIP: ['🔴 วันที่สลิปไม่ตรง', 'ตรวจวันของสลิปก่อนดำเนินการ'],
+    RATE_REQUIRED: ['🟡 ยังไม่มีเรตห้อง', 'ตั้งเรตที่ตรวจสอบแล้ว'],
+    MARKET_UNAVAILABLE: ['🟡 ยืนยันราคาไม่ได้', 'รอราคาตลาดที่ตรวจสอบได้'],
+    PROMOTION_FAILED: ['🔴 ไม่สามารถยืนยันผลบันทึก', 'ตรวจ Ledger ก่อน retry เพื่อกันรายการซ้ำ'],
+    VERIFIED: ['🟡 ผ่านการตรวจ รอบันทึก', 'ดำเนินการด้วยระบบบันทึกที่มีอยู่'],
+    RECORDED: ['✅ บันทึก THB แล้ว ยังไม่ SETTLED', 'รอหลักฐานการส่ง USDT และการยืนยันปิดรายการ'],
+  };
+  const [headline,next] = duplicate ? ['⛔ พบรายการซ้ำ ห้ามบันทึกซ้ำ','ตรวจรายการเดิมใน Ledger ก่อน'] :
+    isRecorded ? titles.RECORDED : (titles[status] || ['🟡 ต้องตรวจสอบข้อมูล','ตรวจข้อมูลก่อนดำเนินการ']);
+  const n = (value, digits=2) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+  const fullAccount = pending?.account_number || (pending?.pin_match ? pinnedAccount?.account_number : null);
+  const bank = pending?.bank || (pending?.pin_match ? pinnedAccount?.bank_name : null);
+  const account = fullAccount || pending?.account_masked || null;
+  const amount = n(pending?.thb_in);
+  const usdt = n(pending?.should_send,6);
+  const rate = n(deskRate?.sell_rate);
+  const confidence = pending?.ocr_confidence == null ? null : Number(pending.ocr_confidence);
+  const allChecksPass = !duplicate && (verified || isRecorded) && pending?.pin_match === true &&
+    Number(deskRate?.sell_rate) > 0 && market?.fresh === true && Number.isFinite(confidence) &&
+    confidence >= OCR_AUTO_MIN;
+  const lines = [
+    `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
+    headline, '━━━━━━━━━━━━━━',
+    `📥 ${amount} THB → 💎 ${usdt} USDT`,
+    `💱 RATE ${rate}${allChecksPass ? ' · 🟢 ALL CHECKS PASS' : ''}`,
+  ];
+  if (!duplicate && status !== 'PROMOTION_FAILED') {
+    if (bank || account) lines.push(`🏦 ${bank || '—'} · ${account || '—'}`);
+    if (pending?.name) lines.push(`👤 ${pending.name}`);
+  }
+  if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 OCR ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
+  lines.push('─────────────');
+  if (isRecorded) lines.push('OCR ✓ ─ MATCH ✓ ─ IN ✓ ─ WAIT ─ DONE');
+  else if (duplicate) lines.push('OCR ✓ ─ MATCH ✗ ─ IN ─ WAIT ─ DONE');
+  else if (status === 'OCR_FAILED') lines.push('OCR ✗ ─ MATCH ─ IN ─ WAIT ─ DONE');
+  else if (verified) lines.push('OCR ✓ ─ MATCH ✓ ─ [IN] ─ WAIT ─ DONE');
+  else lines.push('OCR ✓ ─ [MATCH] ─ IN ─ WAIT ─ DONE');
+  const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
+    .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
+  for (const issue of issues) lines.push(`🔍 ISSUE: ${issue}`);
+  if (duplicate && pending?.ledger_ref) lines.push(`DUPLICATE REF ${pending.ledger_ref}`);
+  lines.push(`NEXT: ${next}`);
+  return lines.join('\n');
+}
+
+export function formatIntakeV4RichMessage(args) {
+  const pending = args?.pending || {};
+  const card = formatIntakeV4Reply(args).split('\n');
+  const fullAccount = pending.account_number || (pending.pin_match ? args?.pinnedAccount?.account_number : null);
+  const issueHtml = card.filter(line => line.startsWith('🔍 ISSUE:')).map(line => `<p>${richEscape(line)}</p>`).join('');
+  const copyButtons = [
+    fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
+    pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
+  ].filter(Boolean).join('');
+  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR)/u.test(line));
+  const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 ISSUE:'));
+  return {html:
+    `<h3>${richEscape(card[0])}</h3>` +
+    `<p><b>${richEscape(card[1])}</b></p><hr/>` +
+    `<table>${amountRows.map(line => `<tr><td>${richEscape(line)}</td></tr>`).join('')}</table>` +
+    `<p><code>${richEscape(otherLines.join('\n'))}</code></p>` +
+    `<details${issueHtml ? ' open' : ''}><summary>ตรวจสอบ · CHECKS</summary>${issueHtml || '<p>ไม่มีประเด็นที่ต้องแสดง</p>'}</details>` +
+    (copyButtons ? `<tg-button-row>${copyButtons}</tg-button-row>` : '')
+  };
+}
