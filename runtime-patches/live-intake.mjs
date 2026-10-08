@@ -345,7 +345,7 @@ export function formatIntakeReply({ pending, market, deskRate, recorded, duplica
   if (pending?.thb_in != null) lines.push(`AMOUNT     ${pending.thb_in} THB`);
   if (pending?.should_send != null) lines.push(`EST. USDT  ${pending.should_send} USDT`);
   if (pending?.account_masked) {
-    lines.push(`BANK       ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "ACCOUNT / DATE MATCH" : "NOT MATCHED"}`);
+    lines.push(`BANK       ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "ACCOUNT / DATE MATCH" : "NOT VERIFIED"}`);
   }
   if (deskRate?.sell_rate) lines.push(`DESK       ${deskRate.sell_rate} THB/USDT`);
   if (market?.price) lines.push(`MARKET     ${market.price} THB/USDT · BINANCE TH SPOT`);
