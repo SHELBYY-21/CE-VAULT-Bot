@@ -270,6 +270,12 @@ async function getTx(txId: string): Promise<any | null> {
   return data ? { ...(data as any), id: String((data as any).id) } : null;
 }
 
+/** Supabase Ledger is authoritative; never use display-card or Firestore status to authorize deletion. */
+export async function getTransactionStatus(txId: string): Promise<string | null> {
+  const tx = await getTx(txId);
+  return typeof tx?.status === 'string' ? tx.status : null;
+}
+
 function zeroMoneyFields() {
   return {
     thb_amount: 0,
@@ -394,6 +400,9 @@ export async function deleteTransaction(
 ): Promise<{ name: string; holdingUsdt: number }> {
   const old = await getTx(txId);
   if (!old) throw new Error('ไม่พบธุรกรรม');
+  // Defense in depth: incomplete and unknown statuses must never delete.
+  // The SQL RPC re-checks under a row lock to avoid read/delete races.
+  if (old.status !== 'completed') throw new Error('TX_NOT_SETTLED');
 
   const { holding } = await rpcDelete(txId);
   notifyDelete({ adminName: old.admins?.name ?? '-' }).catch(() => undefined);
