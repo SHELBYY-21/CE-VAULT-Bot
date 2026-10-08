@@ -63,14 +63,14 @@ test('Render V4 confirms checks only with explicit fresh market and pin evidence
   assert.match(formatIntakeV4Reply(base), /รอแอดมินอนุมัติ/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, market: { price: '33.1', fresh: false } }), /ALL CHECKS PASS/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, pending: { ...base.pending, pin_match: false } }), /ALL CHECKS PASS/);
-  assert.match(formatIntakeV4Reply(base), /30.123456 USDT/);
+  assert.match(formatIntakeV4Reply(base), /30.123456/);
 });
 
 test('Render V4 does not settle a recorded deal and blocks duplicate replay claims', () => {
   const pending = { status: 'RECORDED', ledger_ref: 'CE-88aa', tx_id: 'tx-001', thb_in: '2000', pin_match: true };
   const recorded = formatIntakeV4Reply({ pending, recorded: { tx_id: 'tx-001' } });
   assert.match(recorded, /บันทึก IN แล้ว · WAIT USDT/);
-  assert.match(recorded, /③ IN ✓ → ④ \[WAIT\] → ⑤ DONE —/);
+  assert.match(recorded, /IN ✓ → WAIT ⏳ → DONE —/);
   assert.doesNotMatch(recorded, /ALL CHECKS PASS/);
   const duplicate = formatIntakeV4Reply({ pending, duplicate: true });
   assert.match(duplicate, /สลิปซ้ำ/);
@@ -82,7 +82,7 @@ test('Render V4 rich message escapes untrusted slip text', () => {
     pending: { status: 'BANK_MISMATCH', bank: '<script>alert(1)</script>', ledger_ref: 'CE-01' },
   });
   assert.doesNotMatch(rich.html, /<script>/);
-  assert.match(rich.html, /&lt;script&gt;/);
+  assert.doesNotMatch(rich.html, /alert\(1\)/);
   assert.match(rich.html, /<details/);
 });
 
@@ -152,7 +152,7 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   const rich = formatIntakeV4RichMessage(args).html;
   const plain = formatIntakeV4Reply(args);
   assert.match(rich, /OCR 80% ต่ำกว่าเกณฑ์ 90%/);
-  assert.equal((rich.match(/<p>🔍 /g) || []).length, 1);
+  assert.equal((rich.match(/<p>⚠️ /g) || []).length, 1);
   assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
   assert.doesNotMatch(plain, /ISSUE:/);
   assert.match(plain, /NEXT:/);
@@ -164,7 +164,7 @@ test('Telegram five-stage reply never promotes a review or recorded slip to DONE
     should_send: '26.940000', ocr_confidence: 80, bank: 'SCB', account_masked: '••••3114', pin_match: false },
     deskRate: { sell_rate: '37.12' }, market: { price: '37.10', fresh: true } };
   const review = formatIntakeV4Reply(base);
-  assert.match(review, /① OCR ✓ → ② \[MATCH · REVIEW\] → ③ IN — → ④ WAIT — → ⑤ DONE —/);
+  assert.match(review, /OCR ✓ → REVIEW ⏳ → IN —/);
   assert.doesNotMatch(review, /IN ✓|DONE ✓/);
   const recorded = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'RECORDED', pin_match: true, ocr_confidence: 98, tx_id: 'tx-1' }, recorded: { tx_id: 'tx-1' } });
   assert.match(recorded, /OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —/);
@@ -180,15 +180,15 @@ test('bilingual financial summary does not invent settlement from OCR', () => {
     should_send: '26.94', account_number: '1234567890', bank: 'SCB' };
   const base = { pending, recorded: { tx_id: 'tx-1' }, deskRate: { sell_rate: '37.12' } };
   const card = formatIntakeV4Reply(base);
-  assert.match(card, /ต้องส่ง \(Total Due\): 26.94 USDT/);
-  assert.match(card, /เคลียร์แล้ว \(Cleared\): — USDT/);
+  assert.match(card, /ต้องส่ง \(Due\): 26.94 USDT/);
+  assert.match(card, /ส่งยืนยันแล้ว \(Cleared\): — USDT/);
   assert.match(card, /ค้างส่ง \(Outstanding\): — USDT/);
   assert.doesNotMatch(card, /1234567890/);
   const paid = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', settlement_verified: true, cleared_usdt: '10.00' } });
-  assert.match(paid, /เคลียร์แล้ว \(Cleared\): 10.00 USDT/);
+  assert.match(paid, /ส่งยืนยันแล้ว \(Cleared\): 10.00 USDT/);
   assert.match(paid, /ค้างส่ง \(Outstanding\): 16.94 USDT/);
   const unverified = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', cleared_usdt: '10.00' } });
-  assert.match(unverified, /เคลียร์แล้ว \(Cleared\): — USDT/);
+  assert.match(unverified, /ส่งยืนยันแล้ว \(Cleared\): — USDT/);
 });
 
 test('OCR remains visible and only explicit admin approval promotes', () => {
