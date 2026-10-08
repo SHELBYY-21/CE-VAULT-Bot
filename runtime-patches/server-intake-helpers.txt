@@ -156,13 +156,32 @@ async function handleTelegramPin(message, unpin = false) {
   return true;
 }
 
+async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
+  const rich = formatIntakeRichMessage(args);
+  const fallback = formatIntakeReply(args);
+  if (liveMessageId) {
+    try {
+      return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback);
+    } catch {}
+  }
+  return telegram.sendRichMessageWithFallback(chatId, rich, fallback);
+}
+
 async function handleLiveSlipMessage(message) {
   const operator = await requireTelegramOperator(message);
   if (!operator) return;
   const fileId = imageFileId(message);
   if (!fileId) return;
   const chatId = message.chat.id;
-  await telegram.sendMessage(chatId, formatScanStageReply()).catch(() => undefined);
+  let liveMessage = null;
+  try {
+    liveMessage = await telegram.sendRichMessageWithFallback(
+      chatId,
+      formatScanStageRichMessage(),
+      formatScanStageReply(),
+    );
+  } catch {}
+  const liveMessageId = Number(liveMessage?.message_id) || null;
 
   const downloaded = await telegram.downloadFile(fileId);
   const fingerprint = fingerprintImage(downloaded.buffer);
@@ -177,7 +196,7 @@ async function handleLiveSlipMessage(message) {
       bank: null,
       pin_match: false,
     };
-    await telegram.sendMessage(chatId, formatIntakeReply({ pending, duplicate: true }));
+    await upsertIntakeLiveMessage(chatId, liveMessageId, { pending, duplicate: true });
     return;
   }
 
@@ -227,14 +246,14 @@ async function handleLiveSlipMessage(message) {
 
   if (pending.duplicate) {
     const replyPending = { ...pending, account_number: pinnedMatch?.account_number || null };
-    await telegram.sendMessage(chatId, formatIntakeReply({
+    await upsertIntakeLiveMessage(chatId, liveMessageId, {
       pending: replyPending,
       market,
       deskRate,
       duplicate: true,
       pinnedAccount: pinnedAccount,
       pinnedAccounts: pinnedAccountsForReply,
-    }));
+    });
     return;
   }
 
@@ -257,12 +276,12 @@ async function handleLiveSlipMessage(message) {
     account_number: pinnedMatch?.account_number || null,
     name: finalPending?.name || slip?.receiverName || null,
   };
-  await telegram.sendMessage(chatId, formatIntakeReply({
+  await upsertIntakeLiveMessage(chatId, liveMessageId, {
     pending: replyPending,
     market,
     deskRate,
     recorded,
     pinnedAccount: pinnedAccount,
     pinnedAccounts: pinnedAccountsForReply,
-  }));
+  });
 }
