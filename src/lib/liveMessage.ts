@@ -1,22 +1,31 @@
 /**
  * Live Message — one Telegram message per deal, always editMessage()
  *
- * Receiving... → OCR → Verified → Waiting → Settled
+ * Receiving → OCR → Match → Recorded → Waiting → Done
  * Chat stays clean: send once, then edit in place.
+ * RECORDED ≠ SETTLED: recording an incoming THB transaction never closes the deal.
  */
 import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
 import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
 import { ceMessage, ceRecorded, ceOcrAmount, CE_DIVIDER } from './ceReplyTheme';
 import { motionAfter, motionGate } from './motionFx';
 
-export type LiveStage = 'RECEIVING' | 'OCR' | 'VERIFIED' | 'WAITING' | 'SETTLED' | 'ERROR';
+export type LiveStage =
+  | 'RECEIVING'
+  | 'OCR'
+  | 'MATCH'
+  | 'RECORDED'
+  | 'WAITING'
+  | 'SETTLED'
+  | 'ERROR';
 
 const STAGES: Array<{ id: Exclude<LiveStage, 'ERROR'>; label: string }> = [
-  { id: 'RECEIVING', label: 'Receiving...' },
+  { id: 'RECEIVING', label: 'Receiving' },
   { id: 'OCR', label: 'OCR' },
-  { id: 'VERIFIED', label: 'Profile / OCR' },
+  { id: 'MATCH', label: 'Match' },
+  { id: 'RECORDED', label: 'Recorded' },
   { id: 'WAITING', label: 'Waiting' },
-  { id: 'SETTLED', label: 'Recorded' },
+  { id: 'SETTLED', label: 'Done' },
 ];
 
 const RULE = CE_DIVIDER;
@@ -69,7 +78,13 @@ export function liveCard(opts: LiveCardOpts): OutgoingMessage {
   if (opts.body) {
     parts.push(RULE, opts.body);
   }
-  return { text: parts.join('\n'), reply_markup: opts.reply_markup };
+  const text = parts.join('\n');
+  return {
+    text,
+    fallback_text: text,
+    rich_message: { html: text },
+    reply_markup: opts.reply_markup,
+  };
 }
 
 export function liveReceiving(ledgerRef?: string | null): OutgoingMessage {
@@ -81,10 +96,10 @@ export function liveReceiving(ledgerRef?: string | null): OutgoingMessage {
 
 /** MSG-01 — preserve single-message edit lifecycle during OCR. */
 export function liveOcr(ledgerRef?: string | null): OutgoingMessage {
-  return {
-    text: ceMessage('MSG-01', '🔄 กำลังอ่านสลิป (Scanning slip / 正在识别凭证)...\n⏳ OCR กำลังประมวลผล') +
-      (ledgerRef ? '\n' + RULE + '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : ''),
-  };
+  const text =
+    ceMessage('MSG-01', '🔄 กำลังอ่านสลิป (Scanning slip / 正在识别凭证)...\n⏳ OCR กำลังประมวลผล') +
+    (ledgerRef ? '\n' + RULE + '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : '');
+  return { text, fallback_text: text, rich_message: { html: text } };
 }
 
 export function liveVerified(d: {
@@ -104,7 +119,7 @@ export function liveVerified(d: {
     );
 
   return liveCard({
-    stage: 'VERIFIED',
+    stage: 'MATCH',
     ledgerRef: d.ledgerRef,
     body: lines.join('\n') || `<i>Slip verified</i>`,
   });
@@ -138,7 +153,7 @@ export function liveWaiting(d: {
   });
 }
 
-export function liveSettled(d: {
+export function liveRecorded(d: {
   ledgerRef: string;
   thb?: number | null;
   usdt?: number | null;
@@ -149,18 +164,52 @@ export function liveSettled(d: {
   last4?: string | null;
   transactionId?: string | null;
 }): OutgoingMessage {
-  // A THB credit with calculated USDT owed must NOT be called SETTLED (MSG-11).
-  // The transaction record and final reconciliation are different events.
+  const text = ceRecorded({
+    kind: 'incoming',
+    ledgerRef: d.ledgerRef,
+    thb: d.thb,
+    usdt: d.usdt,
+    sellRate: d.sellRate,
+    adminName: d.adminName,
+    bank: d.bank,
+    accountNumber: d.accountNumber,
+    last4: d.last4,
+  });
   return {
-    text: ceRecorded({
-      kind: d.thb != null ? 'incoming' : 'outgoing',
-      ledgerRef: d.ledgerRef, thb: d.thb, usdt: d.usdt,
-      sellRate: d.sellRate, adminName: d.adminName, bank: d.bank, accountNumber: d.accountNumber, last4: d.last4,
-    }),
+    text,
+    fallback_text: text,
+    rich_message: { html: text },
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
-          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
+          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}`, style: 'danger' },
+        ]] }
+      : undefined,
+  };
+}
+
+export function liveSettled(d: {
+  ledgerRef: string;
+  usdt?: number | null;
+  adminName?: string | null;
+  transactionId?: string | null;
+}): OutgoingMessage {
+  const amount = d.usdt == null ? '—' : Number(d.usdt).toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const text =
+    `<b>◈ CE · DONE ✓</b>\n` +
+    `💎 SETTLED · ${esc(amount)} USDT\n` +
+    `${RULE}\n` +
+    `OCR ✓ · MATCH ✓ · IN ✓ · WAIT ✓ · DONE ✓\n` +
+    `🆔 <code>#${esc(d.ledgerRef)}</code>` +
+    (d.adminName ? `\n👤 ${esc(d.adminName)}` : '');
+  return {
+    text,
+    fallback_text: text,
+    rich_message: { html: text },
+    reply_markup: d.transactionId
+      ? { inline_keyboard: [[
+          { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
+          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}`, style: 'danger' },
         ]] }
       : undefined,
   };
@@ -168,11 +217,12 @@ export function liveSettled(d: {
 
 export function liveError(_message: string, ledgerRef?: string | null): OutgoingMessage {
   // Never claim "nothing was saved": a timeout may happen after a DB commit.
-  return {
-    text: ceMessage('MSG-29',
-      '⚠️ ระบบขัดข้อง (Processing error / 处理异常)\n\nไม่สามารถดำเนินการได้\nตรวจสอบ Ledger ก่อนลองใหม่อีกครั้ง (Check transaction status before retrying)' +
-      (ledgerRef ? '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : '')),
-  };
+  const text = ceMessage(
+    'MSG-29',
+    '⚠️ ระบบขัดข้อง (Processing error / 处理异常)\n\nไม่สามารถดำเนินการได้\nตรวจสอบ Ledger ก่อนลองใหม่อีกครั้ง (Check transaction status before retrying)' +
+      (ledgerRef ? '\n🆔 <code>#' + esc(ledgerRef) + '</code>' : ''),
+  );
+  return { text, fallback_text: text, rich_message: { html: text } };
 }
 
 /** Compact intel block for Live Message body */
@@ -222,7 +272,7 @@ export function liveIntelVerified(d: {
 
   if (d.skippedOcr) lines.push('', `<i>Known account — profile loaded (OCR light)</i>`);
   return liveCard({
-    stage: d.intel.known ? 'VERIFIED' : 'OCR',
+    stage: d.intel.known ? 'MATCH' : 'OCR',
     ledgerRef: d.ledgerRef,
     body: lines.join('\n'),
   });
