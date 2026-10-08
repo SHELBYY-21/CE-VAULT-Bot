@@ -163,3 +163,10 @@ test('base patch and v2 wrapper share the same helper source', () => {
   assert.match(patch, /sendMessageWithMarkup/);
   assert.match(patch, /answerCallbackQuery/);
 });
+
+
+test('callback router uses a collision-safe local name in generated runtime patch', () => {
+  const patch = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
+  assert.match(patch, /const ceCallback = update\.callback_query/);
+  assert.doesNotMatch(patch, /const callback = update\.callback_query/);
+});
