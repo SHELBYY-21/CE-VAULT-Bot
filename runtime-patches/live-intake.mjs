@@ -1054,7 +1054,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     RATE_REQUIRED: ['🟡 ยังไม่มีเรตห้อง', 'ตั้งเรตที่ตรวจสอบแล้ว'],
     MARKET_UNAVAILABLE: ['🟡 ยืนยันราคาไม่ได้', 'รอราคาตลาดที่ตรวจสอบได้'],
     PROMOTION_FAILED: ['🔴 ไม่สามารถยืนยันผลบันทึก', 'ตรวจ Ledger ก่อน retry เพื่อกันรายการซ้ำ'],
-    VERIFIED: ['🟡 ผ่านการตรวจ รอบันทึก', 'ดำเนินการด้วยระบบบันทึกที่มีอยู่'],
+    VERIFIED: ['🟡 รอแอดมินอนุมัติ (Pending Admin Approval)', 'แอดมินตรวจ OCR และใช้ /approve <pending UUID> เพื่อบันทึก'],
     RECORDED: ['🟡 IN สำเร็จ · WAIT USDT', 'รอหลักฐานการส่ง USDT และการยืนยันปิดรายการ'],
   };
   const [headline,next] = duplicate ? ['⛔ พบรายการซ้ำ ห้ามบันทึกซ้ำ','ตรวจรายการเดิมใน Ledger ก่อน'] :
@@ -1069,7 +1069,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   // Intake has no authoritative outbound ledger read. Never treat an OCR value as paid.
   // A settlement summary is accepted only when explicitly supplied from a verified ledger read.
   const ledgerSettlement = recorded?.settlement_verified === true ? recorded : null;
-  const dueRaw = isRecorded && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
+  const dueRaw = (isRecorded || verified) && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
     ? Number(pending.should_send) : null;
   const clearedRaw = ledgerSettlement && Number.isFinite(Number(ledgerSettlement?.cleared_usdt)) &&
     Number(ledgerSettlement.cleared_usdt) >= 0 ? Number(ledgerSettlement.cleared_usdt) : null;
@@ -1083,7 +1083,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
     `${headline} (Status)`, '━━━━━━━━━━━━━━',
     `📥 ${amount} THB → 💎 ${usdt} USDT`,
-    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟢 ALL CHECKS PASS') : ''}`,
+    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟡 OCR CHECKS PASS · ADMIN APPROVAL REQUIRED') : ''}`,
     `📊 ต้องส่ง (Total Due): ${n(dueRaw)} USDT`,
     `✅ เคลียร์แล้ว (Cleared): ${n(clearedRaw)} USDT`,
     `⏳ ค้างส่ง (Outstanding): ${n(outstandingRaw)} USDT`,
@@ -1093,6 +1093,15 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     if (bank || account) lines.push(`🏦 บัญชีรับ (Receiving Bank): ${bank || '—'} · ${account ? String(account).replace(/.(?=.{4})/g, '•') : '—'}`);
     if (pending?.name) lines.push(`👤 ${pending.name}`);
   }
+  const note = String(pending?.note || '');
+  const slipDate = note.match(/(?:^|;)SLIP_DATE=([^;]*)/)?.[1];
+  const slipTime = note.match(/(?:^|;)SLIP_TIME=([^;]*)/)?.[1];
+  const ocrProvider = note.match(/(?:^|;)OCR=([^;]*)/)?.[1];
+  if (slipDate || slipTime) lines.push(`🗓 วันเวลา (Date & Time): ${slipDate || '—'} ${slipTime || ''}`);
+  if (pending?.ledger_ref) lines.push(`🔖 อ้างอิง (Reference): ${pending.ledger_ref}`);
+  if (verified && pending?.id) lines.push(`🛡 อนุมัติ (Approve): /approve ${pending.id}`);
+  if (ocrProvider) lines.push(`🔎 OCR Provider: ${ocrProvider}`);
+  if (confidence != null && Number.isFinite(confidence)) lines.push(`📋 ความมั่นใจ (OCR Confidence): ${n(confidence,1)}%`);
   if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 ความมั่นใจ OCR (OCR Confidence): ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
   lines.push('─────────────');
   // Five-stage flow is an evidence-based presentation, not a settlement command.
@@ -1101,7 +1110,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   else if (duplicate) lines.push('① OCR ✓ → ② MATCH ⛔ → ③ IN — → ④ WAIT — → ⑤ DONE —');
   else if (status === 'OCR_FAILED') lines.push('① OCR ✗ → ② MATCH — → ③ IN — → ④ WAIT — → ⑤ DONE —');
   else if (status === 'BANK_MISMATCH') lines.push('① OCR ✓ → ② MATCH ✗ → ③ IN — → ④ WAIT — → ⑤ DONE —');
-  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [IN] → ④ WAIT — → ⑤ DONE —');
+  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [ADMIN APPROVAL] → ④ IN — → ⑤ WAIT — → ⑥ DONE —');
   else lines.push('① OCR ✓ → ② [MATCH · REVIEW] → ③ IN — → ④ WAIT — → ⑤ DONE —');
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
@@ -1120,7 +1129,7 @@ export function formatIntakeV4RichMessage(args) {
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳)/u.test(line));
+  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳|🗓|🔖|🔎|📋|🛡)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +

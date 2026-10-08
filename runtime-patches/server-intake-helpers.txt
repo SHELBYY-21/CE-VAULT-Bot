@@ -87,6 +87,46 @@ async function handleTelegramCallback(callback) {
   return true;
 }
 
+async function handleTelegramApprove(message) {
+  const chatId = message?.chat?.id;
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  if (!["owner", "admin", "superadmin"].includes(String(operator.role || "").toLowerCase())) {
+    await telegram.sendMessage(chatId, "⛔ ไม่มีสิทธิ์อนุมัติ (Approval denied)");
+    return true;
+  }
+  const pendingId = String(message.text || "").match(/^\/approve(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
+  if (!pendingId) {
+    await telegram.sendMessage(chatId, "ใช้ /approve <pending UUID> หลังตรวจข้อมูล OCR และบัญชีรับครบแล้ว");
+    return true;
+  }
+  const pending = await repository.getPendingSlipForApproval(pendingId);
+  if (!pending || String(pending.chat_id) !== String(chatId)) {
+    await telegram.sendMessage(chatId, "ไม่พบรายการในห้องนี้ (Not found)");
+    return true;
+  }
+  if (pending.status !== "VERIFIED" || pending.pin_match !== true || !pending.thb_in || !pending.should_send) {
+    await telegram.sendMessage(chatId, "⛔ ข้อมูลยังไม่ผ่านการตรวจ (Review required) — ห้ามบันทึก");
+    return true;
+  }
+  try {
+    const result = await repository.promotePendingSlip(pending.id, operator.id, roomNameFor(message));
+    await telegram.sendMessage(chatId, [
+      "✅ แอดมินอนุมัติ (Admin Approved)",
+      "🟡 IN ✓ → WAIT USDT · DONE —",
+      `อ้างอิง (Reference): ${pending.ledger_ref}`,
+      `ยอดรับ (Received): ${pending.thb_in} THB`,
+      `ต้องส่ง (Total Due): ${pending.should_send} USDT`,
+      "เคลียร์แล้ว (Cleared): — USDT",
+      "ค้างส่ง (Outstanding): — USDT",
+      `Transaction ID: ${result.tx_id}`,
+    ].join("\n"));
+  } catch (error) {
+    await telegram.sendMessage(chatId, "⛔ บันทึกไม่สำเร็จ (Approval failed) — ตรวจ Ledger ก่อน retry");
+  }
+  return true;
+}
+
 async function requireTelegramOperator(message) {
   const operator = await repository.getOperatorByTelegramId(message?.from?.id);
   if (!operator) {
@@ -269,20 +309,10 @@ async function handleLiveSlipMessage(message) {
     return;
   }
 
-  let recorded = null;
-  let finalPending = pending;
-  if (decision.promotable) {
-    try {
-      recorded = await repository.promotePendingSlip(pending.id, operator.id, roomNameFor(message));
-      finalPending = { ...pending, status: "RECORDED", tx_id: recorded.tx_id };
-      publishSse("activity", { type: "operational_intake", transaction_id: recorded.tx_id, ledger_ref: pending.ledger_ref });
-    } catch (error) {
-      finalPending = await repository.updatePendingSlip(pending.id, {
-        status: "PROMOTION_FAILED",
-        note: `PROMOTION_FAILED=${error?.code || error?.message || "UNKNOWN"}`,
-      });
-    }
-  }
+  // Human approval is mandatory even when OCR and bank checks pass.
+  // No settlement ledger write may occur in the image ingestion path.
+  const recorded = null;
+  const finalPending = pending;
   const replyPending = {
     ...finalPending,
     account_number: pinnedMatch?.account_number || null,
