@@ -1055,7 +1055,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     MARKET_UNAVAILABLE: ['🟡 ยืนยันราคาไม่ได้', 'รอราคาตลาดที่ตรวจสอบได้'],
     PROMOTION_FAILED: ['🔴 ไม่สามารถยืนยันผลบันทึก', 'ตรวจ Ledger ก่อน retry เพื่อกันรายการซ้ำ'],
     VERIFIED: ['🟡 ผ่านการตรวจ รอบันทึก', 'ดำเนินการด้วยระบบบันทึกที่มีอยู่'],
-    RECORDED: ['✅ บันทึก THB แล้ว ยังไม่ SETTLED', 'รอหลักฐานการส่ง USDT และการยืนยันปิดรายการ'],
+    RECORDED: ['🟡 IN สำเร็จ · WAIT USDT', 'รอหลักฐานการส่ง USDT และการยืนยันปิดรายการ'],
   };
   const [headline,next] = duplicate ? ['⛔ พบรายการซ้ำ ห้ามบันทึกซ้ำ','ตรวจรายการเดิมใน Ledger ก่อน'] :
     isRecorded ? titles.RECORDED : (titles[status] || ['🟡 ต้องตรวจสอบข้อมูล','ตรวจข้อมูลก่อนดำเนินการ']);
@@ -1082,11 +1082,14 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   }
   if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 OCR ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
   lines.push('─────────────');
-  if (isRecorded) lines.push('OCR ✓ ─ MATCH ✓ ─ IN ✓ ─ WAIT ─ DONE');
-  else if (duplicate) lines.push('OCR ✓ ─ MATCH ✗ ─ IN ─ WAIT ─ DONE');
-  else if (status === 'OCR_FAILED') lines.push('OCR ✗ ─ MATCH ─ IN ─ WAIT ─ DONE');
-  else if (verified) lines.push('OCR ✓ ─ MATCH ✓ ─ [IN] ─ WAIT ─ DONE');
-  else lines.push('OCR ✓ ─ [MATCH] ─ IN ─ WAIT ─ DONE');
+  // Five-stage flow is an evidence-based presentation, not a settlement command.
+  // Only an authoritative recorded transaction can advance to IN; never infer DONE.
+  if (isRecorded) lines.push('① OCR ✓ → ② MATCH ✓ → ③ IN ✓ → ④ [WAIT] → ⑤ DONE —');
+  else if (duplicate) lines.push('① OCR ✓ → ② MATCH ⛔ → ③ IN — → ④ WAIT — → ⑤ DONE —');
+  else if (status === 'OCR_FAILED') lines.push('① OCR ✗ → ② MATCH — → ③ IN — → ④ WAIT — → ⑤ DONE —');
+  else if (status === 'BANK_MISMATCH') lines.push('① OCR ✓ → ② MATCH ✗ → ③ IN — → ④ WAIT — → ⑤ DONE —');
+  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [IN] → ④ WAIT — → ⑤ DONE —');
+  else lines.push('① OCR ✓ → ② [MATCH · REVIEW] → ③ IN — → ④ WAIT — → ⑤ DONE —');
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
   for (const issue of issues) lines.push(`🔍 ${issue}`);
