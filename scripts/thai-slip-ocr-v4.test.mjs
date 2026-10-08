@@ -7,10 +7,11 @@ const source = readFileSync(new URL('../runtime-patches/live-intake.mjs', import
 const sourceOcr = readFileSync(new URL('../src/lib/ocr.ts', import.meta.url), 'utf8');
 const paddleSource = readFileSync(new URL('../src/lib/paddleOcr.ts', import.meta.url), 'utf8');
 
-test('Thai Slip OCR V4 prefers PaddleOCR-VL-1.6 before general VLM fallbacks', () => {
+test('Thai Slip OCR V4 keeps Typhoon conditional and Paddle as default when Typhoon is unconfigured', () => {
   const cap = runtime.intakeCapability();
   assert.equal(cap.preferred_model, 'PaddleOCR-VL-1.6');
-  assert.deepEqual(cap.provider_order.slice(0, 3), ['paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+  assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+  assert.equal(cap.providers.typhoon_ocr_1_5, false);
   assert.notEqual(cap.preferred_model, 'PP-OCRv6');
 });
 
