@@ -1071,7 +1071,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
     headline, '━━━━━━━━━━━━━━',
     `📥 ${amount} THB → 💎 ${usdt} USDT`,
-    `💱 RATE ${rate}${allChecksPass ? ' · 🟢 ALL CHECKS PASS' : ''}`,
+    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟢 ALL CHECKS PASS') : ''}`,
   ];
   if (!duplicate && status !== 'PROMOTION_FAILED') {
     if (bank || account) lines.push(`🏦 ${bank || '—'} · ${account || '—'}`);
