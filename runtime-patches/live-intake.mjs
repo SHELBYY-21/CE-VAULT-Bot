@@ -1111,9 +1111,13 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
   for (const issue of issues.slice(0,4)) {
-    // Issue details may contain raw OCR bank text; never echo it into Telegram.
-    const safeIssue = String(issue).replace(/FOUND[^\n]*?(?=EXPECTED|$)/u, "FOUND · [unverified OCR] · ");
-    lines.push("⚠️ " + safeIssue.slice(0,160));
+    // Never echo raw OCR into warnings, even HTML-escaped; keep reason category only.
+    const raw = String(issue);
+    const safeIssue = /FOUND|EXPECTED|BANK|บัญชี/u.test(raw) ? "ข้อมูลบัญชีไม่ตรงกับ PIN · ตรวจสลิปต้นฉบับ" :
+      /DATE|วันที่/u.test(raw) ? "วันที่สลิปต้องตรวจสอบ" :
+      /CONFIDENCE|ความมั่นใจ/u.test(raw) ? "ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา" :
+      "ข้อมูลต้องตรวจสอบ";
+    if (!lines.includes("⚠️ " + safeIssue)) lines.push("⚠️ " + safeIssue);
   }
   lines.push("NEXT: " + (duplicate ? "ตรวจรายการเดิม" : isRecorded ? "รอหลักฐานส่ง USDT" :
     verified ? "แอดมินตรวจสลิปแล้วกด Approve" : "ตรวจข้อมูลก่อนอนุมัติ"));
