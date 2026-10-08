@@ -21,7 +21,7 @@ test('source OCR adapter mirrors llama.cpp support', () => {
 });
 
 test('provider capability keeps Paddle behind conditional Typhoon and exposes live backend state', () => {
-  assert.match(runtime, /preferred_model:\s*typhoon \? TYPHOON_OCR_MODEL : PADDLEOCR_MODEL/);
+  assert.match(runtime, /preferred_model:\s*typhoon \? TYPHOON_OCR_MODEL : paddle \? PADDLEOCR_MODEL : "MANUAL_REVIEW"/);
   assert.match(runtime, /provider_order:\s*\["typhoon_ocr_1_5",\s*"paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
   assert.match(runtime, /paddle_backend:/);
 });
@@ -36,4 +36,11 @@ test('provider chain tries Typhoon, then Paddle, then XAI and OCR.space', () => 
   const xai = block.indexOf('analyzeWithXai');
   const ocrSpace = block.indexOf('analyzeWithOcrSpace');
   assert.ok(typhoon >= 0 && paddle > typhoon && xai > paddle && ocrSpace > xai);
+});
+
+test('Railway fallback is never implicitly enabled by a hard-coded URL', () => {
+  assert.match(runtime, /PADDLEOCR_LLAMA_ENABLED/);
+  assert.match(source, /PADDLEOCR_LLAMA_ENABLED/);
+  assert.doesNotMatch(runtime, /ce-ocr-paddlevl16-production\.up\.railway\.app/);
+  assert.doesNotMatch(source, /ce-ocr-paddlevl16-production\.up\.railway\.app/);
 });
