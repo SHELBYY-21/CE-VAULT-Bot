@@ -1084,7 +1084,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     VERIFIED: "🟡 รอแอดมินอนุมัติ (Pending Admin Approval)", RECORDED: "🟡 บันทึก IN แล้ว · WAIT USDT",
     REJECTED: "⛔ แอดมินปฏิเสธ",
   };
-  const headline = duplicate ? "⛔ สลิปซ้ำ" : isRecorded ? titles.RECORDED :
+  const headline = duplicate ? "⛔ สลิปซ้ำ · ห้ามบันทึกซ้ำ" : isRecorded ? titles.RECORDED :
     (titles[status] || "🟡 รอตรวจสอบ");
   const lines = [
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
