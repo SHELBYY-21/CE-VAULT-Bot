@@ -12,6 +12,7 @@ import { calculateDepositProfit, ProfitResult } from './profit';
 import { calculateFee, FeeResult } from './fees';
 import { fetchBinanceThUsdtRate } from './binance';
 import { assertFiniteRate } from './rateGuard';
+import { assertTransactionDeleteAllowed } from './transactionDeletePolicy.mjs';
 import { notifyIncome, notifyOutflow, notifyEdit, notifyDelete } from './notifier';
 import type { Admin, TransactionStatus } from '@/types/transactions';
 import {
@@ -394,6 +395,8 @@ export async function deleteTransaction(
 ): Promise<{ name: string; holdingUsdt: number }> {
   const old = await getTx(txId);
   if (!old) throw new Error('ไม่พบธุรกรรม');
+  // Defense in depth: reject pending/unknown status even if a caller bypasses the UI.
+  assertTransactionDeleteAllowed(old.status);
 
   const { holding } = await rpcDelete(txId);
   notifyDelete({ adminName: old.admins?.name ?? '-' }).catch(() => undefined);
