@@ -1,0 +1,24 @@
+name: PaddleOCR live inference
+
+# A real Railway inference probe is intentionally separate from standard
+# PR tests and production builds. It must be triggered explicitly.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-inference:
+    name: Synthetic slip inference (live Railway)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe PaddleOCR with synthetic image
+        run: node scripts/paddle-live-inference-smoke.mjs
