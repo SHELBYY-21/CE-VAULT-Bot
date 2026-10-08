@@ -248,3 +248,72 @@ test('compact OCR card does not leak full OCR document into bank field', () => {
   assert.ok(card.includes('Confidence: 90.0%'));
   assert.ok(!card.includes('OCR Confidence): 90.0%'));
 });
+
+test('state gate: OCR VERIFIED is not ADMIN APPROVED or IN RECORDED', () => {
+  const pending = {id:'00000000-0000-0000-0000-000000000001', status:'VERIFIED',
+    thb_in:'1000', desk_rate:'40', should_send:'25', bank:'SCB', account_masked:'••••4321'};
+  const card = formatIntakeV4Reply({pending});
+  assert.match(card, /รอแอดมินอนุมัติ/);
+  assert.match(card, /APPROVE ⏳ → IN —/);
+  assert.doesNotMatch(card, /IN ✓/);
+  assert.doesNotMatch(card, /SETTLED/);
+  const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url),'utf8');
+  const imageHandler = helper.slice(helper.indexOf('async function handleLiveSlipMessage('));
+  assert.equal(imageHandler.includes('repository.promotePendingSlip('), false);
+  assert.ok(helper.includes('repository.promotePendingSlip(pending.id, operator.id'));
+});
+
+test('state gate: ADMIN APPROVED must precede ledger IN RECORDED', () => {
+  const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url),'utf8');
+  const approve = helper.slice(helper.indexOf('async function handleTelegramApprove('), helper.indexOf('async function requireTelegramOperator('));
+  assert.ok(approve.includes('requireTelegramOperator(message)'));
+  assert.ok(approve.includes('pending.status !== "VERIFIED"'));
+  assert.ok(approve.includes('pending.pin_match !== true'));
+  assert.ok(approve.includes('repository.promotePendingSlip(pending.id, operator.id'));
+  const card = formatIntakeV4Reply({pending:{status:'RECORDED', tx_id:'tx-fixture',
+    thb_in:'1000', should_send:'25', desk_rate:'40'}});
+  assert.match(card, /บันทึก IN แล้ว/);
+  assert.match(card, /IN ✓ → WAIT ⏳ → DONE —/);
+  assert.doesNotMatch(card, /SETTLED/);
+});
+
+test('state gate: SETTLED requires verified ledger evidence, not just an OCR or caller amount', () => {
+  const pending = {status:'RECORDED', tx_id:'tx-fixture', should_send:'25'};
+  const noEvidence = formatIntakeV4Reply({pending, recorded:{tx_id:'tx-fixture', cleared_usdt:'25'}});
+  assert.match(noEvidence, /Cleared\\): — USDT/);
+  assert.match(noEvidence, /Outstanding\\): — USDT/);
+  const partial = formatIntakeV4Reply({pending, recorded:{
+    tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'20'}});
+  assert.match(partial, /Cleared\\): 20.00 USDT/);
+  assert.match(partial, /Outstanding\\): 5.00 USDT/);
+  assert.doesNotMatch(partial, /SETTLED/);
+  const full = formatIntakeV4Reply({pending, recorded:{
+    tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'25'}});
+  assert.match(full, /Cleared\\): 25.00 USDT/);
+  assert.match(full, /Outstanding\\): 0.00 USDT/);
+  assert.doesNotMatch(full, /SETTLED/);
+});
+
+test('exception gate: duplicate and bank mismatch never become approved', () => {
+  const verified = {status:'VERIFIED', id:'00000000-0000-0000-0000-000000000001',
+    thb_in:'1000', should_send:'25', bank:'SCB'};
+  const duplicate = formatIntakeV4Reply({pending:verified,duplicate:true});
+  assert.match(duplicate, /สลิปซ้ำ/);
+  assert.doesNotMatch(duplicate, /\\/approve/);
+  const mismatch = formatIntakeV4Reply({pending:{...verified,status:'BANK_MISMATCH',
+    bank:'KTB',pin_match:false}});
+  assert.match(mismatch, /บัญชีไม่ตรง/);
+  assert.match(mismatch, /MATCH ✗ → IN —/);
+  assert.doesNotMatch(mismatch, /\\/approve/);
+  const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url),'utf8');
+  assert.ok(helper.includes('pending.pin_match !== true'));
+});
+
+test('exception gate: SHORT cannot be called SETTLED', () => {
+  const pending = {status:'RECORDED', tx_id:'tx-fixture',should_send:'25'};
+  const partial = formatIntakeV4Reply({pending,recorded:{
+    tx_id:'tx-fixture',settlement_verified:true,cleared_usdt:'24.99'}});
+  assert.match(partial, /Outstanding\\): 0.01 USDT/);
+  assert.doesNotMatch(partial, /SETTLED/);
+  assert.doesNotMatch(partial, /DONE ✓/);
+});
