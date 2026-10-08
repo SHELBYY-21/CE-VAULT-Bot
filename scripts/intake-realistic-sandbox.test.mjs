@@ -106,7 +106,7 @@ function prepareScenario(overrides = {}) {
   return { options, pendingRows, audit, sent, events, message, run };
 }
 
-test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pending -> RECORDED / WAIT', async (t) => {
+test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pending admin approval', async (t) => {
   const keys = [
     'TYPHOON_OCR_API_KEY', 'TYPHOON_OCR_BASE_URL', 'PADDLEOCR_LLAMA_ENABLED',
     'PADDLEOCR_LLAMA_URL', 'PADDLEOCR_VL_URL', 'PADDLEOCR_BASE_URL',
@@ -129,22 +129,22 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ natural_text: context.options.ocrText }) } }] }) };
     };
 
-    await t.test('valid SCB synthetic slip creates one waiting ledger item, never DONE', async () => {
+    await t.test('valid SCB synthetic slip awaits human approval, never auto records', async () => {
       context = prepareScenario();
       await context.run.handleLiveSlipMessage(context.message);
       assert.equal(context.audit.ocrCalls, 1);
       assert.equal(context.audit.create, 1);
-      assert.equal(context.audit.promote, 1);
-      assert.equal(context.pendingRows[0].status, 'RECORDED');
+      assert.equal(context.audit.promote, 0);
+      assert.equal(context.pendingRows[0].status, 'VERIFIED');
       assert.equal(context.pendingRows[0].thb_in, '1234.5');
       assert.equal(context.pendingRows[0].should_send, intake.divideDecimal('1234.5', '33.5', 6));
       assert.equal(context.pendingRows[0].pin_match, true);
       assert.equal(context.pendingRows[0].bank_account_id, 'pin-sandbox-1');
       assert.equal(context.pendingRows[0].source_file_id, 'synthetic-image');
-      assert.match(context.sent.at(-1).fallback, /IN สำเร็จ · WAIT USDT/);
+      assert.match(context.sent.at(-1).fallback, /Pending Admin Approval/);
       assert.match(context.sent.at(-1).fallback, /WAIT/);
       assert.doesNotMatch(context.sent.at(-1).fallback, /ALL CHECKS PASS/);
-      assert.equal(context.events.length, 1);
+      assert.equal(context.events.length, 0);
       assert.equal(context.sent[0].kind, 'send');
       assert.equal(context.sent.at(-1).kind, 'edit');
     });
@@ -156,7 +156,7 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       await context.run.handleLiveSlipMessage({ ...context.message, message_id: 201 });
       assert.equal(context.audit.ocrCalls, firstOcr);
       assert.equal(context.audit.create, 1);
-      assert.equal(context.audit.promote, 1);
+      assert.equal(context.audit.promote, 0);
       assert.equal(context.pendingRows.length, 1);
       assert.match(context.sent.at(-1).fallback, /ห้ามบันทึกซ้ำ/);
     });
@@ -182,11 +182,11 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       });
     }
 
-    await t.test('ledger promotion error is explicit, not reported as completed', async () => {
+    await t.test('promotion failure cannot occur before an admin approves', async () => {
       context = prepareScenario({ promotionError: 'SIMULATED_RPC_FAILURE' });
       await context.run.handleLiveSlipMessage(context.message);
-      assert.equal(context.pendingRows[0].status, 'PROMOTION_FAILED');
-      assert.equal(context.audit.promote, 1);
+      assert.equal(context.pendingRows[0].status, 'VERIFIED');
+      assert.equal(context.audit.promote, 0);
       assert.equal(context.events.length, 0);
       assert.doesNotMatch(context.sent.at(-1).fallback, /ALL CHECKS PASS/);
     });
