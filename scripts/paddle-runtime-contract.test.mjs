@@ -12,10 +12,10 @@ test('Paddle runtime pins the 1.6-capable PaddleOCR release', () => {
   assert.match(dockerfile, /paddlex --install serving/);
 });
 
-test('Paddle runtime exposes the official service on the platform port', () => {
+test('Paddle runtime uses the installed PaddlePaddle engine and exposes the service port', () => {
   assert.match(start, /paddlex --serve/);
   assert.match(start, /--pipeline/);
-  assert.match(start, /--engine transformers/);
+  assert.doesNotMatch(start, /--engine\s+transformers/);
   assert.match(start, /--port/);
   assert.match(start, /PaddleOCR-VL-1\.6/);
 });
