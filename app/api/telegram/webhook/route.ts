@@ -42,7 +42,6 @@ import {
   getTransactionStatus,
   getTodayLedger,
   recordDeal,
-  resetRoom,
   getStaffLeaderboard,
   exportRoomCsv,
   recordIncoming,
@@ -1479,18 +1478,10 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) — โพสต์สรุปเก็บไว้ก่อนลบ -----
+  // ----- resetgo : DISABLED — room-wide hard delete bypassed the guarded RPC -----
   if (action === 'resetgo') {
-    await answerCallback(id, '🗑 กำลังล้าง...');
-    try {
-      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
-      await sendLedger(chatId);
-      const n = await resetRoom(chatId);
-      await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
-      await sendMessage(chatId, UI.resetDone(n));
-    } catch (e: any) {
-      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
-    }
+    await answerCallback(id, '⛔ ปิดการล้างรายการการเงิน');
+    await sendMessage(chatId, { text: '⛔ ปิด RESET แบบลบข้อมูล — กรุณาใช้การตัดรอบวันที่เก็บ Ledger ไว้' });
     return;
   }
 
