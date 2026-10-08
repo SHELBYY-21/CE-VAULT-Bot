@@ -4,6 +4,8 @@ const BINANCE_TH_SPOT_URL = "https://api.binance.th/api/v1/ticker/price?symbol=U
 const MARKET_TTL_MS = 30_000;
 const OCR_AUTO_MIN = Math.max(1, Math.min(Number(process.env.OCR_AUTO_MIN || 90), 100));
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const PADDLEOCR_MODEL = "PaddleOCR-VL-1.6";
+const PADDLEOCR_TIMEOUT_MS = Math.max(5_000, Math.min(Number(process.env.PADDLEOCR_TIMEOUT_MS || 20_000), 60_000));
 let marketCache = null;
 
 function asError(code, message = code) {
@@ -194,6 +196,161 @@ export function parseVisionJson(text) {
   };
 }
 
+
+function amountFromLabeledText(text) {
+  const normalized = String(text || "").replace(/\u00a0/g, " ");
+  const patterns = [
+    /(?:จำนวนเงิน|ยอดชำระ|ยอดเงิน|ยอดโอน|จำนวนที่ชำระ|transaction\s*amount|transfer\s*amount|amount\s*paid|paid\s*amount|total\s*paid|amount)[^\d]{0,32}(\d[\d,]*(?:\.\d{1,2})?)/iu,
+    /(\d[\d,]*\.\d{2})\s*(?:บาท|THB)\b/iu,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalized);
+    if (!match) continue;
+    const value = Number(match[1].replaceAll(",", ""));
+    if (Number.isFinite(value) && value > 0 && value <= 10_000_000) return value;
+  }
+  return null;
+}
+
+function dateFromText(text) {
+  const match = String(text || "").match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
+  return match?.[1] || null;
+}
+
+function timeFromText(text) {
+  const match = String(text || "").match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
+}
+
+function receiverLast4FromText(text) {
+  const raw = String(text || "");
+  const masked = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
+  if (masked) return masked[1];
+  const labeled = /(?:บัญชี(?:ผู้รับ)?|account|acct)[^\d]{0,24}(?:\d[\s-]*){4,}(\d{4})(?!\d)/iu.exec(raw);
+  return labeled?.[1] || null;
+}
+
+function receiverNameFromText(text) {
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const inlinePatterns = [
+    /^(?:ไปยัง|ผู้รับ|ชื่อผู้รับ|receiver|payee)\s*[:：-]?\s*(.+)$/iu,
+    /^biller\s*note\s*[:：-]?\s*([A-Za-zก-๙][A-Za-zก-๙ .'-]{2,})$/iu,
+  ];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    for (const pattern of inlinePatterns) {
+      const match = pattern.exec(line);
+      if (match?.[1] && !/^\d[\d\s-]+$/.test(match[1].trim())) return match[1].trim();
+    }
+    if (/^biller\s*note\b/i.test(line)) {
+      const next = lines[index + 1];
+      if (next && /[A-Za-zก-๙]/u.test(next) && !/^\d[\d\s-]+$/.test(next)) return next;
+    }
+  }
+  return null;
+}
+
+export function parseThaiSlipText(text, provider = "OCR_TEXT") {
+  const raw = String(text || "").trim();
+  if (!raw) return {
+    thbAmount: null, time: null, date: null, receiverLast4: null, bank: null,
+    receiverName: null, senderName: null, confidence: null, provider,
+  };
+  const thbAmount = amountFromLabeledText(raw);
+  const bank = normalizeBank(raw);
+  const receiverLast4 = receiverLast4FromText(raw);
+  const receiverName = receiverNameFromText(raw);
+  const date = dateFromText(raw);
+  const time = timeFromText(raw);
+  const evidence = [
+    thbAmount != null ? 45 : 0,
+    bank ? 15 : 0,
+    receiverLast4 ? 15 : 0,
+    receiverName ? 10 : 0,
+    date ? 10 : 0,
+    time ? 5 : 0,
+  ].reduce((sum, value) => sum + value, 0);
+  return {
+    thbAmount,
+    time,
+    date,
+    receiverLast4,
+    bank,
+    receiverName,
+    senderName: null,
+    confidence: thbAmount == null ? null : evidence,
+    provider,
+  };
+}
+
+function paddleEndpoint() {
+  const raw = String(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL || "").trim();
+  if (!raw) return null;
+  return /\/layout-parsing\/?$/i.test(raw) ? raw.replace(/\/$/, "") : `${raw.replace(/\/$/, "")}/layout-parsing`;
+}
+
+async function analyzeWithPaddleVl(buffer) {
+  const endpoint = paddleEndpoint();
+  if (!endpoint) return null;
+  const headers = { "content-type": "application/json" };
+  const token = String(process.env.PADDLEOCR_ACCESS_TOKEN || "").trim();
+  if (token) headers.authorization = `Bearer ${token}`;
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        file: buffer.toString("base64"),
+        fileType: 1,
+        useDocOrientationClassify: true,
+        useDocUnwarping: true,
+        useLayoutDetection: true,
+        useChartRecognition: false,
+        temperature: 0,
+        prettifyMarkdown: false,
+        visualize: false,
+      }),
+      signal: AbortSignal.timeout(PADDLEOCR_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.warn("[CE OCR] PADDLE_HTTP", { status: response.status, model: PADDLEOCR_MODEL });
+      return null;
+    }
+    const payload = await response.json();
+    const text = (payload?.result?.layoutParsingResults || [])
+      .map((item) => item?.markdown?.text || "")
+      .filter(Boolean)
+      .join("\n");
+    if (!text.trim()) {
+      console.warn("[CE OCR] PADDLE_EMPTY", { model: PADDLEOCR_MODEL });
+      return null;
+    }
+    const parsed = parseThaiSlipText(text, "PADDLEOCR_VL_1_6");
+    if (parsed.thbAmount == null) console.warn("[CE OCR] PADDLE_NO_AMOUNT", { model: PADDLEOCR_MODEL });
+    return parsed;
+  } catch (error) {
+    console.warn("[CE OCR] PADDLE_ERROR", { name: error?.name || "Error", model: PADDLEOCR_MODEL });
+    return null;
+  }
+}
+
+function extractionScore(value) {
+  if (!value) return -1;
+  let score = 0;
+  if (value.thbAmount != null) score += 50;
+  if (value.bank) score += 12;
+  if (value.receiverLast4) score += 12;
+  if (value.receiverName) score += 10;
+  if (value.date) score += 8;
+  if (value.time) score += 4;
+  if (finiteNumberOrNull(value.confidence) != null) score += Math.min(4, Number(value.confidence) / 25);
+  return score;
+}
+
+function bestExtraction(...values) {
+  return values.filter(Boolean).sort((a, b) => extractionScore(b) - extractionScore(a))[0] || null;
+}
+
 const SLIP_PROMPT = `You are a Thai payment evidence parser. The image may be a bank transfer slip, QR payment slip, bill-payment/biller receipt, or a bank-generated receipt screenshot. Return ONLY JSON: {"thbAmount":number|null,"time":"HH:MM"|null,"date":"DD/MM/YY"|null,"receiverLast4":"XXXX"|null,"bank":"KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|OTHER"|null,"receiverName":string|null,"senderName":string|null,"confidence":number|null}. "thbAmount" is the transaction amount actually paid/transferred in THB. Never use account numbers, reference numbers, dates, times, fees, or balances as the transaction amount. Read the RECEIVER/payee or biller, not the sender. For biller receipts, BILLER NOTE may identify the payee but is not an account number. If a value is not visibly supported by the image, return null. Do not invent values. confidence is 0-100 only when the image supports the extraction.`;
 
 async function analyzeWithXai(buffer, mimeType) {
@@ -265,18 +422,42 @@ async function analyzeWithOcrSpace(buffer, mimeType) {
 export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw asError("EMPTY_IMAGE");
   if (buffer.length > MAX_IMAGE_BYTES) throw asError("IMAGE_TOO_LARGE");
+
+  const paddle = await analyzeWithPaddleVl(buffer);
+  if (paddle?.thbAmount != null && extractionScore(paddle) >= 80) return paddle;
+
   const xai = await analyzeWithXai(buffer, mimeType);
-  if (xai?.thbAmount != null) return xai;
-  const fallback = await analyzeWithOcrSpace(buffer, mimeType);
-  return fallback || { thbAmount: null, time: null, date: null, receiverLast4: null, bank: null, receiverName: null, senderName: null, confidence: null, provider: "UNAVAILABLE" };
+  const bestPrimary = bestExtraction(paddle, xai);
+  if (bestPrimary?.thbAmount != null) return bestPrimary;
+
+  const ocrSpace = await analyzeWithOcrSpace(buffer, mimeType);
+  return bestExtraction(bestPrimary, ocrSpace) || {
+    thbAmount: null,
+    time: null,
+    date: null,
+    receiverLast4: null,
+    bank: null,
+    receiverName: null,
+    senderName: null,
+    confidence: null,
+    provider: "UNAVAILABLE",
+  };
 }
 
 export function intakeCapability() {
+  const paddle = Boolean(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL);
   const xai = Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY);
   const ocrSpace = Boolean(process.env.OCR_SPACE_API_KEY);
   return {
-    ocr_configured: xai || ocrSpace,
-    providers: { xai_vision: xai, ocr_space: ocrSpace },
+    ocr_configured: paddle || xai || ocrSpace,
+    preferred_model: PADDLEOCR_MODEL,
+    provider_order: ["paddleocr_vl_1_6", "xai_vision", "ocr_space"],
+    providers: {
+      paddleocr_vl_1_6: paddle,
+      xai_vision: xai,
+      ocr_space: ocrSpace,
+    },
+    thai_strategy: "PaddleOCR-VL-1.6 primary; dedicated Thai PP-OCRv5 recommended for self-hosted second-pass; PP-OCRv6 is not selected as Thai primary",
     auto_min_confidence: OCR_AUTO_MIN,
     market_source: "BINANCE_TH_SPOT",
     market_ttl_seconds: MARKET_TTL_MS / 1000,
