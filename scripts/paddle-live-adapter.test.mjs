@@ -20,7 +20,7 @@ test('source OCR adapter mirrors llama.cpp support', () => {
   assert.match(source, /PADDLEOCR_VL_1_6_LLAMA/);
 });
 
-test('provider capability keeps Paddle first and exposes live backend state', () => {
+test('provider capability keeps Paddle behind conditional Typhoon and exposes live backend state', () => {
   assert.match(runtime, /preferred_model:\s*PADDLEOCR_MODEL/);
   assert.match(runtime, /provider_order:\s*\["paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
   assert.match(runtime, /paddle_backend:/);
