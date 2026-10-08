@@ -558,6 +558,7 @@ async function handleUpdate(update: any): Promise<void> {
           await commitIncoming(chatId, userId, slip!.thbAmount!, {
             slipUrl: imgUrl,
             bank: bank ?? matched.bank_name,
+            accountNumber: matched.account_number,
             last4: last4 ?? last4OfAccount(matched.account_number),
             receiverName,
             confidence: slip!.confidence ?? null,
@@ -600,8 +601,8 @@ async function handleUpdate(update: any): Promise<void> {
                 '📄 บัญชีในสลิป\n' +
                 '🏦 ' + ceEscape(bank ?? '-') + ' · ••••' + ceEscape(last4 ?? '????') + '\n\n' +
                 '📌 บัญชี PIN วันนี้\n' +
-                '🏦 ' + ceEscape(first.bank_name) + ' · ••••' +
-                  ceEscape(last4OfAccount(first.account_number) ?? '????') + '\n\n' +
+                '🏦 ' + ceEscape(first.bank_name) + ' · ' +
+                  ceEscape(first.account_number ?? 'ไม่พบเลขบัญชี') + '\n\n' +
                 '❌ บัญชีไม่ตรงกัน\n' +
                 '📥 ' + ceAmount(slip!.thbAmount!) + ' THB\n' +
                 '<i>พิมพ์ +ยอด เพื่อบันทึกเอง หรือใช้ /pin เปลี่ยนบัญชี</i>\n' +
@@ -774,6 +775,7 @@ async function handleUpdate(update: any): Promise<void> {
         );
         await commitIncoming(chatId, userId, amt.thb.value, {
           ...meta,
+          accountNumber: matched?.account_number ?? null,
           pinMatched: !!matched,
           bankAccountId: matched?.id ?? null,
         });
@@ -864,6 +866,7 @@ async function commitIncoming(
   meta: {
     slipUrl?: string | null;
     bank?: string | null;
+    accountNumber?: string | null;
     last4?: string | null;
     receiverName?: string | null;
     confidence?: number | null;
@@ -931,6 +934,7 @@ async function commitIncoming(
       sellRate,
       adminName: r.adminName,
       bank: meta.bank ?? null,
+      accountNumber: meta.accountNumber ?? null,
       last4: meta.last4 ?? null,
       transactionId: r.transactionId,
     }),
@@ -984,7 +988,7 @@ async function replyPinOk(
     UI.pinSetOk({
       today,
       bank_name: bank.bank_name,
-      last4: last4OfAccount(bank.account_number) || '????',
+      account_number: bank.account_number,
       label: bank.label,
       count: list.length,
       max: MAX_PINNED_TODAY,
@@ -1119,7 +1123,7 @@ async function handleUnpinCommand(chatId: number, text: string): Promise<void> {
   const left = await listPinnedBanksForToday(today);
   await sendMessage(chatId, {
     text:
-      `🗑 ลบ <b>${removed.bank_name}</b> <code>••••${last4OfAccount(removed.account_number) || '????'}</code> แล้ว\n` +
+      `🗑 ลบ <b>${removed.bank_name}</b> <code>${removed.account_number || 'ไม่พบเลขบัญชี'}</code> แล้ว\n` +
       `เหลือ ${left.length}/${MAX_PINNED_TODAY} บัญชี`,
   });
   if (left.length) {
