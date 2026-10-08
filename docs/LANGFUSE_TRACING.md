@@ -17,7 +17,7 @@ Official skill copied under `.agents/skills/langfuse/` from [langfuse/skills](ht
    - `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (choose your project's actual region)
 3. On a **staging workspace**, install isolated dependencies: `npm install --prefix observability`. Do not commit `observability/node_modules`.
 4. Run `node --test observability/langfuse.test.mjs` and existing build/test suite.
-5. Execute one **synthetic** outbox event through staging (not a real financial event), check that one trace has root `dispatch-outbox` with only `workflow`, `result`, `environment`. Fetch the trace in Langfuse and compare with [best practices](https://langfuse.com/docs/observability/best-practices).
+5. Run `node observability/smoke.mjs` in staging. This sends a synthetic `agent-task` observation without triggering Telegram or financial operations. Confirm one trace with only approved `workflow`, `result`, `environment` fields, then fetch and audit it against [best practices](https://langfuse.com/docs/observability/best-practices). A successful local command is not proof of remote receipt.
 6. For real LLM calls, instrument the actual OpenAI/LangChain/Vercel AI SDK generation site when identified. Do not log raw prompts, bank data, Telegram chats, OCR contents, payment data, secrets, or internal chain-of-thought. Capture model and token usage only with a vetted SDK wrapper and redaction controls.
 
 ## Tracing contract
