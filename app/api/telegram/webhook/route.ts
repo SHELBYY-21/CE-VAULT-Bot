@@ -39,6 +39,7 @@ import {
   insertRate,
   editTransaction,
   deleteTransaction,
+  getTransactionStatus,
   getTodayLedger,
   recordDeal,
   resetRoom,
@@ -1515,6 +1516,21 @@ async function handleCallback(cb: any): Promise<void> {
     return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
   }
 
+  if (action === 'del') {
+    // RECORDED/WAITING are display stages; only the authoritative Ledger
+    // status 'completed' permits deletion. Errors and missing status fail closed.
+    try {
+      const status = await getTransactionStatus(txId);
+      if (status !== 'completed') {
+        await answerCallback(id, '⛔ รายการยังไม่ SETTLED ห้ามลบ');
+        await sendMessage(chatId, { text: '⛔ รายการยังไม่ SETTLED ห้ามลบ — ติดต่อปิดรายการก่อน' });
+        return;
+      }
+    } catch {
+      return await answerCallback(id, '⛔ ตรวจสอบสถานะไม่ได้ ไม่ลบรายการ');
+    }
+  }
+
   await answerCallback(id, action === 'edit' ? '⚡ เข้าโหมดแก้ไข' : '🗑 กำลังลบ...');
 
   if (action === 'edit') {
@@ -1529,6 +1545,11 @@ async function handleCallback(cb: any): Promise<void> {
       const r = await deleteTransaction(txId);
       await sendMessage(chatId, UI.deleteSuccess(r.name, r.holdingUsdt));
     } catch (e: any) {
+      // The SQL RPC may reject a status changed after callback preflight.
+      if (String(e?.message ?? '').includes('TX_NOT_SETTLED')) {
+        await sendMessage(chatId, { text: '⛔ รายการยังไม่ SETTLED ห้ามลบ — ติดต่อปิดรายการก่อน' });
+        return;
+      }
       await sendMessage(chatId, UI.error(e?.message ?? 'delete failed'));
     }
   }
