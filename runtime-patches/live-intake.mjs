@@ -1120,13 +1120,13 @@ export function formatIntakeV4RichMessage(args) {
   const pending = args?.pending || {};
   const card = formatIntakeV4Reply(args).split('\n');
   const fullAccount = pending.account_number || (pending.pin_match ? args?.pinnedAccount?.account_number : null);
-  const issueHtml = card.filter(line => line.startsWith('🔍 ')).map(line => `<p>${richEscape(line)}</p>`).join('');
+  const issueHtml = card.filter(line => line.startsWith('⚠️ ')).map(line => `<p>${richEscape(line)}</p>`).join('');
   const copyButtons = [
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳|🗓|🔖|🔎|📋|🛡)/u.test(line));
-  const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 '));
+  const amountRows = card.slice(2).filter(line => /^(💵|💎|📊|✅|⏳|🏦|👤|🗓|🔖|🔎|📋|🛡)/u.test(line));
+  const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('⚠️ '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +
     `<p><b>${richEscape(card[1])}</b></p><hr/>` +
