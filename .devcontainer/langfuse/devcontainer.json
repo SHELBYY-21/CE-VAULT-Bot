@@ -1,7 +1,7 @@
 {
   "name": "CE VAULT | Langfuse Synthetic Trace Lab",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-  "postCreateCommand": "npm install --prefix observability --ignore-scripts --no-audit --no-fund",
+  "postCreateCommand": "npm install --prefix observability --ignore-scripts --no-audit --no-fund && node --test observability/langfuse.test.mjs && node observability/smoke.mjs",
   "containerEnv": {
     "CE_LANGFUSE_TRACING_ENABLED": "true",
     "CE_LANGFUSE_ENV": "staging",
@@ -20,8 +20,14 @@
   "customizations": {
     "vscode": {
       "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "telemetry.telemetryLevel": "off"
       }
     }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
   }
 }
