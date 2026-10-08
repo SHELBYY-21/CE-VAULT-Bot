@@ -132,6 +132,7 @@ export function decideIntake({ slip, pinnedMatch, pinnedCount, deskRate, market,
   const amount = Number(slip?.thbAmount);
   const confidence = Number(slip?.confidence);
   const slipDate = normalizeSlipDate(slip?.date);
+  if (slip?.date && !slipDate) return { status: "NEEDS_REVIEW", promotable: false };
   if (!Number.isFinite(amount) || amount <= 0 || amount > 10_000_000) return { status: "OCR_FAILED", promotable: false };
   if (slipDate && slipDate !== businessDate) return { status: "STALE_SLIP", promotable: false };
   if (!Number.isFinite(confidence) || confidence < OCR_AUTO_MIN) return { status: "NEEDS_REVIEW", promotable: false };
