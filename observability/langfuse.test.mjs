@@ -36,7 +36,7 @@ test("emits safe names and statuses only; preserves task return", async () => {
     {NodeSDK},{LangfuseSpanProcessor},{startActiveObservation}
   ]);
   assert.equal(tracer.enabled,true);
-  assert.equal(await tracer.run("dispatch-outbox",async()=>({account:"DO_NOT_LOG"})).account,"DO_NOT_LOG");
+  assert.equal((await tracer.run("dispatch-outbox",async()=>({account:"DO_NOT_LOG"}))).account,"DO_NOT_LOG");
   assert.deepEqual(observed,[{
     name:"dispatch-outbox",opts:{asType:"span"},
     updates:[{input:{workflow:"dispatch-outbox"},metadata:{environment:"staging"}},{output:{result:"ok"}}]
