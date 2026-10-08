@@ -20,19 +20,20 @@ test('source OCR adapter mirrors llama.cpp support', () => {
   assert.match(source, /PADDLEOCR_VL_1_6_LLAMA/);
 });
 
-test('provider capability keeps Paddle first and exposes live backend state', () => {
-  assert.match(runtime, /preferred_model:\s*PADDLEOCR_MODEL/);
-  assert.match(runtime, /provider_order:\s*\["paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
+test('provider capability keeps Paddle behind conditional Typhoon and exposes live backend state', () => {
+  assert.match(runtime, /preferred_model:\s*typhoon \? TYPHOON_OCR_MODEL : PADDLEOCR_MODEL/);
+  assert.match(runtime, /provider_order:\s*\["typhoon_ocr_1_5",\s*"paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
   assert.match(runtime, /paddle_backend:/);
 });
 
-test('llama backend falls back to XAI then OCR.space when unusable', () => {
+test('provider chain tries Typhoon, then Paddle, then XAI and OCR.space', () => {
   const start = runtime.indexOf('export async function analyzeSlipBuffer');
   const end = runtime.indexOf('export function intakeCapability', start);
   assert.ok(start >= 0 && end > start);
   const block = runtime.slice(start, end);
+  const typhoon = block.indexOf('analyzeWithTyphoon');
   const paddle = block.indexOf('analyzeWithPaddle');
   const xai = block.indexOf('analyzeWithXai');
   const ocrSpace = block.indexOf('analyzeWithOcrSpace');
-  assert.ok(paddle >= 0 && xai > paddle && ocrSpace > xai);
+  assert.ok(typhoon >= 0 && paddle > typhoon && xai > paddle && ocrSpace > xai);
 });

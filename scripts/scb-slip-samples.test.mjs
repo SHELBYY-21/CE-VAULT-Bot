@@ -52,9 +52,9 @@ test('SCB PLANET top-up: TO card wins over sender account and biller note', () =
   assert.equal(parsed.receiverName, 'บัตร PLANET SCB');
 });
 
-test('Paddle live service remains configured as first provider with safe fallbacks', () => {
+test('Paddle live service remains configured behind conditional Typhoon with safe fallbacks', () => {
   const cap = runtime.intakeCapability();
   assert.equal(cap.providers.paddleocr_vl_1_6, true);
   assert.equal(cap.paddle_backend, 'LLAMA_CPP_MULTIMODAL');
-  assert.deepEqual(cap.provider_order, ['paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+  assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
 });

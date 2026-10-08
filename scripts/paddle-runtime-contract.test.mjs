@@ -18,7 +18,7 @@ test('Paddle runtime exposes OpenAI-compatible multimodal serving on 8080', () =
   assert.match(dockerfile, /"-np", "1"/);
 });
 
-test('CE bot keeps Paddle first with safe fallbacks', () => {
-  assert.match(runtime, /provider_order:\s*\["paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
+test('CE bot keeps Paddle available behind conditional Typhoon with safe fallbacks', () => {
+  assert.match(runtime, /provider_order:\s*\["typhoon_ocr_1_5",\s*"paddleocr_vl_1_6",\s*"xai_vision",\s*"ocr_space"\]/);
   assert.match(runtime, /Manual Review|OCR_FAILED|UNAVAILABLE/);
 });

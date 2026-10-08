@@ -7,6 +7,7 @@
 // ============================================================
 import { analyzeSlipWithGrok, analyzeUsdtWithGrok, SlipExtract, UsdtExtract } from './grokVision';
 import { analyzeSlipWithPaddle } from './paddleOcr';
+import { analyzeSlipWithTyphoon } from './typhoonOcr';
 
 /** อ่านสกรีนช็อตโอน USDT (Grok, 12s timeout) — null ถ้าอ่านไม่ได้/ไม่มี key */
 export async function analyzeUsdtScreenshot(imageUrl: string): Promise<UsdtExtract | null> {
@@ -35,7 +36,15 @@ function pickAmount(text: string): number | null {
 
 /** อ่านสลิปครบชุด — คืน SlipExtract (fields อาจเป็น null) */
 export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
-  // 1) PaddleOCR-VL-1.6: best current Thai-capable document parser in this stack.
+  // 1) Typhoon OCR 1.5: Thai-specialist provider. Skips immediately unless explicitly configured.
+  try {
+    const typhoon = await analyzeSlipWithTyphoon(imageUrl);
+    if (typhoon && typhoon.thbAmount !== null && Number(typhoon.confidence || 0) >= 80) return typhoon;
+  } catch (e) {
+    console.warn('[CE OCR] TYPHOON_SOURCE_ERROR', { name: e instanceof Error ? e.name : 'Error' });
+  }
+
+  // 2) PaddleOCR-VL-1.6: local/self-hosted Thai-capable fallback.
   try {
     const paddle = await analyzeSlipWithPaddle(imageUrl);
     if (paddle && paddle.thbAmount !== null && Number(paddle.confidence || 0) >= 80) return paddle;
@@ -43,7 +52,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     console.warn('[CE OCR] PADDLE_SOURCE_ERROR', { name: e instanceof Error ? e.name : 'Error' });
   }
 
-  // 2) Grok Vision semantic fallback.
+  // 3) Grok Vision semantic fallback.
   try {
     const grok = await Promise.race([
       analyzeSlipWithGrok(imageUrl),
@@ -54,7 +63,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     console.warn('[CE OCR] XAI_SOURCE_ERROR', { name: e instanceof Error ? e.name : 'Error' });
   }
 
-  // 3) fallback: OCR.space (แค่ยอด, 8s timeout)
+  // 4) fallback: OCR.space (แค่ยอด, 8s timeout)
   try {
     const thb = await Promise.race([
       extractThbAmountFromOcrSpace(imageUrl),
@@ -74,7 +83,7 @@ export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
     console.warn('OCR fallback error:', e instanceof Error ? e.message : e);
   }
 
-  // 3) Last resort: null values (ให้ user input เอง)
+  // 5) Last resort: null values (ให้ user input เอง)
   return {
     thbAmount: null,
     time: null,

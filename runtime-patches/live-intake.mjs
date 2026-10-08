@@ -323,6 +323,101 @@ export function parseThaiSlipText(text, provider = "OCR_TEXT") {
   };
 }
 
+
+const TYPHOON_OCR_MODEL = process.env.TYPHOON_OCR_MODEL || "typhoon-ocr";
+const TYPHOON_OCR_PROMPT = `Below is an image of a document page along with its dimensions.
+Simply return the markdown representation of this document, presenting tables in markdown format as they naturally appear.
+If the document contains images, use a placeholder like dummy.png for each image.
+Your final output must be in JSON format with a single key \`natural_text\` containing the response.
+RAW_TEXT_START
+
+RAW_TEXT_END`;
+
+function typhoonConfigured() {
+  return Boolean(
+    String(process.env.TYPHOON_OCR_API_KEY || "").trim() ||
+    String(process.env.TYPHOON_OCR_BASE_URL || "").trim()
+  );
+}
+
+function typhoonEndpoint() {
+  if (!typhoonConfigured()) return null;
+  const base = String(
+    process.env.TYPHOON_OCR_BASE_URL || "https://api.opentyphoon.ai/v1"
+  ).trim().replace(/\/$/, "");
+  return /\/v1$/i.test(base)
+    ? `${base}/chat/completions`
+    : `${base}/v1/chat/completions`;
+}
+
+function typhoonNaturalText(content) {
+  if (typeof content !== "string") return "";
+  const cleaned = content
+    .replace(/^\`\`\`(?:json)?\s*/i, "")
+    .replace(/\`\`\`\s*$/i, "")
+    .trim();
+  if (!cleaned) return "";
+  try {
+    const parsed = JSON.parse(cleaned);
+    return typeof parsed?.natural_text === "string" ? parsed.natural_text : cleaned;
+  } catch {
+    return cleaned;
+  }
+}
+
+async function analyzeWithTyphoon(buffer, mimeType = "image/jpeg") {
+  const endpoint = typhoonEndpoint();
+  if (!endpoint) return null;
+  const key = String(process.env.TYPHOON_OCR_API_KEY || "").trim();
+  const headers = { "content-type": "application/json" };
+  if (key) headers.authorization = `Bearer ${key}`;
+  const dataUrl = `data:${mimeType || "image/jpeg"};base64,${buffer.toString("base64")}`;
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: TYPHOON_OCR_MODEL,
+        temperature: 0.1,
+        top_p: 0.6,
+        repetition_penalty: 1.2,
+        max_tokens: Math.max(512, Math.min(Number(process.env.TYPHOON_OCR_MAX_TOKENS || 2048), 4096)),
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: TYPHOON_OCR_PROMPT },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        }],
+      }),
+      signal: AbortSignal.timeout(
+        Math.max(5_000, Math.min(Number(process.env.TYPHOON_OCR_TIMEOUT_MS || 15_000), 30_000)),
+      ),
+    });
+
+    if (!response.ok) {
+      console.warn("[CE OCR] TYPHOON_HTTP", { status: response.status, model: TYPHOON_OCR_MODEL });
+      return null;
+    }
+
+    const payload = await response.json();
+    const text = typhoonNaturalText(payload?.choices?.[0]?.message?.content);
+    if (!text.trim()) {
+      console.warn("[CE OCR] TYPHOON_EMPTY", { model: TYPHOON_OCR_MODEL });
+      return null;
+    }
+
+    const parsed = parseThaiSlipText(text, "TYPHOON_OCR_1_5");
+    if (parsed.thbAmount == null) {
+      console.warn("[CE OCR] TYPHOON_NO_AMOUNT", { model: TYPHOON_OCR_MODEL });
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("[CE OCR] TYPHOON_ERROR", { name: error?.name || "Error", model: TYPHOON_OCR_MODEL });
+    return null;
+  }
+}
+
 function paddleEndpoint() {
   const raw = String(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL || "").trim();
   if (!raw) return null;
@@ -543,15 +638,19 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw asError("EMPTY_IMAGE");
   if (buffer.length > MAX_IMAGE_BYTES) throw asError("IMAGE_TOO_LARGE");
 
+  const typhoon = await analyzeWithTyphoon(buffer, mimeType);
+  if (typhoon?.thbAmount != null && extractionScore(typhoon) >= 80) return typhoon;
+
   const paddleLlama = await analyzeWithPaddleLlama(buffer, mimeType);
   if (paddleLlama?.thbAmount != null && extractionScore(paddleLlama) >= 80) return paddleLlama;
 
   const paddleOfficial = await analyzeWithPaddleVl(buffer);
   const paddle = bestExtraction(paddleLlama, paddleOfficial);
-  if (paddle?.thbAmount != null && extractionScore(paddle) >= 80) return paddle;
+  const bestDocument = bestExtraction(typhoon, paddle);
+  if (bestDocument?.thbAmount != null && extractionScore(bestDocument) >= 80) return bestDocument;
 
   const xai = await analyzeWithXai(buffer, mimeType);
-  const bestPrimary = bestExtraction(paddle, xai);
+  const bestPrimary = bestExtraction(bestDocument, xai);
   if (bestPrimary?.thbAmount != null) return bestPrimary;
 
   const ocrSpace = await analyzeWithOcrSpace(buffer, mimeType);
@@ -569,6 +668,7 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
 }
 
 export function intakeCapability() {
+  const typhoon = typhoonConfigured();
   const paddleLlama = Boolean(
     process.env.PADDLEOCR_LLAMA_URL ||
     "https://ce-ocr-paddlevl16-production.up.railway.app"
@@ -578,20 +678,21 @@ export function intakeCapability() {
   const xai = Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY);
   const ocrSpace = Boolean(process.env.OCR_SPACE_API_KEY);
   return {
-    ocr_configured: paddle || xai || ocrSpace,
-    preferred_model: PADDLEOCR_MODEL,
-    provider_order: ["paddleocr_vl_1_6", "xai_vision", "ocr_space"],
+    ocr_configured: typhoon || paddle || xai || ocrSpace,
+    preferred_model: typhoon ? TYPHOON_OCR_MODEL : PADDLEOCR_MODEL,
+    provider_order: ["typhoon_ocr_1_5", "paddleocr_vl_1_6", "xai_vision", "ocr_space"],
     paddle_backend: paddleLlama
       ? "LLAMA_CPP_MULTIMODAL"
       : paddleOfficial
         ? "LAYOUT_PARSING"
         : "UNCONFIGURED",
     providers: {
+      typhoon_ocr_1_5: typhoon,
       paddleocr_vl_1_6: paddle,
       xai_vision: xai,
       ocr_space: ocrSpace,
     },
-    thai_strategy: "PaddleOCR-VL-1.6 primary; XAI semantic fallback; OCR.space last resort; unresolved evidence goes to manual review/OCR_FAILED",
+    thai_strategy: "Typhoon OCR 1.5 Thai-specialist primary when configured; PaddleOCR-VL-1.6 fallback; XAI semantic fallback; OCR.space last resort; unresolved evidence goes to manual review/OCR_FAILED",
     auto_min_confidence: OCR_AUTO_MIN,
     market_source: "BINANCE_TH_SPOT",
     market_ttl_seconds: MARKET_TTL_MS / 1000,
