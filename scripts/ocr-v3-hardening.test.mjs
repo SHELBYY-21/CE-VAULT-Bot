@@ -74,3 +74,15 @@ test('OCR failures emit bounded provider diagnostics without image or account da
   assert.match(source, /response\.status/);
   assert.doesNotMatch(source, /console\.(?:warn|error)\([^\n]*(?:buffer\.toString|base64Image|receiverName|account_number)/i);
 });
+
+
+test('vision JSON rejects non-numeric JSON types instead of coercing them to zero', () => {
+  for (const bad of [false, true, [], {}, ['12.3']]) {
+    const parsed = runtime.parseVisionJson(JSON.stringify({
+      thbAmount: bad,
+      confidence: bad,
+    }));
+    assert.equal(parsed.thbAmount, null);
+    assert.equal(parsed.confidence, null);
+  }
+});
