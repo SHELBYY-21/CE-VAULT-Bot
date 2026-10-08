@@ -36,6 +36,33 @@ test('canonical test follows bot identity, exact webhook, active admin, private 
   assert.match(send.text, /SANDBOX/);
   assert.match(send.text, /\/status/);
 });
+test('canonical runtime with no direct service-role key uses existing signed data gateway read-only', async () => {
+  const gatewayEnv = {
+    BOT_TOKEN: env.BOT_TOKEN,
+    NEXT_PUBLIC_SUPABASE_URL: env.SUPABASE_URL,
+    SUPABASE_GATEWAY_URL: 'https://gateway.example.invalid',
+    SUPABASE_ANON_KEY: 'LOCAL_ANON_TOKEN',
+    RENDER_EXTERNAL_URL: env.RENDER_EXTERNAL_URL,
+  };
+  const { calls, fetchImpl } = mockClient();
+  const proxy = async (url, opts) => {
+    if (url === gatewayEnv.SUPABASE_GATEWAY_URL) {
+      assert.equal(opts.method, 'POST');
+      assert.equal(opts.headers.apikey, gatewayEnv.SUPABASE_ANON_KEY);
+      assert.ok(opts.headers['x-ce-gateway-auth']);
+      const request = JSON.parse(opts.body);
+      assert.equal(request.method, 'GET');
+      assert.match(request.path, /^\/rest\/v1\/admins\?select=telegram_user_id/);
+      assert.equal(request.bodyBase64, null);
+      return { ok: true, json: async () => [{ telegram_user_id: 987654321 }] };
+    }
+    if (String(url).includes('/rest/v1/admins?')) throw new Error('DIRECT_DATABASE_FORBIDDEN');
+    return fetchImpl(url, opts);
+  };
+  assert.equal(await probeCanonicalBotDelivery(gatewayEnv, proxy), true);
+  assert.equal(calls.at(-1).method, 'sendMessage');
+});
+
 test('webhook mismatch blocks sending before database lookup', async () => {
   const { calls, fetchImpl } = mockClient({ webhook: 'https://incorrect.example.invalid/api/telegram/webhook' });
   assert.equal(await probeCanonicalBotDelivery(env, fetchImpl), false);
