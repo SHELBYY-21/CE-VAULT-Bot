@@ -344,8 +344,7 @@ const PADDLE_LLAMA_MODEL =
   process.env.PADDLEOCR_LLAMA_MODEL ||
   "LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M";
 
-const PADDLE_LLAMA_PROMPT =
-  "Transcribe ALL visible text from this Thai payment receipt/slip. Preserve useful line breaks and original Thai/English/numbers. Do not summarize, calculate, translate, or invent missing values. Return plain text only.";
+const PADDLE_LLAMA_PROMPT = "OCR:";
 
 function llamaMessageText(content) {
   if (typeof content === "string") return content;
@@ -369,7 +368,7 @@ async function analyzeWithPaddleLlama(buffer, mimeType = "image/jpeg") {
       body: JSON.stringify({
         model: PADDLE_LLAMA_MODEL,
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: 384,
         messages: [{
           role: "user",
           content: [

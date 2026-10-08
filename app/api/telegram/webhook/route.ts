@@ -467,7 +467,16 @@ async function handleUpdate(update: any): Promise<void> {
       await sendMessage(chatId, UI.askName());
       return;
     }
-    const fileId = msg.photo[msg.photo.length - 1].file_id;
+    const photos = msg.photo.filter((photo) => photo?.file_id);
+    const ocrPhoto =
+      [...photos].reverse().find((photo) => {
+        const width = Number(photo?.width || 0);
+        const height = Number(photo?.height || 0);
+        const area = width > 0 && height > 0 ? width * height : 0;
+        return area >= 250_000 && area <= 1_200_000;
+      }) ??
+      (photos.length > 1 ? photos[photos.length - 2] : photos[photos.length - 1]);
+    const fileId = ocrPhoto.file_id;
     sendChatAction(chatId, 'upload_photo').catch(() => undefined);
 
     // Reuse open Live Message when waiting USDT; otherwise start a new one (single send)
