@@ -70,7 +70,7 @@ test('Render V4 does not settle a recorded deal and blocks duplicate replay clai
   const pending = { status: 'RECORDED', ledger_ref: 'CE-88aa', tx_id: 'tx-001', thb_in: '2000', pin_match: true };
   const recorded = formatIntakeV4Reply({ pending, recorded: { tx_id: 'tx-001' } });
   assert.match(recorded, /IN สำเร็จ · WAIT USDT/);
-  assert.match(recorded, /IN ✓ ─ WAIT ─ DONE/);
+  assert.match(recorded, /③ IN ✓ → ④ \[WAIT\] → ⑤ DONE —/);
   assert.doesNotMatch(recorded, /ALL CHECKS PASS/);
   const duplicate = formatIntakeV4Reply({ pending, duplicate: true });
   assert.match(duplicate, /ห้ามบันทึกซ้ำ/);
