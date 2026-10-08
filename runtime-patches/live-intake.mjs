@@ -1110,7 +1110,9 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   lines.push("─────────────", flow);
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
-  for (const issue of issues.slice(0,4)) {
+  if (confidence != null && Number.isFinite(confidence) && confidence < 90) {
+    lines.push("⚠️ ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา");
+  } else   for (const issue of issues.slice(0,4)) {
     // Never echo raw OCR into warnings, even HTML-escaped; keep reason category only.
     const raw = String(issue);
     const safeIssue = /FOUND|EXPECTED|BANK|บัญชี/u.test(raw) ? "ข้อมูลบัญชีไม่ตรงกับ PIN · ตรวจสลิปต้นฉบับ" :
