@@ -70,6 +70,19 @@ async function handleTelegramCallback(callback) {
   await telegram.answerCallbackQuery(callback?.id).catch(() => undefined);
   const message = { ...callback.message, from: callback.from, chat: callback.message.chat };
 
+  // Callback tokens contain only a pending UUID; identity is always callback.from.
+  if (/^ce:approve:[0-9a-f-]{36}$/i.test(data)) {
+    message.text = "/approve " + data.slice("ce:approve:".length);
+    return handleTelegramApprove(message);
+  }
+  if (/^ce:reject:[0-9a-f-]{36}$/i.test(data)) {
+    message.text = "/reject " + data.slice("ce:reject:".length);
+    return handleTelegramReject(message);
+  }
+  if (/^ce:edit:[0-9a-f-]{36}$/i.test(data)) {
+    message.text = "/edit " + data.slice("ce:edit:".length);
+    return handleTelegramEdit(message);
+  }
   if (data === "ce:home") return handleTelegramHome(message);
   if (data === "ce:status") return handleTelegramSystemStatus(message);
   if (data === "ce:scan") {
@@ -84,6 +97,62 @@ async function handleTelegramCallback(callback) {
     message.text = "/pin";
     return handleTelegramPin(message, false);
   }
+  return true;
+}
+
+async function handleTelegramReject(message) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  if (!["owner", "admin", "superadmin"].includes(String(operator.role || "").toLowerCase())) {
+    await telegram.sendMessage(message.chat.id, "⛔ ไม่มีสิทธิ์ปฏิเสธ (Reject denied)");
+    return true;
+  }
+  const id = String(message.text || "").match(/^\/reject(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
+  if (!id) {
+    await telegram.sendMessage(message.chat.id, "ใช้ /reject <pending UUID> (Reject)");
+    return true;
+  }
+  const pending = await repository.getPendingSlipForApproval(id);
+  if (!pending || String(pending.chat_id) !== String(message.chat.id)) {
+    await telegram.sendMessage(message.chat.id, "ไม่พบรายการในห้องนี้ (Not found)");
+    return true;
+  }
+  if (pending.status !== "VERIFIED" || pending.tx_id) {
+    await telegram.sendMessage(message.chat.id, "⛔ สถานะเปลี่ยนแล้ว (Not pending approval)");
+    return true;
+  }
+  const rejected = await repository.rejectVerifiedPendingSlip(id, String(message.chat.id), String(message.from.id));
+  await telegram.sendMessage(message.chat.id, rejected
+    ? "🚫 ปฏิเสธรายการ (Rejected) · " + pending.ledger_ref
+    : "⛔ สถานะเปลี่ยนแล้ว (Not pending approval)");
+  return true;
+}
+
+async function handleTelegramEdit(message) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  if (!["owner", "admin", "superadmin"].includes(String(operator.role || "").toLowerCase())) {
+    await telegram.sendMessage(message.chat.id, "⛔ ไม่มีสิทธิ์แก้ไข (Edit denied)");
+    return true;
+  }
+  const id = String(message.text || "").match(/^\/edit(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
+  if (!id) {
+    await telegram.sendMessage(message.chat.id, "ใช้ /edit <pending UUID> เพื่อดูข้อมูลก่อนแก้ไข (Review)");
+    return true;
+  }
+  const pending = await repository.getPendingSlipForApproval(id);
+  if (!pending || String(pending.chat_id) !== String(message.chat.id)) {
+    await telegram.sendMessage(message.chat.id, "ไม่พบรายการในห้องนี้ (Not found)");
+    return true;
+  }
+  await telegram.sendMessage(message.chat.id, [
+    "📝 ตรวจสอบก่อนแก้ไข (Edit review)",
+    "อ้างอิง (Reference): " + pending.ledger_ref,
+    "สถานะ (Status): " + pending.status,
+    "ยอดรับ (Received): " + (pending.thb_in ?? "—") + " THB",
+    "ต้องส่ง (Total Due): " + (pending.should_send ?? "—") + " USDT",
+    "การแก้ไขยอดยังปิดอยู่เพื่อป้องกันการเปลี่ยน Ledger โดยไม่มีหลักฐาน (Edit disabled).",
+  ].join("\n"));
   return true;
 }
 
@@ -111,6 +180,10 @@ async function handleTelegramApprove(message) {
   }
   try {
     const result = await repository.promotePendingSlip(pending.id, operator.id, roomNameFor(message));
+    if (result.reused) {
+      await telegram.sendMessage(chatId, "ℹ️ รายการนี้บันทึกแล้ว (Already recorded) · " + pending.ledger_ref);
+      return true;
+    }
     await telegram.sendMessage(chatId, [
       "✅ แอดมินอนุมัติ (Admin Approved)",
       "🟡 IN ✓ → WAIT USDT · DONE —",
@@ -211,12 +284,21 @@ async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
   const useV4 = process.env.CE_RESPONSE_V4 !== "0";
   const rich = useV4 ? formatIntakeV4RichMessage(args) : formatIntakeRichMessage(args);
   const fallback = useV4 ? formatIntakeV4Reply(args) : formatIntakeReply(args);
+  const id = String(args?.pending?.id || "");
+  const approvalButtons = useV4 && args?.pending?.status === "VERIFIED" &&
+    /^[0-9a-f-]{36}$/i.test(id) ? {
+      inline_keyboard: [[
+        { text: "✅ APPROVE", callback_data: "ce:approve:" + id },
+        { text: "📝 EDIT", callback_data: "ce:edit:" + id },
+        { text: "⛔ REJECT", callback_data: "ce:reject:" + id },
+      ]],
+    } : undefined;
   if (liveMessageId) {
     try {
-      return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback);
+      return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback, approvalButtons);
     } catch {}
   }
-  return telegram.sendRichMessageWithFallback(chatId, rich, fallback);
+  return telegram.sendRichMessageWithFallback(chatId, rich, fallback, approvalButtons);
 }
 
 async function handleLiveSlipMessage(message) {

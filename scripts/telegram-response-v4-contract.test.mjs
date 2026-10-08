@@ -211,3 +211,23 @@ test('OCR remains visible and only explicit admin approval promotes', () => {
   assert.ok(card.includes('OCR Confidence): 98.0%'));
   assert.ok(card.includes('/approve 00000000-0000-0000-0000-000000000001'));
 });
+
+test('Telegram callbacks require real pending UUIDs and route through server-side operator checks', () => {
+  const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
+  const patch = readFileSync(new URL('../scripts/patch-live-intake.mjs', import.meta.url), 'utf8');
+  assert.ok(helper.includes('args?.pending?.status === "VERIFIED"'));
+  assert.ok(helper.includes('callback_data: "ce:approve:" + id'));
+  assert.ok(helper.includes('callback_data: "ce:reject:" + id'));
+  assert.ok(helper.includes('callback_data: "ce:edit:" + id'));
+  assert.ok(helper.includes('return handleTelegramApprove(message)'));
+  assert.ok(helper.includes('return handleTelegramReject(message)'));
+  assert.ok(helper.includes('return handleTelegramEdit(message)'));
+  assert.ok(helper.includes('const operator = await requireTelegramOperator(message)'));
+  assert.ok(helper.includes('String(pending.chat_id) !== String(message.chat.id)'));
+  assert.ok(helper.includes('result.reused'));
+  assert.ok(patch.includes('rejectVerifiedPendingSlip(id, chatId, telegramUserId)'));
+  assert.ok(patch.includes('.eq("status", "VERIFIED")'));
+  assert.ok(patch.includes('.is("tx_id", null)'));
+  assert.ok(patch.includes('handleTelegramReject(message)'));
+  assert.ok(patch.includes('handleTelegramEdit(message)'));
+});

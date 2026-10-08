@@ -132,6 +132,16 @@ const repoMethods = String.raw`  return Object.freeze({
         .eq("id", id)
         .maybeSingle());
     },
+    async rejectVerifiedPendingSlip(id, chatId, telegramUserId) {
+      const rows = ensureData(await db.from("pending_slips")
+        .update({ status: "REJECTED", updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("chat_id", chatId)
+        .eq("status", "VERIFIED")
+        .is("tx_id", null)
+        .select("id"));
+      return Array.isArray(rows) && rows.length === 1;
+    },
     async promotePendingSlip(pendingId, adminId, roomName) {
       const data = ensureData(await db.rpc("ce_promote_pending_slip", {
         p_pending_id: pendingId,
@@ -180,6 +190,14 @@ server = replaceOnce(server, '\nasync function processTelegramUpdate(update) {',
 const messageAnchor = '  const message = update.message;\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {';
 const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCallback?.message?.chat?.id && /^ce:/.test(String(ceCallback.data || ""))) {\n    await handleTelegramCallback(ceCallback);\n    return;\n  }\n  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:start|help|menu|ce)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/approve(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
     await handleTelegramApprove(message);
+    return;
+  }
+  if (message?.chat?.id && /^\\/reject(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
+    await handleTelegramReject(message);
+    return;
+  }
+  if (message?.chat?.id && /^\\/edit(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
+    await handleTelegramEdit(message);
     return;
   }
   if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
