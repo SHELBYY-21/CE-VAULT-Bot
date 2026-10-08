@@ -4,6 +4,7 @@ import { setDefaultResultOrder } from 'node:dns';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { safeWebhookInfo } from './webhook-info-safe.mjs';
+import { createCeProductionTracer } from '../observability/production-otel.mjs';
 
 setDefaultResultOrder('ipv4first');
 
@@ -184,7 +185,7 @@ function renderOutboxMessage(item) {
   return `CE VAULT · ${label}\n${ref}\nSTATE ${state}\nVERSION ${version}\nSandbox safety remains locked.`;
 }
 
-function startOutboxDispatcher(env) {
+function startOutboxDispatcher(env, productionTracer) {
   const token = env.TELEGRAM_BOT_TOKEN || env.BOT_TOKEN || '';
   const chatId = dispatcherChatId(env);
   let stopped = false;
@@ -204,6 +205,7 @@ function startOutboxDispatcher(env) {
               await telegramApi(token, 'sendMessage', { chat_id: chatId, text: renderOutboxMessage(item), disable_web_page_preview: true });
             }
             await supabaseRpc(env, 'ce_complete_outbox', { p_id: item.id });
+            productionTracer.record('dispatch-ce-outbox', 'ok');
             console.log(`[CE Outbox] Dispatched ${item.topic} ${item.id}.`);
           } catch (error) {
             await supabaseRpc(env, 'ce_fail_outbox', {
@@ -211,6 +213,7 @@ function startOutboxDispatcher(env) {
               p_error_code: safeErrorCode(error),
               p_retry_seconds: 5,
             }).catch(() => null);
+            productionTracer.record('dispatch-ce-outbox', 'error');
             console.error(`[CE Outbox] Delivery failed for ${item.id}; retry scheduled.`);
           }
         }
@@ -281,8 +284,10 @@ async function main() {
   const env = await buildRuntimeEnv();
   console.log('[CE Runtime] Bootstrap complete; starting server.');
   const child = spawn(process.execPath, [serverPath, ...process.argv.slice(2)], { cwd: root, env, stdio: 'inherit' });
+  const productionTracer = createCeProductionTracer({ env });
+  productionTracer.record('start-ce-runtime', 'ok');
   const stopWebhookMaintainer = startWebhookMaintainer(env);
-  const stopDispatcher = startOutboxDispatcher(env);
+  const stopDispatcher = startOutboxDispatcher(env, productionTracer);
   for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, () => { stopWebhookMaintainer(); stopDispatcher(); child.kill(signal); });
   }
