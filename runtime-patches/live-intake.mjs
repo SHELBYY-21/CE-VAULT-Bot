@@ -273,7 +273,7 @@ export function formatBotHomeReply() {
     "",
     "01 SCAN            ส่งรูปสลิป",
     "02 OCR / EXTRACTED อ่านยอดและข้อมูลบัญชี",
-    "03 VERIFY          ตรวจ PIN / เรต / ตลาด",
+    "03 VERIFY          ตรวจบัญชี / เรต / ตลาด",
     "04 RECORD          บันทึกเมื่อผ่านเงื่อนไข",
     "",
     "คำสั่งหลัก: /rate · /pin · /status",
@@ -281,23 +281,43 @@ export function formatBotHomeReply() {
   ].join("\n");
 }
 
+export function botHomeReplyMarkup() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🏠 HOME", callback_data: "ce:home" },
+        { text: "📄 SCAN", callback_data: "ce:scan" },
+      ],
+      [
+        { text: "📊 STATUS", callback_data: "ce:status" },
+        { text: "💱 RATE", callback_data: "ce:rate" },
+        { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
+      ],
+    ],
+  };
+}
+
 export function formatBotSystemReply({
   telegramOnline = true,
   webhookVerified = false,
   databaseConfigured = false,
-  pendingUpdates = 0,
+  pendingUpdates = null,
   safety = "LOCKED",
 } = {}) {
+  const queue = pendingUpdates == null || !Number.isFinite(Number(pendingUpdates))
+    ? "UNKNOWN"
+    : String(Number(pendingUpdates));
+  const ready = telegramOnline && webhookVerified && databaseConfigured;
   return [
     "◈ CE EMPIRE · SYSTEM STATUS",
     "",
     `● TELEGRAM      ${telegramOnline ? "ONLINE" : "CHECK"}`,
     `● WEBHOOK       ${webhookVerified ? "VERIFIED" : "CHECK"}`,
     `● DATABASE      ${databaseConfigured ? "CONFIGURED" : "UNAVAILABLE"}`,
-    `● QUEUE         ${Number.isFinite(Number(pendingUpdates)) ? Number(pendingUpdates) : 0}`,
+    `● QUEUE         ${queue}`,
     `● SAFETY        ${safety || "LOCKED"}`,
     "",
-    "⚡ CE VAULT OPERATOR READY",
+    ready ? "⚡ CE VAULT OPERATOR READY" : "⚠ CE VAULT · CHECK REQUIRED",
   ].join("\n");
 }
 
@@ -313,7 +333,9 @@ export function formatScanStageReply() {
 }
 
 export function formatIntakeReply({ pending, market, deskRate, recorded, duplicate }) {
-  const isRecorded = pending?.status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  const isRecorded = status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
+  const isPromotionFailed = status === "PROMOTION_FAILED";
   const lines = [
     duplicate ? "◈ CE · DUPLICATE" : isRecorded ? "◈ CE · 03 DONE ✓" : "◈ CE · 02 OCR / EXTRACTED",
   ];
@@ -323,21 +345,24 @@ export function formatIntakeReply({ pending, market, deskRate, recorded, duplica
   if (pending?.thb_in != null) lines.push(`AMOUNT     ${pending.thb_in} THB`);
   if (pending?.should_send != null) lines.push(`EST. USDT  ${pending.should_send} USDT`);
   if (pending?.account_masked) {
-    lines.push(`BANK       ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "VERIFIED" : "NOT VERIFIED"}`);
+    lines.push(`BANK       ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "ACCOUNT / DATE MATCH" : "NOT MATCHED"}`);
   }
   if (deskRate?.sell_rate) lines.push(`DESK       ${deskRate.sell_rate} THB/USDT`);
   if (market?.price) lines.push(`MARKET     ${market.price} THB/USDT · BINANCE TH SPOT`);
 
-  if (isRecorded) {
-    lines.push("");
+  lines.push("");
+  if (duplicate) {
+    lines.push("RESULT     DUPLICATE · ตรวจรายการเดิมก่อนดำเนินการต่อ");
+  } else if (isPromotionFailed) {
+    lines.push("RESULT     RECORD FAILED · ยังไม่บันทึกธุรกรรม");
+  } else if (isRecorded) {
     lines.push("✅ OCR EXTRACTED");
-    lines.push("✅ PIN / BANK VERIFIED");
+    lines.push("✅ ACCOUNT / DATE MATCHED");
     lines.push("✅ RECORD SAVED");
     lines.push("⏳ SETTLEMENT NOT RUN · ยังไม่ยืนยันการชำระสุดท้าย");
     lines.push("READY FOR NEXT");
   } else {
-    lines.push("");
-    lines.push(`STATUS     ${pending?.status || "NEEDS_REVIEW"}`);
+    lines.push(`STATUS     ${status}`);
     lines.push("VERIFYING · ตรวจเงื่อนไขก่อนบันทึก");
   }
   return lines.join("\n");
