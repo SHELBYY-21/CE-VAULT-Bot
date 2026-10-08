@@ -166,16 +166,23 @@ export async function fetchBinanceThSpot() {
   }
 }
 
-function parseVisionJson(text) {
+function finiteNumberOrNull(value) {
+  if (value == null) return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function parseVisionJson(text) {
   const cleaned = String(text || "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
   const first = cleaned.indexOf("{");
   const last = cleaned.lastIndexOf("}");
   if (first < 0 || last < first) return null;
   const data = JSON.parse(cleaned.slice(first, last + 1));
-  const amount = Number(data.thbAmount);
-  const confidence = Number(data.confidence);
+  const amount = finiteNumberOrNull(data.thbAmount);
+  const confidence = finiteNumberOrNull(data.confidence);
   return {
-    thbAmount: Number.isFinite(amount) ? amount : null,
+    thbAmount: amount,
     time: typeof data.time === "string" ? data.time.trim() || null : null,
     date: typeof data.date === "string" ? data.date.trim() || null : null,
     receiverLast4: accountLast4(data.receiverLast4),
