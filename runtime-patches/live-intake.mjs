@@ -370,6 +370,7 @@ export function formatIntakeReply({ pending, market, deskRate, recorded, duplica
     lines.push(
       "① OCR    DONE",
       "② MATCH  VERIFIED",
+      "✅ ACCOUNT / DATE MATCHED",
       "③ IN     RECORDED",
       "④ WAIT   USDT",
       "⑤ DONE   PENDING",
