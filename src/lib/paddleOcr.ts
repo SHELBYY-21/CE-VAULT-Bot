@@ -90,9 +90,105 @@ function endpoint(): string | null {
   return /\/layout-parsing\/?$/i.test(raw) ? raw.replace(/\/$/, '') : `${raw.replace(/\/$/, '')}/layout-parsing`;
 }
 
-export async function analyzeSlipWithPaddle(imageUrl: string): Promise<SlipExtract | null> {
-  const url = endpoint();
+function llamaEndpoint(): string | null {
+  const raw = String(
+    process.env.PADDLEOCR_LLAMA_URL ||
+      'https://ce-ocr-paddlevl16-production.up.railway.app',
+  ).trim();
+  if (!raw) return null;
+  return /\/v1\/chat\/completions\/?$/i.test(raw)
+    ? raw.replace(/\/$/, '')
+    : `${raw.replace(/\/$/, '')}/v1/chat/completions`;
+}
+
+const LLAMA_MODEL =
+  process.env.PADDLEOCR_LLAMA_MODEL ||
+  'LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M';
+
+async function analyzeSlipWithPaddleLlama(
+  imageUrl: string,
+): Promise<SlipExtract | null> {
+  const url = llamaEndpoint();
   if (!url || !imageUrl) return null;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: LLAMA_MODEL,
+        temperature: 0,
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Transcribe ALL visible text from this Thai payment receipt/slip. Preserve useful line breaks and original Thai/English/numbers. Do not summarize, calculate, translate, or invent missing values. Return plain text only.',
+              },
+              {
+                type: 'image_url',
+                image_url: { url: imageUrl },
+              },
+            ],
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(
+        Math.max(30_000, Number(process.env.PADDLEOCR_TIMEOUT_MS || 20_000)),
+      ),
+    });
+
+    if (!res.ok) {
+      console.warn('[CE OCR] PADDLE_LLAMA_HTTP', {
+        status: res.status,
+        model: PADDLEOCR_THAI_MODEL,
+      });
+      return null;
+    }
+
+    const payload: any = await res.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    const text =
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content
+              .map((part: any) =>
+                typeof part === 'string' ? part : part?.text || '',
+              )
+              .filter(Boolean)
+              .join('\n')
+          : '';
+
+    if (!text.trim()) {
+      console.warn('[CE OCR] PADDLE_LLAMA_EMPTY', {
+        model: PADDLEOCR_THAI_MODEL,
+      });
+      return null;
+    }
+
+    const parsed = parsePaddleThaiSlipText(text);
+    return {
+      ...parsed,
+      provider: 'PADDLEOCR_VL_1_6_LLAMA',
+    } as SlipExtract;
+  } catch (error) {
+    console.warn('[CE OCR] PADDLE_LLAMA_ERROR', {
+      name: error instanceof Error ? error.name : 'Error',
+      model: PADDLEOCR_THAI_MODEL,
+    });
+    return null;
+  }
+}
+
+export async function analyzeSlipWithPaddle(imageUrl: string): Promise<SlipExtract | null> {
+  const llama = await analyzeSlipWithPaddleLlama(imageUrl);
+  if (llama?.thbAmount != null) return llama;
+
+  const url = endpoint();
+  if (!url || !imageUrl) return llama;
 
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   const token = String(process.env.PADDLEOCR_ACCESS_TOKEN || '').trim();
