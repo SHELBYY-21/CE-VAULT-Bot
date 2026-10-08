@@ -157,3 +157,20 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   assert.doesNotMatch(plain, /ISSUE:/);
   assert.match(plain, /NEXT:/);
 });
+
+
+test('Telegram five-stage reply never promotes a review or recorded slip to DONE', () => {
+  const base = { pending: { ledger_ref: 'CE-TX-2460', status: 'NEEDS_REVIEW', thb_in: '1000',
+    should_send: '26.940000', ocr_confidence: 80, bank: 'SCB', account_masked: '••••3114', pin_match: false },
+    deskRate: { sell_rate: '37.12' }, market: { price: '37.10', fresh: true } };
+  const review = formatIntakeV4Reply(base);
+  assert.match(review, /① OCR ✓ → ② \[MATCH · REVIEW\] → ③ IN — → ④ WAIT — → ⑤ DONE —/);
+  assert.doesNotMatch(review, /IN ✓|DONE ✓/);
+  const recorded = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'RECORDED', pin_match: true, ocr_confidence: 98, tx_id: 'tx-1' }, recorded: { tx_id: 'tx-1' } });
+  assert.match(recorded, /① OCR ✓ → ② MATCH ✓ → ③ IN ✓ → ④ \[WAIT\] → ⑤ DONE —/);
+  assert.doesNotMatch(recorded, /DONE ✓|SETTLED ✓/);
+  const mismatch = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'BANK_MISMATCH' } });
+  assert.match(mismatch, /② MATCH ✗ → ③ IN —/);
+  const failed = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'OCR_FAILED' } });
+  assert.match(failed, /① OCR ✗ → ② MATCH —/);
+});
