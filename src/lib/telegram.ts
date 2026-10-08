@@ -24,14 +24,12 @@ export interface OutgoingMessage {
   reply_markup?: unknown;
 }
 
-const LINK_PREVIEW_OFF = { is_disabled: true } as const;
-
 async function sendPlainMessage(chatId: number, m: OutgoingMessage): Promise<{ message_id: number }> {
   return tg<{ message_id: number }>('sendMessage', {
     chat_id: chatId,
     text: m.fallback_text ?? m.text,
     parse_mode: 'HTML',
-    link_preview_options: LINK_PREVIEW_OFF,
+    link_preview_options: { is_disabled: true },
     reply_markup: m.reply_markup,
   });
 }
@@ -102,7 +100,7 @@ export async function editMessage(
       message_id: messageId,
       text: m.fallback_text ?? m.text,
       parse_mode: 'HTML',
-      link_preview_options: LINK_PREVIEW_OFF,
+      link_preview_options: { is_disabled: true },
       reply_markup: m.reply_markup,
     });
     return true;
