@@ -426,7 +426,7 @@ export function formatIntakeReply({
   lines.push("─────────────", "STATUS");
   if (!isRecorded) lines.push(`CODE        ${status}`);
   if (duplicate) lines.push("🟣 DUPLICATE · ไม่สร้างรายการใหม่");
-  else if (isRecorded) lines.push("🟢 RECORDED · ยังไม่ใช่ SETTLED");
+  else if (isRecorded) lines.push("🟢 RECORDED · FINAL NOT VERIFIED");
   else if (isPromotionFailed) lines.push("🔴 RECORD FAILED");
   else if (isOcrFailed) lines.push("🔴 OCR ERROR");
   else if (isBankMismatch) lines.push("🔴 BANK MISMATCH");
