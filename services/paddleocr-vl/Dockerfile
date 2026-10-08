@@ -1,23 +1,8 @@
-FROM python:3.11-slim
+FROM ghcr.io/ggml-org/llama.cpp:server
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PADDLE_PIPELINE=PaddleOCR-VL-1.6 \
-    PADDLE_DEVICE=cpu \
-    PORT=8080
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl libglib2.0-0 libgl1 libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install "paddlepaddle==3.3.1" \
-    && python -m pip install "paddleocr[doc-parser]==3.6.0" \
-    && paddlex --install serving
-
-COPY start.sh /usr/local/bin/start-paddleocr-vl
-RUN chmod +x /usr/local/bin/start-paddleocr-vl
+ENV PORT=8080
 
 EXPOSE 8080
-CMD ["/usr/local/bin/start-paddleocr-vl"]
+
+ENTRYPOINT ["/app/llama-server"]
+CMD ["-hf", "LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M", "--host", "0.0.0.0", "--port", "8080", "-c", "1024", "-np", "1", "--temp", "0"]

@@ -3,21 +3,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const dockerfile = readFileSync(new URL('../services/paddleocr-vl/Dockerfile', import.meta.url), 'utf8');
-const start = readFileSync(new URL('../services/paddleocr-vl/start.sh', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../runtime-patches/live-intake.mjs', import.meta.url), 'utf8');
 
-test('Paddle runtime pins the 1.6-capable PaddleOCR release', () => {
-  assert.match(dockerfile, /paddleocr\[doc-parser\]==3\.6\.0/);
-  assert.match(dockerfile, /paddlepaddle==3.3.1/);
-  assert.match(dockerfile, /paddlex --install serving/);
+test('Paddle runtime pins the live low-memory 1.6 multimodal model', () => {
+  assert.match(dockerfile, /ghcr\.io\/ggml-org\/llama\.cpp:server/);
+  assert.match(dockerfile, /PaddleOCR-VL-1\.6-GGUF-Q4:Q4_K_M/);
+  assert.match(dockerfile, /\/app\/llama-server/);
 });
 
-test('Paddle runtime uses the installed PaddlePaddle engine and exposes the service port', () => {
-  assert.match(start, /paddlex --serve/);
-  assert.match(start, /--pipeline/);
-  assert.doesNotMatch(start, /--engine\s+transformers/);
-  assert.match(start, /--port/);
-  assert.match(start, /PaddleOCR-VL-1\.6/);
+test('Paddle runtime exposes OpenAI-compatible multimodal serving on 8080', () => {
+  assert.match(dockerfile, /--host", "0\.0\.0\.0"/);
+  assert.match(dockerfile, /--port", "8080"/);
+  assert.match(dockerfile, /"-c", "1024"/);
+  assert.match(dockerfile, /"-np", "1"/);
 });
 
 test('CE bot keeps Paddle first with safe fallbacks', () => {
