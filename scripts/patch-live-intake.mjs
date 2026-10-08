@@ -164,7 +164,7 @@ let server = readFileSync(serverPath, 'utf8');
 server = replaceOnce(
   server,
   'import { buildOpsOverview } from "./ops-summary.mjs";',
-  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatBotHomeReply, formatBotSystemReply, formatIntakeReply, formatScanStageReply, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
+  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatBotHomeReply, formatBotSystemReply, formatIntakeReply, formatIntakeRichMessage, formatScanStageReply, formatScanStageRichMessage, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
   'LIVE_INTAKE_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
 
