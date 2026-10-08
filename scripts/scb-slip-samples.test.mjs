@@ -52,9 +52,22 @@ test('SCB PLANET top-up: TO card wins over sender account and biller note', () =
   assert.equal(parsed.receiverName, 'บัตร PLANET SCB');
 });
 
-test('Paddle live service remains configured behind conditional Typhoon with safe fallbacks', () => {
-  const cap = runtime.intakeCapability();
-  assert.equal(cap.providers.paddleocr_vl_1_6, true);
-  assert.equal(cap.paddle_backend, 'LLAMA_CPP_MULTIMODAL');
-  assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+test('Paddle capability requires opt-in rather than claiming default live availability', () => {
+  const previousFlag = process.env.PADDLEOCR_LLAMA_ENABLED;
+  const previousUrl = process.env.PADDLEOCR_LLAMA_URL;
+  try {
+    delete process.env.PADDLEOCR_LLAMA_ENABLED;
+    process.env.PADDLEOCR_LLAMA_URL = 'https://ocr.example.invalid';
+    assert.equal(runtime.intakeCapability().paddle_backend, 'UNCONFIGURED');
+    process.env.PADDLEOCR_LLAMA_ENABLED = '1';
+    const cap = runtime.intakeCapability();
+    assert.equal(cap.providers.paddleocr_vl_1_6, true);
+    assert.equal(cap.paddle_backend, 'LLAMA_CPP_MULTIMODAL');
+    assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+  } finally {
+    if (previousFlag === undefined) delete process.env.PADDLEOCR_LLAMA_ENABLED;
+    else process.env.PADDLEOCR_LLAMA_ENABLED = previousFlag;
+    if (previousUrl === undefined) delete process.env.PADDLEOCR_LLAMA_URL;
+    else process.env.PADDLEOCR_LLAMA_URL = previousUrl;
+  }
 });
