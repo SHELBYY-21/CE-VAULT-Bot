@@ -1069,7 +1069,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   // Intake has no authoritative outbound ledger read. Never treat an OCR value as paid.
   // A settlement summary is accepted only when explicitly supplied from a verified ledger read.
   const ledgerSettlement = recorded?.settlement_verified === true ? recorded : null;
-  const dueRaw = isRecorded && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
+  const dueRaw = (isRecorded || verified) && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
     ? Number(pending.should_send) : null;
   const clearedRaw = ledgerSettlement && Number.isFinite(Number(ledgerSettlement?.cleared_usdt)) &&
     Number(ledgerSettlement.cleared_usdt) >= 0 ? Number(ledgerSettlement.cleared_usdt) : null;
@@ -1083,7 +1083,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
     `${headline} (Status)`, '━━━━━━━━━━━━━━',
     `📥 ${amount} THB → 💎 ${usdt} USDT`,
-    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟢 ALL CHECKS PASS') : ''}`,
+    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟡 OCR CHECKS PASS · ADMIN APPROVAL REQUIRED') : ''}`,
     `📊 ต้องส่ง (Total Due): ${n(dueRaw)} USDT`,
     `✅ เคลียร์แล้ว (Cleared): ${n(clearedRaw)} USDT`,
     `⏳ ค้างส่ง (Outstanding): ${n(outstandingRaw)} USDT`,
