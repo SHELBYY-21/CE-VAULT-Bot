@@ -164,7 +164,7 @@ let server = readFileSync(serverPath, 'utf8');
 server = replaceOnce(
   server,
   'import { buildOpsOverview } from "./ops-summary.mjs";',
-  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, formatIntakeReply, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
+  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, formatBotHomeReply, formatBotSystemReply, formatIntakeReply, formatScanStageReply, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
   'LIVE_INTAKE_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
 
@@ -355,7 +355,7 @@ async function handleLiveSlipMessage(message) {
 server = replaceOnce(server, '\nasync function processTelegramUpdate(update) {', `${intakeHelpers}\nasync function processTelegramUpdate(update) {`, 'LIVE_INTAKE_PROCESS_ANCHOR_NOT_FOUND');
 
 const messageAnchor = '  const message = update.message;\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {';
-const messageRouter = `  const message = update.message;\n  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
+const messageRouter = `  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:start|help|menu|ce)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
 server = replaceOnce(server, messageAnchor, messageRouter, 'LIVE_INTAKE_MESSAGE_ROUTER_ANCHOR_NOT_FOUND');
 
 // Public, read-only diagnostics. No secrets or PII.
