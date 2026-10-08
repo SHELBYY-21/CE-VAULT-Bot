@@ -1,11 +1,11 @@
-# CE VAULT · PaddleOCR-VL-1.6 Runtime
+# CE VAULT · PaddleOCR-VL-1.6-1.6 Runtime
 
 Dedicated OCR service for CE VAULT Thai Slip OCR V4.
 
 ## Runtime
 
 - PaddleOCR package: `3.6.0`
-- PaddleOCR-VL model family: `1.6`
+- PaddleOCR-VL-1.6 model family: `1.6`
 - PaddlePaddle CPU runtime: `3.2.1`
 - Serving: `paddlex --serve`
 - API endpoint consumed by CE VAULT: `POST /layout-parsing`
@@ -14,7 +14,7 @@ Dedicated OCR service for CE VAULT Thai Slip OCR V4.
 ## Provider chain
 
 ```
-PaddleOCR-VL-1.6
+PaddleOCR-VL-1.6-1.6
   -> XAI Vision
   -> OCR.space
   -> Manual Review / OCR_FAILED
@@ -31,7 +31,7 @@ docker build -t ce-paddleocr-vl:1.6 .
 ## Run
 
 ```bash
-docker run --rm -p 8080:8080 ce-paddleocr-vl:1.6
+docker run --rm -p 127.0.0.1:8080:8080 ce-paddleocr-vl:1.6
 ```
 
 Then configure the CE VAULT bot with:
