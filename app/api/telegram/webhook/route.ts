@@ -50,6 +50,7 @@ import {
 } from '@/lib/transactions';
 import { getChatRate, setChatRate, getRoom, startNewDay, setRoomName } from '@/lib/botSessions';
 import { adminDb } from '@/lib/firebaseAdmin';
+import { assertTransactionDeleteAllowed, DELETE_BLOCKED_MESSAGE } from '@/lib/transactionDeletePolicy.mjs';
 import { sendDocument } from '@/lib/telegram';
 import { notifyDailySummary } from '@/lib/notifier';
 import { analyzeSlip, analyzeUsdtScreenshot } from '@/lib/ocr';
@@ -1503,6 +1504,7 @@ async function handleCallback(cb: any): Promise<void> {
         type: 'THB_DEPOSIT' | 'USDT_SEND';
         admins: { telegram_user_id: number; name: string } | null;
         admin_id?: string;
+        status?: string | null;
       })
     : null;
   // denormalized admins may lack telegram_user_id — fall back to admins collection
@@ -1513,6 +1515,15 @@ async function handleCallback(cb: any): Promise<void> {
   }
   if (!tx || ownerTg !== userId) {
     return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
+  }
+
+  // UI check is only an early denial: deleteTransaction checks Supabase again.
+  if (action === 'del') {
+    try {
+      assertTransactionDeleteAllowed(tx.status);
+    } catch {
+      return await answerCallback(id, DELETE_BLOCKED_MESSAGE);
+    }
   }
 
   await answerCallback(id, action === 'edit' ? '⚡ เข้าโหมดแก้ไข' : '🗑 กำลังลบ...');
