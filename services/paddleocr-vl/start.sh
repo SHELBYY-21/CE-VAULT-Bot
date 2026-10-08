@@ -10,7 +10,6 @@ echo "[CE OCR] starting PaddleOCR-VL-1.6 via paddleocr==3.6.0 pipeline=${PIPELIN
 
 exec paddlex --serve \
   --pipeline "${PIPELINE}" \
-  --engine transformers \
   --device "${DEVICE}" \
   --host "${HOST}" \
   --port "${PORT}"
