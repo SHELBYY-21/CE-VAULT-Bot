@@ -8,14 +8,14 @@ Official skill copied under `.agents/skills/langfuse/` from [langfuse/skills](ht
 
 ## Staging-only setup
 
-1. Create a [Langfuse Cloud](https://cloud.langfuse.com) free project for staging data, then get project API Keys from Settings (never paste into GitHub or chat).
-2. Use private staging environment variables **server-side only**:
+1. Use the existing [Langfuse Cloud EU](https://cloud.langfuse.com) project. **Rotate any secret key previously shared in a chat or issue:** create a replacement key in Project Settings > API Keys and revoke the former key. Never share the replacement key in a chat, PR, log, or repository. No Langfuse secret has been added to this code.
+2. Use `observability/.env.staging.example` as a names-only template. Enter replacement values **server-side, in an isolated staging environment secret manager only**, not in `.env.staging.example`, GitHub Actions variables, or the production Render service:
    - `CE_LANGFUSE_TRACING_ENABLED=true`
    - `CE_LANGFUSE_ENV=staging`
    - `NODE_ENV=development` (tracer refuses `production`)
    - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`
    - `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (choose your project's actual region)
-3. On a **staging workspace**, install isolated dependencies: `npm install --prefix observability`. Do not commit `observability/node_modules`.
+3. On a **staging-only runner** with no production Telegram token, Supabase service role key or payment access, install isolated dependencies: `npm install --prefix observability`. Do not commit `observability/node_modules`. Do not start the full CE VAULT application as a staging smoke because its boot process can register a Telegram webhook or start a real outbox dispatcher.
 4. Run `node --test observability/langfuse.test.mjs` and existing build/test suite.
 5. Run `node observability/smoke.mjs` in staging. This sends a synthetic `agent-task` observation without triggering Telegram or financial operations. Confirm one trace with only approved `workflow`, `result`, `environment` fields, then fetch and audit it against [best practices](https://langfuse.com/docs/observability/best-practices). A successful local command is not proof of remote receipt.
 6. For real LLM calls, instrument the actual OpenAI/LangChain/Vercel AI SDK generation site when identified. Do not log raw prompts, bank data, Telegram chats, OCR contents, payment data, secrets, or internal chain-of-thought. Capture model and token usage only with a vetted SDK wrapper and redaction controls.
@@ -33,5 +33,5 @@ Official skill copied under `.agents/skills/langfuse/` from [langfuse/skills](ht
 ## Limitations
 
 - Isolated npm dependencies must be installed in the staging runner; not bundled into the normal CE VAULT build. Root `package-lock.json` unchanged.
-- No evidence of a Langfuse account/API keys or live traces, so cannot claim end-to-end tracing yet.
+- A Langfuse Cloud EU endpoint and key pair were supplied in chat, but the secret must be rotated and the new pair stored in a staging-only secret manager. No hosting-side key was set, no key authentication or live tracing was performed, and no trace receipt is confirmed.
 - Previous source is materialized from Manus archive at build time; this integration targets the stable `scripts/start.mjs` outbox dispatcher only.
