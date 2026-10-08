@@ -141,7 +141,7 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       assert.equal(context.pendingRows[0].pin_match, true);
       assert.equal(context.pendingRows[0].bank_account_id, 'pin-sandbox-1');
       assert.equal(context.pendingRows[0].source_file_id, 'synthetic-image');
-      assert.match(context.sent.at(-1).fallback, /ยังไม่ SETTLED/);
+      assert.match(context.sent.at(-1).fallback, /IN สำเร็จ · WAIT USDT/);
       assert.match(context.sent.at(-1).fallback, /WAIT/);
       assert.doesNotMatch(context.sent.at(-1).fallback, /ALL CHECKS PASS/);
       assert.equal(context.events.length, 1);
