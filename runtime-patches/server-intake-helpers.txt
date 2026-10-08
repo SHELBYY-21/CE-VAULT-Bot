@@ -232,7 +232,7 @@ async function handleLiveSlipMessage(message) {
       market,
       deskRate,
       duplicate: true,
-      pinnedAccount,
+      pinnedAccount: pinnedAccount,
       pinnedAccounts: pinnedAccountsForReply,
     }));
     return;
@@ -262,7 +262,7 @@ async function handleLiveSlipMessage(message) {
     market,
     deskRate,
     recorded,
-    pinnedAccount,
+    pinnedAccount: pinnedAccount,
     pinnedAccounts: pinnedAccountsForReply,
   }));
 }
