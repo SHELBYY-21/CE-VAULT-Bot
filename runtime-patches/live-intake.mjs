@@ -289,47 +289,73 @@ export function parseThaiSlipText(text, provider = "OCR_TEXT") {
 function paddleEndpoint() {
   const raw = String(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL || "").trim();
   if (!raw) return null;
-  return /\/layout-parsing\/?$/i.test(raw) ? raw.replace(/\/$/, "") : `${raw.replace(/\/$/, "")}/layout-parsing`;
+  if (/\/v1\/chat\/completions\/?$/i.test(raw)) return { url: raw.replace(/\/$/, ""), transport: "openai" };
+  if (/\/layout-parsing\/?$/i.test(raw)) return { url: raw.replace(/\/$/, ""), transport: "paddlex" };
+  return { url: `${raw.replace(/\/$/, "")}/layout-parsing`, transport: "paddlex" };
 }
 
-async function analyzeWithPaddleVl(buffer) {
+async function analyzeWithPaddleVl(buffer, mimeType = "image/jpeg") {
   const endpoint = paddleEndpoint();
   if (!endpoint) return null;
   const headers = { "content-type": "application/json" };
   const token = String(process.env.PADDLEOCR_ACCESS_TOKEN || "").trim();
   if (token) headers.authorization = `Bearer ${token}`;
   try {
-    const response = await fetch(endpoint, {
+    const isOpenAi = endpoint.transport === "openai";
+    const body = isOpenAi
+      ? {
+          model: process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.6",
+          temperature: 0,
+          max_tokens: 1200,
+          messages: [{
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "อ่านข้อความทั้งหมดจากหลักฐานการชำระเงินภาษาไทยนี้ให้ครบ โดยรักษาตัวเลข ชื่อธนาคาร ชื่อผู้รับ วันที่ เวลา และยอดเงินตามที่เห็นจริง ห้ามเดา ห้ามสรุป และห้ามเพิ่มข้อมูลที่ไม่มีในภาพ ส่งกลับเป็นข้อความ OCR ล้วนเท่านั้น",
+              },
+              {
+                type: "image_url",
+                image_url: { url: `data:${mimeType || "image/jpeg"};base64,${buffer.toString("base64")}` },
+              },
+            ],
+          }],
+        }
+      : {
+          file: buffer.toString("base64"),
+          fileType: 1,
+          useDocOrientationClassify: true,
+          useDocUnwarping: true,
+          useLayoutDetection: true,
+          useChartRecognition: false,
+          temperature: 0,
+          prettifyMarkdown: false,
+          visualize: false,
+        };
+
+    const response = await fetch(endpoint.url, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        file: buffer.toString("base64"),
-        fileType: 1,
-        useDocOrientationClassify: true,
-        useDocUnwarping: true,
-        useLayoutDetection: true,
-        useChartRecognition: false,
-        temperature: 0,
-        prettifyMarkdown: false,
-        visualize: false,
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(PADDLEOCR_TIMEOUT_MS),
     });
     if (!response.ok) {
-      console.warn("[CE OCR] PADDLE_HTTP", { status: response.status, model: PADDLEOCR_MODEL });
+      console.warn("[CE OCR] PADDLE_HTTP", { status: response.status, model: PADDLEOCR_MODEL, transport: endpoint.transport });
       return null;
     }
     const payload = await response.json();
-    const text = (payload?.result?.layoutParsingResults || [])
-      .map((item) => item?.markdown?.text || "")
-      .filter(Boolean)
-      .join("\n");
+    const text = isOpenAi
+      ? String(payload?.choices?.[0]?.message?.content || "")
+      : (payload?.result?.layoutParsingResults || [])
+          .map((item) => item?.markdown?.text || "")
+          .filter(Boolean)
+          .join("\n");
     if (!text.trim()) {
-      console.warn("[CE OCR] PADDLE_EMPTY", { model: PADDLEOCR_MODEL });
+      console.warn("[CE OCR] PADDLE_EMPTY", { model: PADDLEOCR_MODEL, transport: endpoint.transport });
       return null;
     }
     const parsed = parseThaiSlipText(text, "PADDLEOCR_VL_1_6");
-    if (parsed.thbAmount == null) console.warn("[CE OCR] PADDLE_NO_AMOUNT", { model: PADDLEOCR_MODEL });
+    if (parsed.thbAmount == null) console.warn("[CE OCR] PADDLE_NO_AMOUNT", { model: PADDLEOCR_MODEL, transport: endpoint.transport });
     return parsed;
   } catch (error) {
     console.warn("[CE OCR] PADDLE_ERROR", { name: error?.name || "Error", model: PADDLEOCR_MODEL });
@@ -426,7 +452,7 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw asError("EMPTY_IMAGE");
   if (buffer.length > MAX_IMAGE_BYTES) throw asError("IMAGE_TOO_LARGE");
 
-  const paddle = await analyzeWithPaddleVl(buffer);
+  const paddle = await analyzeWithPaddleVl(buffer, mimeType);
   if (paddle?.thbAmount != null && extractionScore(paddle) >= 80) return paddle;
 
   const xai = await analyzeWithXai(buffer, mimeType);
