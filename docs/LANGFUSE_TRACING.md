@@ -20,6 +20,26 @@ Official skill copied under `.agents/skills/langfuse/` from [langfuse/skills](ht
 5. Run `node observability/smoke.mjs` in staging. This sends a synthetic `agent-task` observation without triggering Telegram or financial operations. Confirm one trace with only approved `workflow`, `result`, `environment` fields, then fetch and audit it against [best practices](https://langfuse.com/docs/observability/best-practices). A successful local command is not proof of remote receipt.
 6. For real LLM calls, instrument the actual OpenAI/LangChain/Vercel AI SDK generation site when identified. Do not log raw prompts, bank data, Telegram chats, OCR contents, payment data, secrets, or internal chain-of-thought. Capture model and token usage only with a vetted SDK wrapper and redaction controls.
 
+## Free isolated smoke runner: GitHub Codespaces
+
+For the existing free-tier workflow, use this branch instead of running a second Telegram bot in Render or paying for a VPS.
+
+1. Rotate/revoke the secret key that was previously posted in chat via [Langfuse Cloud EU](https://cloud.langfuse.com) → Settings → API Keys. Do not share the replacement in ChatGPT.
+2. Open the [CE VAULT repo](https://github.com/SHELBYY-21/CE-VAULT-Bot) → **Code → Codespaces → New with options**.
+3. Select branch `feat/langfuse-safe-tracing-20261008`, and select the `Langfuse Synthetic Trace Lab` dev container at `.devcontainer/langfuse/devcontainer.json`.
+4. When prompted, enter new values for `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in the GitHub **Codespaces Secrets** UI (not in a terminal command or committed file).
+5. In that isolated Codespace, run:
+
+```bash
+node --test observability/langfuse.test.mjs
+node observability/smoke.mjs
+```
+
+6. Open your Langfuse **Traces** dashboard. Confirm a new **agent-task** synthetic trace and verify that no bank/Telegram/customer data is present. The smoke script prints only status and does not read payment data or send Telegram messages.
+7. Stop the Codespace after testing to preserve the monthly free allowance. Codespaces is a development environment, **not a 24/7 free VPS**, and usage beyond your included entitlement can incur charges if billing is enabled.
+
+**Important:** Do not choose the default full-app development container or start the complete CE VAULT server in a smoke test; that application can register a Telegram webhook and process outbox messages. This devcontainer intentionally installs only observability packages and runs nothing until you execute a synthetic test.
+
 ## Tracing contract
 
 - One observation per unit: `dispatch-outbox`; result enumerated `ok` / `error`.
