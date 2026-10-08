@@ -1,0 +1,27 @@
+{
+  "name": "CE VAULT | Langfuse Synthetic Trace Lab",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install --prefix observability --ignore-scripts --no-audit --no-fund",
+  "containerEnv": {
+    "CE_LANGFUSE_TRACING_ENABLED": "true",
+    "CE_LANGFUSE_ENV": "staging",
+    "LANGFUSE_TRACING_ENVIRONMENT": "staging",
+    "NODE_ENV": "development",
+    "LANGFUSE_BASE_URL": "https://cloud.langfuse.com"
+  },
+  "secrets": {
+    "LANGFUSE_PUBLIC_KEY": {
+      "description": "Enter the Langfuse staging project PUBLIC key directly in GitHub Codespaces secret UI."
+    },
+    "LANGFUSE_SECRET_KEY": {
+      "description": "Enter a NEW ROTATED Langfuse staging project SECRET key directly in GitHub Codespaces secret UI. Never paste into chat."
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
