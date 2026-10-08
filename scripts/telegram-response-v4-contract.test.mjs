@@ -141,3 +141,19 @@ test('database deletion guard retains hardened SQL function attributes', () => {
   assert.match(deleteRpcGuard, /security invoker/i);
   assert.match(deleteRpcGuard, /set search_path = public, pg_temp/i);
 });
+
+
+test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
+  const args = {
+    pending: { status: 'NEEDS_REVIEW', ledger_ref: 'CE-TX-2460', thb_in: '1000', should_send: '26.94',
+      ocr_confidence: 80, bank: 'SCB', account_masked: '••••3114', pin_match: false },
+    deskRate: { sell_rate: '37.12' }, market: { price: '37.10', fresh: true },
+  };
+  const rich = formatIntakeV4RichMessage(args).html;
+  const plain = formatIntakeV4Reply(args);
+  assert.match(rich, /OCR 80% ต่ำกว่าเกณฑ์ 90%/);
+  assert.equal((rich.match(/<p>🔍 /g) || []).length, 1);
+  assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
+  assert.doesNotMatch(plain, /ISSUE:/);
+  assert.match(plain, /NEXT:/);
+});

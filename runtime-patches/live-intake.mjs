@@ -973,11 +973,14 @@ function intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccoun
   else if (status === "RATE_REQUIRED") rows.push("ยังไม่มี desk rate ที่ใช้ได้");
   else if (status === "MARKET_UNAVAILABLE") rows.push("Binance TH Spot ยังยืนยันไม่ได้");
   else if (status === "PROMOTION_FAILED") rows.push("บันทึกรายการไม่สำเร็จ · ตรวจ Ledger ก่อน retry");
-  else if (status === "NEEDS_REVIEW") rows.push("OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม");
+  else if (status === "NEEDS_REVIEW") {
+    const confidence = finiteNumberOrNull(pending?.ocr_confidence);
+    if (confidence == null || confidence >= OCR_AUTO_MIN) rows.push("ข้อมูลสลิปต้องตรวจเพิ่ม");
+  }
   else if (pending?.pin_match && deskRate?.sell_rate && market?.price) rows.push("🟢 ALL CHECKS PASS");
 
   const confidence = finiteNumberOrNull(pending?.ocr_confidence);
-  if (confidence != null && confidence < 95) rows.push(`OCR confidence · ${confidence}%`);
+  if (confidence != null && confidence < OCR_AUTO_MIN) rows.push(`OCR ${confidence}% ต่ำกว่าเกณฑ์ ${OCR_AUTO_MIN}% · ตรวจสอบด้วยตา`);
   return rows.length ? rows : ["ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง"];
 }
 
@@ -1086,7 +1089,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   else lines.push('OCR ✓ ─ [MATCH] ─ IN ─ WAIT ─ DONE');
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
-  for (const issue of issues) lines.push(`🔍 ISSUE: ${issue}`);
+  for (const issue of issues) lines.push(`🔍 ${issue}`);
   if (duplicate && pending?.ledger_ref) lines.push(`DUPLICATE REF ${pending.ledger_ref}`);
   lines.push(`NEXT: ${next}`);
   return lines.join('\n');
@@ -1096,13 +1099,13 @@ export function formatIntakeV4RichMessage(args) {
   const pending = args?.pending || {};
   const card = formatIntakeV4Reply(args).split('\n');
   const fullAccount = pending.account_number || (pending.pin_match ? args?.pinnedAccount?.account_number : null);
-  const issueHtml = card.filter(line => line.startsWith('🔍 ISSUE:')).map(line => `<p>${richEscape(line)}</p>`).join('');
+  const issueHtml = card.filter(line => line.startsWith('🔍 ')).map(line => `<p>${richEscape(line)}</p>`).join('');
   const copyButtons = [
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
   const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR)/u.test(line));
-  const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 ISSUE:'));
+  const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +
     `<p><b>${richEscape(card[1])}</b></p><hr/>` +
