@@ -1140,3 +1140,4 @@ export function formatIntakeV4RichMessage(args) {
     (copyButtons ? `<tg-button-row>${copyButtons}</tg-button-row>` : '')
   };
 }
+
