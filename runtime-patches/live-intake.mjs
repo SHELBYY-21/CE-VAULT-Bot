@@ -400,7 +400,7 @@ export function formatIntakeReply({
   if (duplicate) lines.push("⚠️ พบสลิปนี้ในระบบแล้ว", "");
   if (isBankMismatch) {
     lines.push("📄 บัญชีในสลิป");
-    lines.push(`🏦 ${pending?.bank || "BANK"} · ${pending?.account_masked || "ไม่พบเลขบัญชีจากสลิป"}`);
+    lines.push(`🏦 ${pending?.bank || "BANK"} · ${pending?.account_masked || "ไม่พบเลขบัญชีจากสลิป"} · NOT VERIFIED`);
     if (pending?.name) lines.push(`👤 ${pending.name}`);
     lines.push("", ...pinAccountLines(pinnedAccount, pinnedAccounts), "");
   }
@@ -424,6 +424,7 @@ export function formatIntakeReply({
   else if (!market?.price) lines.push("🟡 MARKET CHECK");
 
   lines.push("─────────────", "STATUS");
+  if (!isRecorded) lines.push(`CODE        ${status}`);
   if (duplicate) lines.push("🟣 DUPLICATE · ไม่สร้างรายการใหม่");
   else if (isRecorded) lines.push("🟢 RECORDED · ยังไม่ใช่ SETTLED");
   else if (isPromotionFailed) lines.push("🔴 RECORD FAILED");
