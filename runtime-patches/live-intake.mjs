@@ -1081,7 +1081,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     NEEDS_REVIEW: "🟡 รอตรวจสอบ OCR", PIN_REQUIRED: "🟡 ยังไม่ PIN บัญชี",
     STALE_SLIP: "🔴 วันที่สลิปไม่ตรง", RATE_REQUIRED: "🟡 ยังไม่มีเรต",
     MARKET_UNAVAILABLE: "🟡 ราคาตลาดไม่พร้อม", PROMOTION_FAILED: "🔴 บันทึกไม่สำเร็จ",
-    VERIFIED: "🟡 รอแอดมินอนุมัติ", RECORDED: "🟡 บันทึก IN แล้ว · WAIT USDT",
+    VERIFIED: "🟡 รอแอดมินอนุมัติ (Pending Admin Approval)", RECORDED: "🟡 บันทึก IN แล้ว · WAIT USDT",
     REJECTED: "⛔ แอดมินปฏิเสธ",
   };
   const headline = duplicate ? "⛔ สลิปซ้ำ" : isRecorded ? titles.RECORDED :
