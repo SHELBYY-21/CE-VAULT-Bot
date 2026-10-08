@@ -19,19 +19,41 @@ async function tg<T = any>(method: string, payload: Record<string, any>): Promis
 
 export interface OutgoingMessage {
   text: string;
+  rich_message?: Record<string, unknown>;
+  fallback_text?: string;
   reply_markup?: unknown;
 }
 
-/** ส่งข้อความ → คืน message_id */
-export async function sendMessage(chatId: number, m: OutgoingMessage): Promise<number> {
-  const r = await tg<{ message_id: number }>('sendMessage', {
+const LINK_PREVIEW_OFF = { is_disabled: true } as const;
+
+async function sendPlainMessage(chatId: number, m: OutgoingMessage): Promise<{ message_id: number }> {
+  return tg<{ message_id: number }>('sendMessage', {
     chat_id: chatId,
-    text: m.text,
+    text: m.fallback_text ?? m.text,
     parse_mode: 'HTML',
-    disable_web_page_preview: true,
+    link_preview_options: LINK_PREVIEW_OFF,
     reply_markup: m.reply_markup,
   });
-  return r.message_id;
+}
+
+/** ส่งข้อความ → คืน message_id; prefer Bot API rich messages and fall back to HTML text. */
+export async function sendMessage(chatId: number, m: OutgoingMessage): Promise<number> {
+  if (m.rich_message) {
+    try {
+      const r = await tg<{ message_id: number }>('sendRichMessage', {
+        chat_id: chatId,
+        rich_message: m.rich_message,
+        reply_markup: m.reply_markup,
+      });
+      return r.message_id;
+    } catch (error) {
+      console.warn(
+        `sendRichMessage failed (chat=${chatId}); falling back to sendMessage:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  return (await sendPlainMessage(chatId, m)).message_id;
 }
 
 /** ส่งไฟล์ (เช่น CSV) เป็น document ในแชต */
@@ -57,13 +79,30 @@ export async function editMessage(
   messageId: number,
   m: OutgoingMessage,
 ): Promise<boolean> {
+  if (m.rich_message) {
+    try {
+      await tg('editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        rich_message: m.rich_message,
+        reply_markup: m.reply_markup,
+      });
+      return true;
+    } catch (error) {
+      console.warn(
+        `rich editMessageText failed (chat=${chatId}, msg=${messageId}); falling back to text:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
   try {
     await tg('editMessageText', {
       chat_id: chatId,
       message_id: messageId,
-      text: m.text,
+      text: m.fallback_text ?? m.text,
       parse_mode: 'HTML',
-      disable_web_page_preview: true,
+      link_preview_options: LINK_PREVIEW_OFF,
       reply_markup: m.reply_markup,
     });
     return true;
