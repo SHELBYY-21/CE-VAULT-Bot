@@ -373,7 +373,38 @@ async function analyzeWithPaddleLlama(buffer, mimeType = "image/jpeg") {
   }
 }
 
+async function analyzeWithPaddleLlama(buffer) {
+  const base = String(process.env.PADDLEOCR_LLAMA_URL || "").trim().replace(/\\/$/, "");
+  if (!base) return null;
+  const endpoint = base.endsWith("/v1") ? base + "/chat/completions" : base + "/v1/chat/completions";
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(process.env.PADDLEOCR_ACCESS_TOKEN ? { authorization: "Bearer " + process.env.PADDLEOCR_ACCESS_TOKEN } : {}) },
+      body: JSON.stringify({
+        model: "LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M",
+        temperature: 0, max_tokens: 700,
+        messages: [{ role: "user", content: [
+          { type: "text", text: "Read all visible Thai and English text from this bank transfer slip accurately. Output only the extracted text, preserving numbers, dates, and names. Do not infer missing fields." },
+          { type: "image_url", image_url: { url: "data:image/jpeg;base64," + buffer.toString("base64") } }
+        ] }]
+      }),
+      signal: AbortSignal.timeout(PADDLEOCR_TIMEOUT_MS)
+    });
+    if (!response.ok) { console.warn("[CE OCR] PADDLE_LLAMA_HTTP", { status: response.status }); return null; }
+    const payload = await response.json();
+    const extracted = payload?.choices?.[0]?.message?.content;
+    const text = typeof extracted === "string" ? extracted : "";
+    if (!text.trim()) return null;
+    return parseThaiSlipText(text, "PADDLEOCR_VL_1_6_LLAMA");
+  } catch (error) {
+    console.warn("[CE OCR] PADDLE_LLAMA_ERROR", { name: error?.name || "Error" });
+    return null;
+  }
+}
+
 async function analyzeWithPaddleVl(buffer) {
+  if (process.env.PADDLEOCR_LLAMA_URL) return analyzeWithPaddleLlama(buffer);
   const endpoint = paddleEndpoint();
   if (!endpoint) return null;
   const headers = { "content-type": "application/json" };
@@ -544,6 +575,7 @@ export function intakeCapability() {
   return {
     ocr_configured: paddle || xai || ocrSpace,
     preferred_model: PADDLEOCR_MODEL,
+    paddle_backend: process.env.PADDLEOCR_LLAMA_URL ? 'LLAMA_CPP' : 'PADDLEX',
     provider_order: ["paddleocr_vl_1_6", "xai_vision", "ocr_space"],
     paddle_backend: paddleLlama
       ? "LLAMA_CPP_MULTIMODAL"
