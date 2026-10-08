@@ -174,3 +174,19 @@ test('Telegram five-stage reply never promotes a review or recorded slip to DONE
   const failed = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'OCR_FAILED' } });
   assert.match(failed, /① OCR ✗ → ② MATCH —/);
 });
+
+test('bilingual financial summary does not invent settlement from OCR', () => {
+  const pending = { status: 'RECORDED', tx_id: 'tx-1', ledger_ref: 'CE-1', thb_in: '1000',
+    should_send: '26.94', account_number: '1234567890', bank: 'SCB' };
+  const base = { pending, recorded: { tx_id: 'tx-1' }, deskRate: { sell_rate: '37.12' } };
+  const card = formatIntakeV4Reply(base);
+  assert.match(card, /ต้องส่ง \(Total Due\): 26.94 USDT/);
+  assert.match(card, /เคลียร์แล้ว \(Cleared\): — USDT/);
+  assert.match(card, /ค้างส่ง \(Outstanding\): — USDT/);
+  assert.doesNotMatch(card, /1234567890/);
+  const paid = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', settlement_verified: true, cleared_usdt: '10.00' } });
+  assert.match(paid, /เคลียร์แล้ว \(Cleared\): 10.00 USDT/);
+  assert.match(paid, /ค้างส่ง \(Outstanding\): 16.94 USDT/);
+  const unverified = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', cleared_usdt: '10.00' } });
+  assert.match(unverified, /เคลียร์แล้ว \(Cleared\): — USDT/);
+});
