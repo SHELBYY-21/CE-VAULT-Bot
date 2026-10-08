@@ -124,11 +124,10 @@ function endpoint(): string | null {
 }
 
 function llamaEndpoint(): string | null {
-  const raw = String(
-    process.env.PADDLEOCR_LLAMA_URL ||
-      'https://ce-ocr-paddlevl16-production.up.railway.app',
-  ).trim();
-  if (!raw) return null;
+  // Same opt-in policy as the generated Render runtime.
+  if (process.env.PADDLEOCR_LLAMA_ENABLED !== '1') return null;
+  const raw = String(process.env.PADDLEOCR_LLAMA_URL || '').trim();
+  if (!raw || !/^https:\/\//i.test(raw)) return null;
   return /\/v1\/chat\/completions\/?$/i.test(raw)
     ? raw.replace(/\/$/, '')
     : `${raw.replace(/\/$/, '')}/v1/chat/completions`;
