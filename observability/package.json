@@ -1,0 +1,11 @@
+{
+  "name": "ce-vault-langfuse-observability",
+  "private": true,
+  "type": "module",
+  "description": "Optional staging-only Langfuse v5 tracing deps; never automatically installed in production",
+  "dependencies": {
+    "@langfuse/tracing": "5.11.1",
+    "@langfuse/otel": "5.11.1",
+    "@opentelemetry/sdk-node": "0.222.0"
+  }
+}

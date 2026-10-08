@@ -4,6 +4,7 @@ import { setDefaultResultOrder } from 'node:dns';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { safeWebhookInfo } from './webhook-info-safe.mjs';
+import { initializeLangfuseTelemetry } from '../observability/langfuse.mjs';
 
 setDefaultResultOrder('ipv4first');
 
@@ -184,7 +185,7 @@ function renderOutboxMessage(item) {
   return `CE VAULT · ${label}\n${ref}\nSTATE ${state}\nVERSION ${version}\nSandbox safety remains locked.`;
 }
 
-function startOutboxDispatcher(env) {
+function startOutboxDispatcher(env, telemetry) {
   const token = env.TELEGRAM_BOT_TOKEN || env.BOT_TOKEN || '';
   const chatId = dispatcherChatId(env);
   let stopped = false;
@@ -200,10 +201,12 @@ function startOutboxDispatcher(env) {
         const items = await supabaseRpc(env, 'ce_claim_outbox_batch', { p_limit: 10 });
         for (const item of Array.isArray(items) ? items : []) {
           try {
-            if (shouldNotifyOutbox(item)) {
-              await telegramApi(token, 'sendMessage', { chat_id: chatId, text: renderOutboxMessage(item), disable_web_page_preview: true });
-            }
-            await supabaseRpc(env, 'ce_complete_outbox', { p_id: item.id });
+            await telemetry.run('dispatch-outbox', async () => {
+              if (shouldNotifyOutbox(item)) {
+                await telegramApi(token, 'sendMessage', { chat_id: chatId, text: renderOutboxMessage(item), disable_web_page_preview: true });
+              }
+              await supabaseRpc(env, 'ce_complete_outbox', { p_id: item.id });
+            });
             console.log(`[CE Outbox] Dispatched ${item.topic} ${item.id}.`);
           } catch (error) {
             await supabaseRpc(env, 'ce_fail_outbox', {
@@ -279,18 +282,21 @@ function startWebhookMaintainer(env) {
 async function main() {
   console.log('[CE Runtime] Bootstrap starting.');
   const env = await buildRuntimeEnv();
+  const telemetry = await initializeLangfuseTelemetry(env);
   console.log('[CE Runtime] Bootstrap complete; starting server.');
   const child = spawn(process.execPath, [serverPath, ...process.argv.slice(2)], { cwd: root, env, stdio: 'inherit' });
   const stopWebhookMaintainer = startWebhookMaintainer(env);
-  const stopDispatcher = startOutboxDispatcher(env);
+  const stopDispatcher = startOutboxDispatcher(env, telemetry);
   for (const signal of ['SIGTERM', 'SIGINT']) {
     process.on(signal, () => { stopWebhookMaintainer(); stopDispatcher(); child.kill(signal); });
   }
   child.on('exit', (code, signal) => {
     stopWebhookMaintainer();
     stopDispatcher();
-    if (signal) process.kill(process.pid, signal);
-    else process.exit(code ?? 1);
+    void telemetry.shutdown().finally(() => {
+      if (signal) process.kill(process.pid, signal);
+      else process.exit(code ?? 1);
+    });
   });
 }
 

@@ -63,3 +63,9 @@ ui-debug.log
 *-firebase-adminsdk*.json
 appsrc/
 .manus-source/cevault.tgz
+
+# Langfuse staging credentials and secret files
+observability/.env*
+!observability/.env.staging.example
+.env.staging
+.env.langfuse
