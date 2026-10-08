@@ -672,12 +672,10 @@ export async function exportRoomCsv(
 }
 
 export async function resetRoom(chatId: number): Promise<number> {
-  const { count, error } = await db()
-    .from('transactions')
-    .delete({ count: 'exact' })
-    .eq('chat_id', chatId);
-  checked(error);
-  return Number(count ?? 0);
+  // The old direct DELETE bypassed ce_delete_transaction's settlement guard.
+  // Keep a fail-closed API until a separately reviewed archival/day-cut path exists.
+  void chatId;
+  throw new Error('RESET_ROOM_HARD_DELETE_DISABLED');
 }
 
 export interface RoomStat {
