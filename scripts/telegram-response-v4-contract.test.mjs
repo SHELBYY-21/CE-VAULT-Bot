@@ -151,7 +151,7 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   };
   const rich = formatIntakeV4RichMessage(args).html;
   const plain = formatIntakeV4Reply(args);
-  assert.match(rich, /OCR 80% ต่ำกว่าเกณฑ์ 90%/);
+  assert.match(rich, /ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา/);
   assert.equal((rich.match(/<p>⚠️ /g) || []).length, 1);
   assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
   assert.doesNotMatch(plain, /ISSUE:/);
