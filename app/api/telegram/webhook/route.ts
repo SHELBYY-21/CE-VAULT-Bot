@@ -16,6 +16,7 @@ import {
   liveIntelVerified,
   liveOcr,
   liveReceiving,
+  liveRecorded,
   liveSettled,
   liveWaiting,
   receiverIntelCard,
@@ -924,10 +925,10 @@ async function commitIncoming(
       .catch(() => undefined);
   }
 
-  await upsertLive(
+  const nextLiveMessageId = await upsertLive(
     chatId,
     meta.liveMessageId,
-    liveSettled({
+    liveRecorded({
       ledgerRef,
       thb,
       usdt: r.usdtOwed,
@@ -939,6 +940,25 @@ async function commitIncoming(
       transactionId: r.transactionId,
     }),
   );
+
+  // Recording THB is an intermediate state. Persist the same live card so the
+  // subsequent USDT proof can settle this deal instead of starting a new one.
+  await setSession(chatId, userId, {
+    state: 'WAITING_USDT',
+    pending_type: 'THB_DEPOSIT',
+    slip_url: meta.slipUrl ?? null,
+    ocr_thb: thb,
+    slip_date: meta.date ?? null,
+    slip_time: meta.time ?? null,
+    slip_last4: meta.last4 ?? null,
+    slip_bank: meta.bank ?? null,
+    slip_receiver_name: meta.receiverName ?? null,
+    ocr_conf: meta.confidence ?? null,
+    ledger_ref: ledgerRef,
+    pending_usdt: r.usdtOwed,
+    admin_name: r.adminName,
+    live_message_id: nextLiveMessageId,
+  });
 }
 
 /** บันทึกขาออก — Live Message → Settled */
