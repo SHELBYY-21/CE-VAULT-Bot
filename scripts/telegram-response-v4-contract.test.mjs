@@ -60,7 +60,7 @@ test('Render V4 confirms checks only with explicit fresh market and pin evidence
       pin_match: true, ocr_confidence: '98', bank: 'SCB', account_masked: '••••1234' },
     deskRate: { sell_rate: '33.20' }, market: { price: '33.1', fresh: true },
   };
-  assert.match(formatIntakeV4Reply(base), /ALL CHECKS PASS/);
+  assert.match(formatIntakeV4Reply(base), /OCR CHECKS PASS · ADMIN APPROVAL REQUIRED/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, market: { price: '33.1', fresh: false } }), /ALL CHECKS PASS/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, pending: { ...base.pending, pin_match: false } }), /ALL CHECKS PASS/);
   assert.match(formatIntakeV4Reply(base), /30.123456 USDT/);
