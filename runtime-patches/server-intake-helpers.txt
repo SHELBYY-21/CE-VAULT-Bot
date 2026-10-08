@@ -8,9 +8,10 @@ function roomNameFor(message) {
   return String(message?.chat?.title || message?.chat?.username || "TELEGRAM").slice(0, 40);
 }
 
-function maskedBank(account) {
-  const last4 = accountLast4(account?.account_number);
-  return `${account?.bank_name || "BANK"} ${last4 ? `••••${last4}` : "••••"}`;
+function fullBank(account) {
+  const number = String(account?.account_number || "").trim() || "NO ACCOUNT";
+  const label = String(account?.label || "").trim();
+  return `${account?.bank_name || "BANK"} ${number}${label ? ` · ${label}` : ""}`;
 }
 
 async function handleTelegramHome(message) {
@@ -125,7 +126,7 @@ async function handleTelegramPin(message, unpin = false) {
   const accounts = await repository.listBankAccountsForPin();
   const pinned = accounts.filter((account) => account.pinned_for_date === today);
   if (!raw) {
-    const rows = accounts.length ? accounts.map((account, index) => `${index + 1}. ${maskedBank(account)} ${account.pinned_for_date === today ? "· PIN" : ""}`) : ["ยังไม่มี bank account ในระบบ"];
+    const rows = accounts.length ? accounts.map((account, index) => `${index + 1}. ${fullBank(account)} ${account.pinned_for_date === today ? "· PIN" : ""}`) : ["ยังไม่มี bank account ในระบบ"];
     await telegram.sendMessage(chatId, [`CE VAULT · ${unpin ? "UNPIN" : "PIN"} · ${today}`, ...rows, unpin ? "ใช้ /unpin 7890" : "ใช้ /pin 7890"].join("\n"));
     return true;
   }
@@ -143,7 +144,7 @@ async function handleTelegramPin(message, unpin = false) {
   const target = candidates[0];
   if (unpin) {
     const changed = await repository.unpinBankForDate(target.id, today);
-    await telegram.sendMessage(chatId, changed ? `CE VAULT · UNPIN OK\n${maskedBank(target)}` : "CE VAULT · UNPIN\nบัญชีนี้ไม่ได้ PIN วันนี้");
+    await telegram.sendMessage(chatId, changed ? `CE VAULT · UNPIN OK\n${fullBank(target)}` : "CE VAULT · UNPIN\nบัญชีนี้ไม่ได้ PIN วันนี้");
     return true;
   }
   if (target.pinned_for_date !== today && pinned.length >= 3) {
@@ -151,7 +152,7 @@ async function handleTelegramPin(message, unpin = false) {
     return true;
   }
   await repository.pinBankForDate(target.id, today);
-  await telegram.sendMessage(chatId, `CE VAULT · PIN OK\n${maskedBank(target)}\nDATE ${today}`);
+  await telegram.sendMessage(chatId, `CE VAULT · PIN OK\n${fullBank(target)}\nDATE ${today}`);
   return true;
 }
 
@@ -189,6 +190,8 @@ async function handleLiveSlipMessage(message) {
   ]);
   const pinnedMatch = findPinnedMatch(slip, pinnedBanks);
   const decision = decideIntake({ slip, pinnedMatch, pinnedCount: pinnedBanks.length, deskRate, market, businessDate });
+  const pinnedAccount = pinnedMatch || (pinnedBanks.length === 1 ? pinnedBanks[0] : null);
+  const pinnedAccountsForReply = decision.status === "BANK_MISMATCH" ? pinnedBanks : [];
   const amount = Number(slip?.thbAmount);
   const shouldSend = Number.isFinite(amount) && amount > 0 && Number(deskRate?.sell_rate) > 0
     ? divideDecimal(String(amount), String(deskRate.sell_rate), 6)
@@ -223,7 +226,15 @@ async function handleLiveSlipMessage(message) {
   });
 
   if (pending.duplicate) {
-    await telegram.sendMessage(chatId, formatIntakeReply({ pending, market, deskRate, duplicate: true }));
+    const replyPending = { ...pending, account_number: pinnedMatch?.account_number || null };
+    await telegram.sendMessage(chatId, formatIntakeReply({
+      pending: replyPending,
+      market,
+      deskRate,
+      duplicate: true,
+      pinnedAccount: pinnedAccount,
+      pinnedAccounts: pinnedAccountsForReply,
+    }));
     return;
   }
 
@@ -241,5 +252,17 @@ async function handleLiveSlipMessage(message) {
       });
     }
   }
-  await telegram.sendMessage(chatId, formatIntakeReply({ pending: finalPending, market, deskRate, recorded }));
+  const replyPending = {
+    ...finalPending,
+    account_number: pinnedMatch?.account_number || null,
+    name: finalPending?.name || slip?.receiverName || null,
+  };
+  await telegram.sendMessage(chatId, formatIntakeReply({
+    pending: replyPending,
+    market,
+    deskRate,
+    recorded,
+    pinnedAccount: pinnedAccount,
+    pinnedAccounts: pinnedAccountsForReply,
+  }));
 }
