@@ -16,6 +16,7 @@ import {
   liveIntelVerified,
   liveOcr,
   liveReceiving,
+  liveRecorded,
   liveSettled,
   liveWaiting,
   receiverIntelCard,
@@ -927,7 +928,7 @@ async function commitIncoming(
   await upsertLive(
     chatId,
     meta.liveMessageId,
-    liveSettled({
+    liveRecorded({
       ledgerRef,
       thb,
       usdt: r.usdtOwed,
