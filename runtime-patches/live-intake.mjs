@@ -66,7 +66,7 @@ export function normalizeBank(value) {
     [/TISCO|ทิสโก้/, "TISCO"],
     [/TMN|TRUEMONEY|ทรูมันนี่/, "TMN"],
   ];
-  for (const [pattern, code] of aliases) if (pattern.test(raw)) return code;
+  for (const [pattern, code] of aliases) if (raw.length <= 48 && pattern.test(raw)) return code;
   return raw || null;
 }
 
