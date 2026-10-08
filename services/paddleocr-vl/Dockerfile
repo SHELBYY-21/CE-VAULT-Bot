@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install "paddlepaddle==3.2.1" -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ \
+    && python -m pip install "paddlepaddle==3.3.1" \
     && python -m pip install "paddleocr[doc-parser]==3.6.0" \
     && paddlex --install serving
 
