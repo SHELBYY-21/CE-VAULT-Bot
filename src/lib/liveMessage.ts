@@ -208,13 +208,11 @@ export function liveRecorded(d: {
       name: d.adminName,
       actions: d.transactionId ? [
         { id: 'edit', label: '✏️ EDIT', arg: d.transactionId },
-        { id: 'del', label: '🗑 DELETE', arg: d.transactionId },
       ] : [],
     } },
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
-          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
         ]] }
       : undefined,
   });
