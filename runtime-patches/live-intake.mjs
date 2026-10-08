@@ -425,11 +425,10 @@ function paddleEndpoint() {
 }
 
 function paddleLlamaEndpoint() {
-  const raw = String(
-    process.env.PADDLEOCR_LLAMA_URL ||
-    "https://ce-ocr-paddlevl16-production.up.railway.app"
-  ).trim();
-  if (!raw) return null;
+  // Expensive self-hosted inference is opt-in. No implicit production URL.
+  if (process.env.PADDLEOCR_LLAMA_ENABLED !== "1") return null;
+  const raw = String(process.env.PADDLEOCR_LLAMA_URL || "").trim();
+  if (!raw || !/^https:\/\//i.test(raw)) return null;
   return /\/v1\/chat\/completions\/?$/i.test(raw)
     ? raw.replace(/\/$/, "")
     : `${raw.replace(/\/$/, "")}/v1/chat/completions`;
@@ -669,17 +668,14 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
 
 export function intakeCapability() {
   const typhoon = typhoonConfigured();
-  const paddleLlama = Boolean(
-    process.env.PADDLEOCR_LLAMA_URL ||
-    "https://ce-ocr-paddlevl16-production.up.railway.app"
-  );
+  const paddleLlama = Boolean(paddleLlamaEndpoint());
   const paddleOfficial = Boolean(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL);
   const paddle = paddleLlama || paddleOfficial;
   const xai = Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY);
   const ocrSpace = Boolean(process.env.OCR_SPACE_API_KEY);
   return {
     ocr_configured: typhoon || paddle || xai || ocrSpace,
-    preferred_model: typhoon ? TYPHOON_OCR_MODEL : PADDLEOCR_MODEL,
+    preferred_model: typhoon ? TYPHOON_OCR_MODEL : paddle ? PADDLEOCR_MODEL : "MANUAL_REVIEW",
     provider_order: ["typhoon_ocr_1_5", "paddleocr_vl_1_6", "xai_vision", "ocr_space"],
     paddle_backend: paddleLlama
       ? "LLAMA_CPP_MULTIMODAL"
@@ -692,7 +688,9 @@ export function intakeCapability() {
       xai_vision: xai,
       ocr_space: ocrSpace,
     },
-    thai_strategy: "Typhoon OCR 1.5 Thai-specialist primary when configured; PaddleOCR-VL-1.6 fallback; XAI semantic fallback; OCR.space last resort; unresolved evidence goes to manual review/OCR_FAILED",
+    thai_strategy: paddle
+      ? "Typhoon OCR 1.5 primary when configured; enabled PaddleOCR fallback; XAI and OCR.space if configured; manual review otherwise"
+      : "Typhoon OCR 1.5 primary when configured; slow self-hosted PaddleOCR disabled; other configured fallbacks or manual review/OCR_FAILED",
     auto_min_confidence: OCR_AUTO_MIN,
     market_source: "BINANCE_TH_SPOT",
     market_ttl_seconds: MARKET_TTL_MS / 1000,
