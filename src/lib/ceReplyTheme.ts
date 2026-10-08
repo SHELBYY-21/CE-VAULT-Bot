@@ -55,7 +55,7 @@ export function ceMessage(id: CeMessageId, body: string): string {
 export function ceRecorded(data: {
   kind: 'incoming' | 'outgoing'; ledgerRef: string; thb?: number | null;
   usdt?: number | null; sellRate?: number | null; adminName?: string | null;
-  bank?: string | null; last4?: string | null;
+  bank?: string | null; accountNumber?: string | null; last4?: string | null;
 }): string {
   const incoming = data.kind === 'incoming';
   const body = [
@@ -64,7 +64,9 @@ export function ceRecorded(data: {
     data.thb != null ? `📥 ยอดเข้า (Received)    <b>${ceAmount(data.thb)} THB</b>` : null,
     data.usdt != null ? `${incoming ? '💎 คาดว่าจะส่ง (Expected USDT)' : '📤 ส่งออก (Outgoing USDT)'}   <b>${ceUsdt(data.usdt)} USDT</b>` : null,
     data.sellRate != null ? `💱 อัตราแลกเปลี่ยน (Rate)  ${ceAmount(data.sellRate)}` : null,
-    data.bank || data.last4 ? `🏦 ธนาคาร (Bank / 银行)  ${ceEscape(data.bank || '-')}${data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}` : null,
+    data.bank || data.accountNumber || data.last4
+      ? `🏦 ธนาคาร (Bank / 银行)  ${ceEscape(data.bank || '-')}${data.accountNumber ? ` · ${ceEscape(data.accountNumber)}` : data.last4 ? ` · ••••${ceEscape(data.last4)}` : ''}`
+      : null,
     data.adminName ? `👤 ผู้ดำเนินการ (Operator)  ${ceEscape(data.adminName)}` : null,
     `🆔 เลขอ้างอิง (Reference / 交易编号)  #${ceEscape(data.ledgerRef)}`,
     '⏳ ยังไม่ยืนยันการชำระครบ (Settlement not verified / 尚未结算确认)',
