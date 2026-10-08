@@ -341,31 +341,98 @@ export function formatScanStageReply() {
   ].join("\n");
 }
 
-export function formatIntakeReply({ pending, market, deskRate, recorded, duplicate }) {
+function displayMoney(value, maximumFractionDigits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value ?? "—");
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits,
+  }).format(n);
+}
+
+function confidenceBadge(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "⚪ OCR UNKNOWN";
+  const icon = n >= 90 ? "🟢" : n >= 60 ? "🟡" : "🔴";
+  return `${icon} OCR ${String(value).replace(/\.0+$/, "")}%`;
+}
+
+function pinAccountLines(pinnedAccount, pinnedAccounts) {
+  const list = Array.isArray(pinnedAccounts) && pinnedAccounts.length
+    ? pinnedAccounts
+    : pinnedAccount
+      ? [pinnedAccount]
+      : [];
+  if (!list.length) return [];
+  return [
+    "📌 บัญชี PIN วันนี้",
+    ...list.map((account) => `🏦 ${account?.bank_name || "BANK"} · ${account?.account_number || "ไม่พบเลขบัญชีเต็ม"}${account?.label ? ` · ${account.label}` : ""}`),
+  ];
+}
+
+export function formatIntakeReply({
+  pending,
+  market,
+  deskRate,
+  recorded,
+  duplicate,
+  pinnedAccount = null,
+  pinnedAccounts = [],
+}) {
   const status = String(pending?.status || "NEEDS_REVIEW");
   const isRecorded = status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
   const isPromotionFailed = status === "PROMOTION_FAILED";
-  const isMismatch = ["BANK_MISMATCH", "PIN_REQUIRED", "STALE_SLIP", "RATE_REQUIRED", "MARKET_UNAVAILABLE", "NEEDS_REVIEW"].includes(status);
   const isOcrFailed = status === "OCR_FAILED";
+  const isBankMismatch = status === "BANK_MISMATCH";
+  const fullAccount = pending?.account_number || (pending?.pin_match ? pinnedAccount?.account_number : null);
+  const slipAccount = fullAccount || pending?.account_masked || null;
 
-  const lines = [
-    "◈ CE EMPIRE · BANK SLIP → USDT",
-    `CURRENT STATE  ${duplicate ? "DUPLICATE" : isRecorded ? "③ IN" : isOcrFailed ? "① OCR · ALERT" : "② MATCH"}`,
-    "",
-    "KEY DATA",
-  ];
+  let header = "◈ CE · VERIFY";
+  if (duplicate) header = "◈ CE · DUPLICATE";
+  else if (isOcrFailed) header = "◈ CE · OCR ERROR";
+  else if (isBankMismatch) header = "◈ CE · MISMATCH ⚠️";
+  else if (status === "NEEDS_REVIEW") header = "◈ CE · REVIEW ⚠️";
+  else if (isPromotionFailed) header = "◈ CE · ERROR";
+  else if (isRecorded) header = "◈ CE · RECORDED ✓";
 
-  if (duplicate) lines.push("ALERT       DUPLICATE");
-  if (pending?.ledger_ref) lines.push(`REF         ${pending.ledger_ref}`);
-  if (pending?.thb_in != null) lines.push(`AMOUNT      ${pending.thb_in} THB`);
-  if (pending?.should_send != null) lines.push(`EST. USDT   ${pending.should_send} USDT`);
-  if (pending?.account_masked) {
-    lines.push(`BANK        ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "ACCOUNT / DATE MATCH" : "NOT VERIFIED"}`);
+  const lines = [header, "━━━━━━━━━━━━━━"];
+
+  if (duplicate) lines.push("⚠️ พบสลิปนี้ในระบบแล้ว", "");
+  if (isBankMismatch) {
+    lines.push("📄 บัญชีในสลิป");
+    lines.push(`🏦 ${pending?.bank || "BANK"} · ${pending?.account_masked || "ไม่พบเลขบัญชีจากสลิป"}`);
+    if (pending?.name) lines.push(`👤 ${pending.name}`);
+    lines.push("", ...pinAccountLines(pinnedAccount, pinnedAccounts), "");
   }
-  if (deskRate?.sell_rate) lines.push(`DESK RATE   ${deskRate.sell_rate} THB/USDT`);
-  if (market?.price) lines.push(`MARKET      ${market.price} THB/USDT · BINANCE TH SPOT`);
 
-  lines.push("", "FLOW");
+  if (pending?.thb_in != null) lines.push(`📥 ${displayMoney(pending.thb_in, 2)} THB`);
+  if (pending?.should_send != null) lines.push(`💎 ${displayMoney(pending.should_send, 6)} USDT`);
+  if (!isBankMismatch && (pending?.bank || slipAccount)) {
+    lines.push(`🏦 ${pending?.bank || pinnedAccount?.bank_name || "BANK"} · ${slipAccount || "ไม่พบเลขบัญชี"}`);
+  }
+  if (!isBankMismatch && pending?.name) lines.push(`👤 ${pending.name}`);
+  if (deskRate?.sell_rate != null) lines.push(`💱 RATE ${displayMoney(deskRate.sell_rate, 2)}`);
+  if (pending?.ledger_ref) lines.push(`🆔 #${pending.ledger_ref}`);
+
+  lines.push("─────────────");
+  lines.push(confidenceBadge(pending?.ocr_confidence));
+  if (pending?.pin_match) lines.push("🟢 BANK MATCH");
+  else if (isBankMismatch) lines.push("🔴 BANK MISMATCH");
+  else lines.push("🟡 BANK NOT VERIFIED");
+  if (deskRate?.sell_rate && market?.price) lines.push("🟢 RATE OK");
+  else if (!deskRate?.sell_rate) lines.push("🟡 RATE REQUIRED");
+  else if (!market?.price) lines.push("🟡 MARKET CHECK");
+
+  lines.push("─────────────", "STATUS");
+  if (duplicate) lines.push("🟣 DUPLICATE · ไม่สร้างรายการใหม่");
+  else if (isRecorded) lines.push("🟢 RECORDED · ยังไม่ใช่ SETTLED");
+  else if (isPromotionFailed) lines.push("🔴 RECORD FAILED");
+  else if (isOcrFailed) lines.push("🔴 OCR ERROR");
+  else if (isBankMismatch) lines.push("🔴 BANK MISMATCH");
+  else if (status === "VERIFIED") lines.push("🟡 READY");
+  else lines.push(`🟡 ${status}`);
+
+  lines.push("─────────────", "FLOW");
   if (isRecorded) {
     lines.push(
       "① OCR    DONE",
@@ -374,68 +441,27 @@ export function formatIntakeReply({ pending, market, deskRate, recorded, duplica
       "③ IN     RECORDED",
       "④ WAIT   USDT",
       "⑤ DONE   PENDING",
-      "",
-      "NEXT ACTION",
-      "→ รอขั้นตอน USDT ต่อไป",
       "SETTLEMENT NOT RUN · ยังไม่ยืนยันการชำระสุดท้าย",
     );
   } else if (duplicate) {
-    lines.push(
-      "① OCR    DONE",
-      "② MATCH  DUPLICATE",
-      "③ IN     BLOCKED",
-      "④ WAIT   LOCKED",
-      "⑤ DONE   LOCKED",
-      "",
-      "NEXT ACTION",
-      "→ ตรวจรายการเดิมก่อนดำเนินการต่อ",
-    );
+    lines.push("① OCR    DONE", "② MATCH  DUPLICATE", "③ IN     BLOCKED", "④ WAIT   LOCKED", "⑤ DONE   LOCKED");
   } else if (isPromotionFailed) {
-    lines.push(
-      "① OCR    DONE",
-      "② MATCH  VERIFIED",
-      "③ IN     RECORD FAILED",
-      "④ WAIT   BLOCKED",
-      "⑤ DONE   BLOCKED",
-      "",
-      "NEXT ACTION",
-      "→ ตรวจการบันทึกรายการก่อนดำเนินการต่อ",
-    );
+    lines.push("① OCR    DONE", "② MATCH  VERIFIED", "③ IN     RECORD FAILED", "④ WAIT   BLOCKED", "⑤ DONE   BLOCKED");
   } else if (isOcrFailed) {
-    lines.push(
-      "① OCR    ALERT",
-      "② MATCH  BLOCKED",
-      "③ IN     BLOCKED",
-      "④ WAIT   LOCKED",
-      "⑤ DONE   LOCKED",
-      "",
-      "NEXT ACTION",
-      "→ ส่งภาพสลิปใหม่ที่อ่านได้ชัดขึ้น",
-    );
-  } else if (isMismatch) {
-    lines.push(
-      "① OCR    DONE",
-      "② MATCH  ALERT",
-      "③ IN     BLOCKED",
-      "④ WAIT   LOCKED",
-      "⑤ DONE   LOCKED",
-      "",
-      `STATUS      ${status}`,
-      "NEXT ACTION",
-      "→ ตรวจบัญชี / วันที่ / เรต แล้วส่งตรวจใหม่",
-    );
+    lines.push("① OCR    ALERT", "② MATCH  BLOCKED", "③ IN     BLOCKED", "④ WAIT   LOCKED", "⑤ DONE   LOCKED");
+  } else if (isBankMismatch) {
+    lines.push("① OCR    DONE", "② MATCH  ALERT", "③ IN     BLOCKED", "④ WAIT   LOCKED", "⑤ DONE   LOCKED");
   } else {
-    lines.push(
-      "① OCR    DONE",
-      "② MATCH  REVIEW",
-      "③ IN     PENDING",
-      "④ WAIT   LOCKED",
-      "⑤ DONE   LOCKED",
-      "",
-      `STATUS      ${status}`,
-      "NEXT ACTION",
-      "→ ตรวจเงื่อนไขก่อนบันทึก",
-    );
+    lines.push("① OCR    DONE", `② MATCH  ${pending?.pin_match ? "VERIFIED" : "REVIEW"}`, `③ IN     ${status === "VERIFIED" ? "READY" : "PENDING"}`, "④ WAIT   NEXT", "⑤ DONE   PENDING");
   }
+
+  lines.push("─────────────", "NEXT ACTION");
+  if (duplicate) lines.push("→ เปิดรายการเดิมก่อนดำเนินการต่อ");
+  else if (isRecorded) lines.push("→ รอขั้นตอน USDT ต่อไป");
+  else if (isBankMismatch) lines.push("→ ตรวจบัญชีในสลิปเทียบกับบัญชี PIN");
+  else if (isOcrFailed) lines.push("→ ส่งภาพสลิปใหม่ที่อ่านได้ชัดขึ้น");
+  else if (isPromotionFailed) lines.push("→ ตรวจการบันทึกรายการก่อนดำเนินการต่อ");
+  else lines.push("→ ตรวจข้อมูลแล้วดำเนินการตามสถานะ");
+
   return lines.join("\n");
 }
