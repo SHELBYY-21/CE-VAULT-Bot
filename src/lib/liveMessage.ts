@@ -164,28 +164,33 @@ export function liveRecorded(d: {
   last4?: string | null;
   transactionId?: string | null;
 }): OutgoingMessage {
-  const text = ceRecorded({
-    kind: 'incoming',
+  const account = d.accountNumber
+    ? d.accountNumber
+    : d.last4
+      ? `••••${d.last4}`
+      : null;
+  const lines = [
+    '<b>◈ CE · RECORDED (已记录) ✓</b>',
+    '<b>🟡 NEXT: WAITING USDT</b>',
+    d.thb != null ? `📥 ${liveMoney(d.thb)} THB` : null,
+    d.usdt != null ? `💎 ${Number(d.usdt).toLocaleString('en-US', { maximumFractionDigits: 6 })} USDT` : null,
+    d.sellRate != null ? `💱 RATE ${liveMoney(d.sellRate)}` : null,
+    d.bank || account ? `🏦 ${esc(d.bank ?? '—')}${account ? ` · ${esc(account)}` : ''}` : null,
+    d.adminName ? `👤 ${esc(d.adminName)}` : null,
+    '<i>Settlement not verified / 尚未结算确认</i>',
+  ].filter(Boolean).join('\n');
+
+  return liveCard({
+    stage: 'RECORDED',
     ledgerRef: d.ledgerRef,
-    thb: d.thb,
-    usdt: d.usdt,
-    sellRate: d.sellRate,
-    adminName: d.adminName,
-    bank: d.bank,
-    accountNumber: d.accountNumber,
-    last4: d.last4,
-  });
-  return {
-    text,
-    fallback_text: text,
-    rich_message: { html: text },
+    body: lines,
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
           { text: '🗑 DELETE', callback_data: `del:${d.transactionId}`, style: 'danger' },
         ]] }
       : undefined,
-  };
+  });
 }
 
 export function liveSettled(d: {
