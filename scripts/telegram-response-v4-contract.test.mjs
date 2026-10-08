@@ -231,3 +231,20 @@ test('Telegram callbacks require real pending UUIDs and route through server-sid
   assert.ok(patch.includes('handleTelegramReject(message)'));
   assert.ok(patch.includes('handleTelegramEdit(message)'));
 });
+
+test('compact OCR card does not leak full OCR document into bank field', () => {
+  const badBank = 'โอนเงินสำเร็จข้อมูลการโอนวันที่02ตค25691943รหัสอ้างอิง202610021BOUSCDOYHHT1YMM4จำนวนเงิน500ผู้รับเงิน';
+  const card = formatIntakeV4Reply({pending:{
+    status:'STALE_SLIP', bank:badBank, account_masked:'••••5629',
+    thb_in:'5',should_send:'0.130000',desk_rate:'37.12',
+    note:'OCR=typhoon_ocr_1_5;SLIP_DATE=02/10/2569;SLIP_TIME=19:43',
+    ocr_confidence:'90',
+  }});
+  assert.ok(card.includes('วันที่สลิปไม่ตรง'));
+  assert.ok(card.includes('บัญชีรับ: ไม่ยืนยัน'));
+  assert.ok(!card.includes('BOUSCDOYHHT1YMM4'));
+  assert.ok(card.includes('💎 ประเมิน (USDT): 0.130000'));
+  assert.ok(card.includes('📊 ต้องส่ง (Due): — USDT'));
+  assert.ok(card.includes('Confidence: 90.0%'));
+  assert.ok(!card.includes('OCR Confidence): 90.0%'));
+});
