@@ -324,16 +324,13 @@ function serviceRow(name, ok, detail) {
 }
 
 function workflowRail() {
-  const steps = [
-    ['01', 'OCR', 'READ SLIP', 'cyan'],
-    ['02', 'MATCH', 'VERIFY', 'gold'],
-    ['03', 'IN', 'RECORD', 'success'],
-    ['04', 'WAIT', 'USDT', 'warning'],
-    ['05', 'DONE', 'COMPLETE', 'success'],
-  ];
-  return '<section class="workflow-shell"><div class="workflow-heading"><div><span class="eyebrow">CE EMPIRE · WEB FLOW</span><h2>BANK SLIP → USDT</h2></div><span class="readonly">READ-ONLY VIEW</span></div><div class="workflow-rail">' + steps.map(function (step) {
-    return '<article class="flow-step ' + step[3] + '"><span class="flow-index">' + step[0] + '</span><strong>' + step[1] + '</strong><small>' + step[2] + '</small></article>';
-  }).join('<span class="flow-arrow">›</span>') + '</div></section>';
+  return '<section class="workflow-shell"><div class="workflow-heading"><div><span class="eyebrow">CE EMPIRE · WEB FLOW</span><h2>BANK SLIP → USDT</h2></div><span class="readonly">READ-ONLY VIEW</span></div><div class="workflow-rail">' +
+    '<article class="flow-step cyan"><span class="flow-index">01</span><strong>OCR</strong><small>READ SLIP</small></article><span class="flow-arrow">›</span>' +
+    '<article class="flow-step gold"><span class="flow-index">02</span><strong>MATCH</strong><small>VERIFY</small></article><span class="flow-arrow">›</span>' +
+    '<article class="flow-step success"><span class="flow-index">03</span><strong>IN</strong><small>RECORD</small></article><span class="flow-arrow">›</span>' +
+    '<article class="flow-step warning"><span class="flow-index">04</span><strong>WAIT</strong><small>USDT</small></article><span class="flow-arrow">›</span>' +
+    '<article class="flow-step success"><span class="flow-index">05</span><strong>DONE</strong><small>COMPLETE</small></article>' +
+    '</div></section>';
 }
 
 function render() {
