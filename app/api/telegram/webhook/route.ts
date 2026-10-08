@@ -39,9 +39,9 @@ import {
   insertRate,
   editTransaction,
   deleteTransaction,
+  getTransactionStatus,
   getTodayLedger,
   recordDeal,
-  resetRoom,
   getStaffLeaderboard,
   exportRoomCsv,
   recordIncoming,
@@ -1478,18 +1478,10 @@ async function handleCallback(cb: any): Promise<void> {
     return;
   }
 
-  // ----- resetgo : ล้างยอดห้องนี้จริง (hard delete) — โพสต์สรุปเก็บไว้ก่อนลบ -----
+  // ----- resetgo : DISABLED — room-wide hard delete bypassed the guarded RPC -----
   if (action === 'resetgo') {
-    await answerCallback(id, '🗑 กำลังล้าง...');
-    try {
-      await sendMessage(chatId, { text: '🗂 <b>สรุปก่อนล้าง (เก็บไว้อ้างอิง)</b>' });
-      await sendLedger(chatId);
-      const n = await resetRoom(chatId);
-      await startNewDay(chatId); // เผื่อ row เก่าไม่มี chat_id ก็ให้ day-cut ช่วยซ่อน
-      await sendMessage(chatId, UI.resetDone(n));
-    } catch (e: any) {
-      await sendMessage(chatId, UI.error(e?.message ?? 'reset failed'));
-    }
+    await answerCallback(id, '⛔ ปิดการล้างรายการการเงิน');
+    await sendMessage(chatId, { text: '⛔ ปิด RESET แบบลบข้อมูล — กรุณาใช้การตัดรอบวันที่เก็บ Ledger ไว้' });
     return;
   }
 
@@ -1515,6 +1507,21 @@ async function handleCallback(cb: any): Promise<void> {
     return await answerCallback(id, 'เฉพาะเจ้าของธุรกรรมกดได้เท่านั้น');
   }
 
+  if (action === 'del') {
+    // RECORDED/WAITING are display stages; only the authoritative Ledger
+    // status 'completed' permits deletion. Errors and missing status fail closed.
+    try {
+      const status = await getTransactionStatus(txId);
+      if (status !== 'completed') {
+        await answerCallback(id, '⛔ รายการยังไม่ SETTLED ห้ามลบ');
+        await sendMessage(chatId, { text: '⛔ รายการยังไม่ SETTLED ห้ามลบ — ติดต่อปิดรายการก่อน' });
+        return;
+      }
+    } catch {
+      return await answerCallback(id, '⛔ ตรวจสอบสถานะไม่ได้ ไม่ลบรายการ');
+    }
+  }
+
   await answerCallback(id, action === 'edit' ? '⚡ เข้าโหมดแก้ไข' : '🗑 กำลังลบ...');
 
   if (action === 'edit') {
@@ -1529,6 +1536,11 @@ async function handleCallback(cb: any): Promise<void> {
       const r = await deleteTransaction(txId);
       await sendMessage(chatId, UI.deleteSuccess(r.name, r.holdingUsdt));
     } catch (e: any) {
+      // The SQL RPC may reject a status changed after callback preflight.
+      if (String(e?.message ?? '').includes('TX_NOT_SETTLED')) {
+        await sendMessage(chatId, { text: '⛔ รายการยังไม่ SETTLED ห้ามลบ — ติดต่อปิดรายการก่อน' });
+        return;
+      }
       await sendMessage(chatId, UI.error(e?.message ?? 'delete failed'));
     }
   }
