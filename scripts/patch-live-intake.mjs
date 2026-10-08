@@ -106,12 +106,12 @@ const repoMethods = String.raw`  return Object.freeze({
     async createPendingSlip(row) {
       const result = await db.from("pending_slips")
         .insert(row)
-        .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint")
+        .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint,note")
         .single();
       if (!result.error) return { ...result.data, duplicate: false };
       if (result.error.code === "23505") {
         const existing = ensureData(await db.from("pending_slips")
-          .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint")
+          .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint,note")
           .eq("slip_fingerprint", row.slip_fingerprint)
           .limit(1)
           .maybeSingle());
@@ -123,7 +123,7 @@ const repoMethods = String.raw`  return Object.freeze({
       return ensureData(await db.from("pending_slips")
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq("id", id)
-        .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint")
+        .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint,note")
         .single());
     },
     async getPendingSlipForApproval(id) {
