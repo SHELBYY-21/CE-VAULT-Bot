@@ -466,3 +466,132 @@ export function formatIntakeReply({
 
   return lines.join("\n");
 }
+
+
+function richEscape(value) {
+  return String(value ?? "—")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function shortTxRef(ledgerRef) {
+  const clean = String(ledgerRef || "").replace(/[^A-Za-z0-9]/g, "");
+  return clean ? clean.slice(-4).toUpperCase() : "—";
+}
+
+function intakeV3State({ pending, recorded, duplicate }) {
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  if (duplicate) return { label: "⛔ DUPLICATE", next: "ตรวจรายการเดิมก่อน", error: true };
+  if (status === "OCR_FAILED") return { label: "🔴 OCR ERROR", next: "ส่งภาพสลิปใหม่", error: true };
+  if (status === "BANK_MISMATCH") return { label: "🔴 BANK MISMATCH", next: "ตรวจบัญชี", error: true };
+  if (status === "PROMOTION_FAILED") return { label: "🔴 RECORD FAILED", next: "ตรวจ Ledger ก่อนลองใหม่", error: true };
+  if (status === "RATE_REQUIRED") return { label: "🟡 RATE REQUIRED", next: "ตั้ง desk rate", error: true };
+  if (status === "MARKET_UNAVAILABLE") return { label: "🟡 MARKET CHECK", next: "รอ market feed", error: true };
+  if (status === "PIN_REQUIRED") return { label: "🟡 ACCOUNT REQUIRED", next: "เลือกบัญชีรับ", error: true };
+  if (status === "STALE_SLIP") return { label: "🔴 STALE SLIP", next: "ตรวจวันที่สลิป", error: true };
+  if (status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id)) {
+    return { label: "✅ RECORDED", next: "รอส่ง USDT", error: false };
+  }
+  if (status === "VERIFIED") return { label: "🟡 READY", next: "ระบบบันทึกรายการ", error: false };
+  return { label: "🟡 REVIEW", next: "ตรวจข้อมูล", error: true };
+}
+
+function intakeV3Trace({ pending, recorded, duplicate }) {
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  const isRecorded = status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
+  if (duplicate) return "OCR ✓ · [MATCH ✕] · IN · WAIT · DONE";
+  if (status === "OCR_FAILED") return "[OCR ✕] · MATCH · IN · WAIT · DONE";
+  if (["BANK_MISMATCH", "PIN_REQUIRED", "STALE_SLIP", "NEEDS_REVIEW"].includes(status)) {
+    return "OCR ✓ · [MATCH] · IN · WAIT · DONE";
+  }
+  if (["RATE_REQUIRED", "MARKET_UNAVAILABLE", "PROMOTION_FAILED"].includes(status)) {
+    return "OCR ✓ · MATCH ✓ · [IN] · WAIT · DONE";
+  }
+  if (isRecorded) return "OCR ✓ · MATCH ✓ · IN ✓ · [WAIT] · DONE";
+  if (status === "VERIFIED") return "OCR ✓ · MATCH ✓ · [IN] · WAIT · DONE";
+  return "OCR ✓ · [MATCH] · IN · WAIT · DONE";
+}
+
+function intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccounts, duplicate }) {
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  const rows = [];
+  if (duplicate) rows.push("รายการซ้ำ · ไม่สร้างรายการใหม่");
+  if (status === "BANK_MISMATCH") {
+    rows.push(`FOUND · ${pending?.bank || "BANK"} ${pending?.account_masked || "—"}`);
+    const pins = Array.isArray(pinnedAccounts) && pinnedAccounts.length
+      ? pinnedAccounts
+      : pinnedAccount ? [pinnedAccount] : [];
+    for (const account of pins.slice(0, 3)) {
+      rows.push(`EXPECTED · ${account?.bank_name || "BANK"} ${account?.account_number || "—"}`);
+    }
+  } else if (status === "OCR_FAILED") rows.push("OCR อ่านข้อมูลหลักไม่สำเร็จ");
+  else if (status === "PIN_REQUIRED") rows.push("ยังไม่มีบัญชีรับที่เลือกสำหรับวันนี้");
+  else if (status === "STALE_SLIP") rows.push("วันที่สลิปไม่ตรงวันทำงาน");
+  else if (status === "RATE_REQUIRED") rows.push("ยังไม่มี desk rate ที่ใช้ได้");
+  else if (status === "MARKET_UNAVAILABLE") rows.push("Binance TH Spot ยังยืนยันไม่ได้");
+  else if (status === "PROMOTION_FAILED") rows.push("บันทึกรายการไม่สำเร็จ · ตรวจ Ledger ก่อน retry");
+  else if (status === "NEEDS_REVIEW") rows.push("OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม");
+  else if (pending?.pin_match && deskRate?.sell_rate && market?.price) rows.push("🟢 ALL CHECKS PASS");
+
+  const confidence = Number(pending?.ocr_confidence);
+  if (Number.isFinite(confidence) && confidence < 95) rows.push(`OCR confidence · ${confidence}%`);
+  return rows.length ? rows : ["ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง"];
+}
+
+export function formatScanStageRichMessage() {
+  return {
+    html:
+      "<h3>◈ CE · OCR</h3>" +
+      "<p><b>⚙️ กำลังอ่านสลิป</b> — NEXT: ตรวจบัญชีอัตโนมัติ</p>" +
+      "<hr/>" +
+      "<p>OCR กำลังประมวลผลจากภาพจริง · ไม่มี fake progress</p>",
+  };
+}
+
+export function formatIntakeRichMessage({
+  pending,
+  market,
+  deskRate,
+  recorded,
+  duplicate,
+  pinnedAccount = null,
+  pinnedAccounts = [],
+}) {
+  const state = intakeV3State({ pending, recorded, duplicate });
+  const trace = intakeV3Trace({ pending, recorded, duplicate });
+  const issues = intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccounts, duplicate });
+  const fullAccount = pending?.account_number || (pending?.pin_match ? pinnedAccount?.account_number : null);
+  const account = fullAccount || pending?.account_masked || "—";
+  const bank = pending?.bank || pinnedAccount?.bank_name || "—";
+  const tx = shortTxRef(pending?.ledger_ref);
+  const amount = pending?.thb_in != null ? `${displayMoney(pending.thb_in, 2)} THB` : "—";
+  const usdt = pending?.should_send != null ? `${displayMoney(pending.should_send, 6)} USDT` : "—";
+  const rate = deskRate?.sell_rate != null ? displayMoney(deskRate.sell_rate, 2) : "—";
+  const name = pending?.name || "—";
+  const detailOpen = state.error ? " open" : "";
+  const details = issues.map((line) => `<p>${richEscape(line)}</p>`).join("");
+  const copyButtons = [
+    fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : "",
+    pending?.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : "",
+  ].filter(Boolean).join("");
+
+  const html =
+    `<h3>◈ CE · TX-${richEscape(tx)}</h3>` +
+    `<p><b>${richEscape(state.label)}</b> — NEXT: ${richEscape(state.next)}</p>` +
+    "<hr/>" +
+    "<table>" +
+      `<tr><th>THB</th><td>${richEscape(amount)}</td></tr>` +
+      `<tr><th>USDT</th><td>${richEscape(usdt)}</td></tr>` +
+      `<tr><th>RATE</th><td>${richEscape(rate)}</td></tr>` +
+      `<tr><th>BANK</th><td>${richEscape(bank)}</td></tr>` +
+      `<tr><th>ACCOUNT</th><td>${richEscape(account)}</td></tr>` +
+      `<tr><th>NAME</th><td>${richEscape(name)}</td></tr>` +
+    "</table>" +
+    `<p><code>${richEscape(trace)}</code></p>` +
+    `<details${detailOpen}><summary>ตรวจสอบ · CHECKS</summary>${details}</details>` +
+    (copyButtons ? `<tg-button-row>${copyButtons}</tg-button-row>` : "");
+
+  return { html };
+}
