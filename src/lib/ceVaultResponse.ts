@@ -8,6 +8,14 @@
  * - "ALL CHECKS PASS" requires explicit evidence.
  * - Inline buttons are supplied only by callers that own real handlers.
  * - Max 3 buttons.
+ * - DUE follows the canonical settlement convention (docs/settlement-delta-convention.md):
+ *   dueUsdt = expectedUsdt − sentUsdt → positive = USDT still owed.
+ *
+ * Status alignment: the status set maps 1:1 to the real production pipeline —
+ * pending_slips.status (OCR_FAILED, BANK_MISMATCH, STALE_SLIP, NEEDS_REVIEW,
+ * PIN_REQUIRED, RATE_REQUIRED, MARKET_UNAVAILABLE, PROMOTION_FAILED, VERIFIED,
+ * RECORDED + duplicate) and the tx lifecycle (ocr_success → waiting_admin → completed),
+ * matching runtime-patches/live-intake.mjs formatIntakeV4Reply titles.
  */
 
 export type Stage = 'OCR' | 'MATCH' | 'IN' | 'WAIT' | 'DONE';
@@ -23,7 +31,17 @@ export type TxStatus =
   | 'WAIT_USDT'
   | 'DONE'
   | 'DUPLICATE'
-  | 'ERROR';
+  | 'ERROR'
+  // Real production intake statuses (pending_slips.status)
+  | 'OCR_FAILED'
+  | 'BANK_MISMATCH'
+  | 'STALE_SLIP'
+  | 'NEEDS_REVIEW'
+  | 'PIN_REQUIRED'
+  | 'RATE_REQUIRED'
+  | 'MARKET_UNAVAILABLE'
+  | 'PROMOTION_FAILED'
+  | 'VERIFIED';
 
 export type RealAction = 'dealok' | 'dealedit' | 'cancelop' | 'edit' | 'del';
 
@@ -43,6 +61,15 @@ export interface TxData {
   ref: string;
   thb?: number | null;
   usdt?: number | null;
+  /** USDT already sent for this deal (sent_usdt column). */
+  sentUsdt?: number | null;
+  /**
+   * USDT still owed to the customer. Canonical convention:
+   * dueUsdt = expectedUsdt − sentUsdt → positive = still owed (DUE).
+   * Rendered on RECORDED / WAIT_USDT cards. Callers derive it from the
+   * Ledger's delta_usdt, never invent it here.
+   */
+  dueUsdt?: number | null;
   rate?: number | null;
   bank?: string | null;
   account?: string | null;
@@ -135,6 +162,70 @@ export const STATUS_MAP: Record<TxStatus, StatusMeta> = {
     stages: { OCR: 'pending', MATCH: 'pending', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
     traceFrom: false,
   },
+  // ── Real production intake statuses (pending_slips.status) ──
+  OCR_FAILED: {
+    icon: '🔴',
+    headline: 'อ่านสลิปไม่สำเร็จ',
+    next: 'ส่งภาพสลิปใหม่ที่ชัดขึ้น',
+    stages: { OCR: 'failed', MATCH: 'pending', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: false,
+  },
+  BANK_MISMATCH: {
+    icon: '🔴',
+    headline: 'บัญชีในสลิปไม่ตรง',
+    next: 'ตรวจเลขบัญชีในสลิปเทียบกับบัญชี PIN',
+    stages: { OCR: 'done', MATCH: 'failed', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  STALE_SLIP: {
+    icon: '🔴',
+    headline: 'วันที่สลิปไม่ตรง',
+    next: 'ตรวจวันของสลิปก่อนดำเนินการ',
+    stages: { OCR: 'done', MATCH: 'failed', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  NEEDS_REVIEW: {
+    icon: '🟡',
+    headline: 'ต้องตรวจข้อมูลสลิป',
+    next: 'ตรวจยอดและความมั่นใจ OCR ด้วยตา',
+    stages: { OCR: 'done', MATCH: 'current', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  PIN_REQUIRED: {
+    icon: '🟡',
+    headline: 'ยังไม่ได้ PIN บัญชี',
+    next: 'เลือกบัญชีรับเงินก่อนบันทึก',
+    stages: { OCR: 'done', MATCH: 'current', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  RATE_REQUIRED: {
+    icon: '🟡',
+    headline: 'ยังไม่มีเรตห้อง',
+    next: 'ตั้งเรตที่ตรวจสอบแล้ว',
+    stages: { OCR: 'done', MATCH: 'current', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  MARKET_UNAVAILABLE: {
+    icon: '🟡',
+    headline: 'ยืนยันราคาไม่ได้',
+    next: 'รอราคาตลาดที่ตรวจสอบได้',
+    stages: { OCR: 'done', MATCH: 'current', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  PROMOTION_FAILED: {
+    icon: '🔴',
+    headline: 'ไม่สามารถยืนยันผลบันทึก',
+    next: 'ตรวจ Ledger ก่อน retry เพื่อกันรายการซ้ำ',
+    stages: { OCR: 'done', MATCH: 'done', IN: 'failed', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
+  VERIFIED: {
+    icon: '🟢',
+    headline: 'ผ่านการตรวจ รอบันทึก',
+    next: 'ระบบบันทึกด้วย promote RPC ที่มีอยู่',
+    stages: { OCR: 'done', MATCH: 'done', IN: 'current', WAIT: 'pending', DONE: 'pending' },
+    traceFrom: true,
+  },
 };
 
 const RULE_HEAVY = '━━━━━━━━━━━━━━';
@@ -187,6 +278,12 @@ export function buildMessage(status: TxStatus, data: TxData): string {
     lines.push(`💱 RATE ${fmt(data.rate)}`);
   }
 
+  // DUE per canonical convention: positive = USDT still owed (docs/settlement-delta-convention.md).
+  // Caller-supplied from the Ledger's delta_usdt; never invented here.
+  if (data.dueUsdt !== null && data.dueUsdt !== undefined) {
+    lines.push(`💎 DUE ${fmt(data.dueUsdt, 6)} USDT`);
+  }
+
   if (
     data.ocrConfidence !== null &&
     data.ocrConfidence !== undefined &&
@@ -198,7 +295,7 @@ export function buildMessage(status: TxStatus, data: TxData): string {
 
   if (status === 'DUPLICATE') {
     lines.push(`⚠️ ตรงกับ TX-${data.duplicateOfRef || '—'}`);
-  } else if (status !== 'ERROR') {
+  } else if (status !== 'ERROR' && status !== 'OCR_FAILED' && status !== 'PROMOTION_FAILED') {
     if (data.bank || data.account) lines.push(`🏦 ${data.bank || '—'}${data.account ? ` · ${data.account}` : ''}`);
     if (data.name) lines.push(`👤 ${data.name}`);
   }
