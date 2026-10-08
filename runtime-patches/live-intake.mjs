@@ -117,7 +117,7 @@ export function makeLedgerIdentity(fingerprint, now = new Date()) {
 export function findPinnedMatch(slip, accounts) {
   const slipLast4 = accountLast4(slip?.receiverLast4);
   const slipBank = normalizeBank(slip?.bank);
-  if (!slipLast4) return null;
+  if (!slipLast4 || (slip?.bankSupplied && !slipBank)) return null;
   const candidates = (accounts || []).filter((account) => accountLast4(account.account_number) === slipLast4);
   if (!candidates.length) return null;
   if (slipBank) {
@@ -192,6 +192,7 @@ export function parseVisionJson(text) {
     time: typeof data.time === "string" ? data.time.trim() || null : null,
     date: typeof data.date === "string" ? data.date.trim() || null : null,
     receiverLast4: accountLast4(data.receiverLast4),
+    bankSupplied: Boolean(String(data.bank ?? "").trim()),
     bank: normalizeBank(data.bank),
     receiverName: typeof data.receiverName === "string" ? data.receiverName.trim() || null : null,
     senderName: typeof data.senderName === "string" ? data.senderName.trim() || null : null,
@@ -294,10 +295,11 @@ function receiverNameFromText(text) {
 export function parseThaiSlipText(text, provider = "OCR_TEXT") {
   const raw = String(text || "").trim();
   if (!raw) return {
-    thbAmount: null, time: null, date: null, receiverLast4: null, bank: null,
+    thbAmount: null, time: null, date: null, receiverLast4: null, bankSupplied: false, bank: null,
     receiverName: null, senderName: null, confidence: null, provider,
   };
   const thbAmount = amountFromLabeledText(raw);
+  const bankSupplied = Boolean(raw);
   const bank = normalizeBank(raw);
   const receiverLast4 = receiverLast4FromText(raw);
   const receiverName = receiverNameFromText(raw);
@@ -316,6 +318,7 @@ export function parseThaiSlipText(text, provider = "OCR_TEXT") {
     time,
     date,
     receiverLast4,
+    bankSupplied,
     bank,
     receiverName,
     senderName: null,
@@ -1052,7 +1055,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     });
   const safeBank = (value) => {
     const raw = String(value || "").trim();
-    if (raw.length > 64 || /[\\r\\n]/.test(raw) || /(?:โอนเงินสำเร็จ|รหัสอ้างอิง|จำนวนเงิน|เงื่อนไขการโอน|ตรวจสอบสถานะ|จากนาง|ไปยัง)/u.test(raw)) return null;
+    if (raw.length > 64 || /[\r\n]/.test(raw) || /(?:โอนเงินสำเร็จ|รหัสอ้างอิง|จำนวนเงิน|เงื่อนไขการโอน|ตรวจสอบสถานะ|จากนาง|ไปยัง)/u.test(raw)) return null;
     const code = normalizeBank(raw);
     return ["KBANK","SCB","BBL","KTB","BAY","TTB","GSB","KKP","CIMB","UOB","TISCO","TMN"].includes(code) ? code : null;
   };

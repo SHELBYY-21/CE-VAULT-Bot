@@ -86,3 +86,56 @@ test('vision JSON rejects non-numeric JSON types instead of coercing them to zer
     assert.equal(parsed.confidence, null);
   }
 });
+
+const { findPinnedMatch, formatIntakeV4Reply, parseThaiSlipText, parseVisionJson } = runtime;
+
+const pins = [{ id: 'scb', bank_name: 'SCB', account_number: '1234564321' }];
+
+test('vision OCR preserves supplied banks that cannot be normalized', () => {
+  for (const bank of ['OTHER', 'UNKNOWN BANK', 'SCB' + 'X'.repeat(65)]) {
+    const slip = parseVisionJson(JSON.stringify({ bank, receiverLast4: '4321' }));
+    assert.equal(slip.bank, null);
+    assert.equal(slip.bankSupplied, true);
+    assert.equal(findPinnedMatch(slip, pins), null);
+  }
+  for (const bank of [undefined, null, '', '   ']) {
+    const slip = parseVisionJson(JSON.stringify({ bank, receiverLast4: '4321' }));
+    assert.equal(slip.bankSupplied, false);
+    assert.equal(findPinnedMatch(slip, pins), pins[0]);
+  }
+});
+
+test('text OCR preserves nonempty bank input before normalization discards it', () => {
+  for (const text of ['UNKNOWN BANK\nxxx-xxx-4321', 'SCB\n' + 'X'.repeat(65) + '\nxxx-xxx-4321']) {
+    const slip = parseThaiSlipText(text);
+    assert.equal(slip.bank, null);
+    assert.equal(slip.receiverLast4, '4321');
+    assert.equal(slip.bankSupplied, true);
+    assert.equal(findPinnedMatch(slip, pins), null);
+  }
+  for (const text of ['', '   ']) assert.equal(parseThaiSlipText(text).bankSupplied, false);
+  const slip = parseThaiSlipText('SCB\nxxx-xxx-4321');
+  assert.equal(slip.bankSupplied, true);
+  assert.equal(findPinnedMatch(slip, pins), pins[0]);
+});
+
+test('pinned matching checks bank presence independently of the normalized bank', () => {
+  assert.equal(findPinnedMatch({ receiverLast4: '4321', bank: null, bankSupplied: true }, pins), null);
+  assert.equal(findPinnedMatch({ receiverLast4: '4321', bank: null }, pins), pins[0]);
+  assert.equal(findPinnedMatch({ receiverLast4: '4321', bank: 'SCB', bankSupplied: true }, pins), pins[0]);
+  assert.equal(findPinnedMatch({ receiverLast4: '4321', bank: 'KBANK', bankSupplied: true }, pins), null);
+  assert.equal(findPinnedMatch({ receiverLast4: '4321' }, [...pins, { ...pins[0], id: 'other' }]), null);
+});
+
+test('compact bank display rejects CR/LF while accepting aliases with r, n or backslashes', () => {
+  const card = bank => formatIntakeV4Reply({ pending: { status: 'NEEDS_REVIEW', bank } });
+  for (const bank of ['S\rCB', 'S\nCB', 'S\r\nCB']) {
+    assert.match(card(bank), /🏦 บัญชีรับ: ไม่ยืนยัน/);
+  }
+  for (const [bank, code] of [['Kasikorn', 'KBANK'], ['Krungthai', 'KTB'], ['S\\CB', 'SCB']]) {
+    assert.match(card(bank), new RegExp(`🏦 บัญชีรับ: ${code}`));
+  }
+  for (const bank of ['SCB' + 'X'.repeat(65), 'SCB จำนวนเงิน', 'UNKNOWN BANK']) {
+    assert.match(card(bank), /🏦 บัญชีรับ: ไม่ยืนยัน/);
+  }
+});
