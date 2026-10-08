@@ -1110,7 +1110,11 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   lines.push("─────────────", flow);
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
-  for (const issue of issues.slice(0,4)) lines.push("⚠️ " + issue);
+  for (const issue of issues.slice(0,4)) {
+    // Issue details may contain raw OCR bank text; never echo it into Telegram.
+    const safeIssue = String(issue).replace(/FOUND[^\n]*?(?=EXPECTED|$)/u, "FOUND · [unverified OCR] · ");
+    lines.push("⚠️ " + safeIssue.slice(0,160));
+  }
   lines.push("NEXT: " + (duplicate ? "ตรวจรายการเดิม" : isRecorded ? "รอหลักฐานส่ง USDT" :
     verified ? "แอดมินตรวจสลิปแล้วกด Approve" : "ตรวจข้อมูลก่อนอนุมัติ"));
   return lines.join("\n");
