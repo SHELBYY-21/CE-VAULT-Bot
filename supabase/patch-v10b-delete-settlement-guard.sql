@@ -8,7 +8,7 @@ returns table (tx jsonb, admin_holding numeric)
 language plpgsql
 security invoker
 set search_path = public, pg_temp
-as $
+as $$
 declare
   v_old public.transactions%rowtype;
   v_delta numeric;
