@@ -87,3 +87,79 @@ test('generated runtime router owns home and ping commands', () => {
   assert.match(helpers, /handleTelegramHome/);
   assert.match(helpers, /handleTelegramSystemStatus/);
 });
+
+
+test('system card does not claim readiness when dependencies are unavailable', () => {
+  const system = runtime.formatBotSystemReply({
+    telegramOnline: true,
+    webhookVerified: false,
+    databaseConfigured: false,
+    pendingUpdates: null,
+    safety: 'LOCKED',
+  });
+  assert.match(system, /QUEUE\s+UNKNOWN/);
+  assert.match(system, /CHECK REQUIRED/);
+  assert.doesNotMatch(system, /OPERATOR READY/);
+});
+
+test('home reply exposes a real read-only inline navigation keyboard', () => {
+  assert.equal(typeof runtime.botHomeReplyMarkup, 'function');
+  const markup = runtime.botHomeReplyMarkup();
+  const buttons = markup.inline_keyboard.flat();
+  assert.ok(buttons.length >= 4);
+  assert.ok(buttons.every((button) => typeof button.callback_data === 'string'));
+  assert.deepEqual(
+    buttons.map((button) => button.callback_data),
+    ['ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin'],
+  );
+});
+
+test('duplicate and promotion failure results are not mislabeled as active verification', () => {
+  const duplicate = runtime.formatIntakeReply({
+    pending: { ledger_ref: 'CE-DUP', status: 'RECORDED', thb_in: '1000' },
+    duplicate: true,
+  });
+  assert.match(duplicate, /DUPLICATE/);
+  assert.doesNotMatch(duplicate, /VERIFYING/);
+
+  const failed = runtime.formatIntakeReply({
+    pending: { ledger_ref: 'CE-FAIL', status: 'PROMOTION_FAILED', thb_in: '1000' },
+  });
+  assert.match(failed, /RECORD FAILED/);
+  assert.doesNotMatch(failed, /VERIFYING/);
+});
+
+test('recorded card describes account/date match without claiming Telegram PIN verification', () => {
+  const recorded = runtime.formatIntakeReply({
+    pending: {
+      ledger_ref: 'CE-20261008-B97B',
+      status: 'RECORDED',
+      thb_in: '10000',
+      bank: 'KBANK',
+      account_masked: '••••3855',
+      pin_match: true,
+    },
+    recorded: { tx_id: 'tx-safe-id' },
+  });
+  assert.match(recorded, /ACCOUNT \/ DATE MATCHED/);
+  assert.doesNotMatch(recorded, /PIN \/ BANK VERIFIED/);
+});
+
+test('runtime helper bounds webhook diagnostics and handles CE inline callbacks', () => {
+  const helpers = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
+  assert.match(helpers, /Promise\.race/);
+  assert.match(helpers, /handleTelegramCallback/);
+  assert.match(helpers, /sendMessageWithMarkup/);
+  assert.match(helpers, /pendingUpdates:\s*webhook\s*\?/);
+});
+
+test('base patch and v2 wrapper share the same helper source', () => {
+  const patch = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
+  const wrapper = readFileSync(new URL('./patch-live-intake-v2.mjs', import.meta.url), 'utf8');
+  assert.match(patch, /server-intake-helpers\.txt/);
+  assert.doesNotMatch(patch, /const intakeHelpers = String\.raw/);
+  assert.match(wrapper, /patch-live-intake\.mjs/);
+  assert.doesNotMatch(wrapper, /LIVE_INTAKE_V2_TEMPLATE_BOUNDARY_NOT_FOUND/);
+  assert.match(patch, /sendMessageWithMarkup/);
+  assert.match(patch, /answerCallbackQuery/);
+});
