@@ -67,7 +67,7 @@ export function normalizeBank(value) {
     [/TMN|TRUEMONEY|ทรูมันนี่/, "TMN"],
   ];
   for (const [pattern, code] of aliases) if (raw.length <= 48 && pattern.test(raw)) return code;
-  return raw || null;
+  return null;
 }
 
 export function accountLast4(value) {
