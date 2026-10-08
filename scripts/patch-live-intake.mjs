@@ -134,7 +134,7 @@ const repoMethods = String.raw`  return Object.freeze({
     },
     async rejectVerifiedPendingSlip(id, chatId, telegramUserId) {
       const rows = ensureData(await db.from("pending_slips")
-        .update({ status: "REJECTED", note: "ADMIN_REJECTED_BY_TG=" + String(telegramUserId), updated_at: new Date().toISOString() })
+        .update({ status: "REJECTED", updated_at: new Date().toISOString() })
         .eq("id", id)
         .eq("chat_id", chatId)
         .eq("status", "VERIFIED")
