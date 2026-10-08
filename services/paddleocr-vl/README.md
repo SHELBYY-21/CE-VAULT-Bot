@@ -1,43 +1,36 @@
-# CE VAULT · PaddleOCR-VL-1.6-1.6 Runtime
+# CE VAULT · PaddleOCR-VL-1.6 Runtime
 
-Dedicated OCR service for CE VAULT Thai Slip OCR V4.
+Production OCR service for CE VAULT Thai Slip OCR V4.
 
-## Runtime
+## Live runtime
 
-- PaddleOCR package: `3.6.0`
-- PaddleOCR-VL-1.6 model family: `1.6`
-- PaddlePaddle CPU runtime: `3.2.1`
-- Serving: `paddlex --serve`
-- API endpoint consumed by CE VAULT: `POST /layout-parsing`
-- Default port: `8080`
+- Model: `LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M`
+- Server: `llama.cpp` OpenAI-compatible multimodal server
+- API: `POST /v1/chat/completions`
+- Health: `GET /health`
+- Model info: `GET /v1/models`
+- Port: `8080`
+
+This Q4 multimodal runtime is the production-compatible deployment for the current Railway memory limit. The full PaddleX/PaddlePaddle service exceeded the available runtime memory during model startup.
 
 ## Provider chain
 
 ```
-PaddleOCR-VL-1.6-1.6
+PaddleOCR-VL-1.6
   -> XAI Vision
   -> OCR.space
   -> Manual Review / OCR_FAILED
 ```
 
-Paddle is presentation/extraction only. It must never mark a transaction as settled.
+OCR is extraction only. It must never mark a transaction as settled.
 
-## Build
-
-```bash
-docker build -t ce-paddleocr-vl:1.6 .
-```
-
-## Run
+## Build / run
 
 ```bash
-docker run --rm -p 127.0.0.1:8080:8080 ce-paddleocr-vl:1.6
+docker build -t ce-paddleocr-vl:1.6-q4 .
+docker run --rm -p 8080:8080 ce-paddleocr-vl:1.6-q4
 ```
 
-Then configure the CE VAULT bot with:
+CE VAULT uses `PADDLEOCR_LLAMA_URL` when configured and retains XAI/OCR.space fallbacks.
 
-```
-PADDLEOCR_BASE_URL=http://<host>:8080
-```
-
-Do not place secrets in this directory.
+Do not store secrets in this directory.
