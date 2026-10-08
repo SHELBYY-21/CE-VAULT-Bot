@@ -119,3 +119,25 @@ test('V4 keeps real edit/delete callback names and completed delete path', () =>
   assert.match(callback, /const r = await deleteTransaction\(txId\)/);
   assert.match(callback, /TX_NOT_SETTLED/);
 });
+
+test('RECORDED cards cannot offer DELETE while completed cards retain the protected path', () => {
+  const recordedCard = live.slice(live.indexOf('export function liveRecorded('), live.indexOf('export function liveSettled('));
+  const settledCard = live.slice(live.indexOf('export function liveSettled('), live.indexOf('export function liveError('));
+  assert.doesNotMatch(recordedCard, /id: 'del'/);
+  assert.doesNotMatch(recordedCard, /callback_data: `del:/);
+  assert.match(settledCard, /callback_data: `del:/);
+});
+
+test('room reset cannot bypass the completed-only RPC via direct table delete', () => {
+  const resetService = transactionService.slice(transactionService.indexOf('export async function resetRoom('), transactionService.indexOf('export interface RoomStat'));
+  assert.match(resetService, /RESET_ROOM_HARD_DELETE_DISABLED/);
+  assert.doesNotMatch(resetService, /\.delete\s*\(/);
+  const resetCallback = webhook.slice(webhook.indexOf("if (action === 'resetgo')"), webhook.indexOf('const txId = arg;'));
+  assert.match(resetCallback, /ปิด RESET แบบลบข้อมูล/);
+  assert.doesNotMatch(resetCallback, /resetRoom\(chatId\)/);
+});
+
+test('database deletion guard retains hardened SQL function attributes', () => {
+  assert.match(deleteRpcGuard, /security invoker/i);
+  assert.match(deleteRpcGuard, /set search_path = public, pg_temp/i);
+});
