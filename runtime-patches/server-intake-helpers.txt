@@ -284,12 +284,21 @@ async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
   const useV4 = process.env.CE_RESPONSE_V4 !== "0";
   const rich = useV4 ? formatIntakeV4RichMessage(args) : formatIntakeRichMessage(args);
   const fallback = useV4 ? formatIntakeV4Reply(args) : formatIntakeReply(args);
+  const id = String(args?.pending?.id || "");
+  const approvalButtons = useV4 && args?.pending?.status === "VERIFIED" &&
+    /^[0-9a-f-]{36}$/i.test(id) ? {
+      inline_keyboard: [[
+        { text: "✅ APPROVE", callback_data: "ce:approve:" + id },
+        { text: "📝 EDIT", callback_data: "ce:edit:" + id },
+        { text: "⛔ REJECT", callback_data: "ce:reject:" + id },
+      ]],
+    } : undefined;
   if (liveMessageId) {
     try {
-      return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback);
+      return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback, approvalButtons);
     } catch {}
   }
-  return telegram.sendRichMessageWithFallback(chatId, rich, fallback);
+  return telegram.sendRichMessageWithFallback(chatId, rich, fallback, approvalButtons);
 }
 
 async function handleLiveSlipMessage(message) {
