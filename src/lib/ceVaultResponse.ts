@@ -179,7 +179,7 @@ export function buildMessage(status: TxStatus, data: TxData): string {
   }
 
   const hasUsdt = data.usdt !== null && data.usdt !== undefined;
-  lines.push(`📥 ${fmt(data.thb)} THB${hasUsdt ? ` → 💎 ${fmt(data.usdt)} USDT` : ''}`);
+  lines.push(`📥 ${fmt(data.thb)} THB${hasUsdt ? ` → 💎 ${fmt(data.usdt, 6)} USDT` : ''}`);
 
   if (data.allChecksPass === true) {
     lines.push(`💱 RATE ${fmt(data.rate)} · 🟢 ALL CHECKS PASS`);
