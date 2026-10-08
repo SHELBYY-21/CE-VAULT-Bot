@@ -1066,21 +1066,34 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const amount = n(pending?.thb_in);
   const usdt = n(pending?.should_send,6);
   const rate = n(deskRate?.sell_rate);
+  // Intake has no authoritative outbound ledger read. Never treat an OCR value as paid.
+  // A settlement summary is accepted only when explicitly supplied from a verified ledger read.
+  const ledgerSettlement = recorded?.settlement_verified === true ? recorded : null;
+  const dueRaw = isRecorded && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
+    ? Number(pending.should_send) : null;
+  const clearedRaw = ledgerSettlement && Number.isFinite(Number(ledgerSettlement?.cleared_usdt)) &&
+    Number(ledgerSettlement.cleared_usdt) >= 0 ? Number(ledgerSettlement.cleared_usdt) : null;
+  const outstandingRaw = dueRaw != null && clearedRaw != null && clearedRaw <= dueRaw
+    ? Math.max(0, dueRaw - clearedRaw) : null;
   const confidence = pending?.ocr_confidence == null ? null : Number(pending.ocr_confidence);
   const allChecksPass = !duplicate && (verified || isRecorded) && pending?.pin_match === true &&
     Number(deskRate?.sell_rate) > 0 && market?.fresh === true && Number.isFinite(confidence) &&
     confidence >= OCR_AUTO_MIN;
   const lines = [
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
-    headline, '━━━━━━━━━━━━━━',
+    `${headline} (Status)`, '━━━━━━━━━━━━━━',
     `📥 ${amount} THB → 💎 ${usdt} USDT`,
     `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟢 ALL CHECKS PASS') : ''}`,
+    `📊 ต้องส่ง (Total Due): ${n(dueRaw)} USDT`,
+    `✅ เคลียร์แล้ว (Cleared): ${n(clearedRaw)} USDT`,
+    `⏳ ค้างส่ง (Outstanding): ${n(outstandingRaw)} USDT`,
+    `📥 เงินรับ (Received): ${amount} THB · เรตห้อง (Room Rate): ${rate}`,
   ];
   if (!duplicate && status !== 'PROMOTION_FAILED') {
-    if (bank || account) lines.push(`🏦 ${bank || '—'} · ${account || '—'}`);
+    if (bank || account) lines.push(`🏦 บัญชีรับ (Receiving Bank): ${bank || '—'} · ${account ? String(account).replace(/.(?=.{4})/g, '•') : '—'}`);
     if (pending?.name) lines.push(`👤 ${pending.name}`);
   }
-  if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 OCR ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
+  if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 ความมั่นใจ OCR (OCR Confidence): ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
   lines.push('─────────────');
   // Five-stage flow is an evidence-based presentation, not a settlement command.
   // Only an authoritative recorded transaction can advance to IN; never infer DONE.
@@ -1107,7 +1120,7 @@ export function formatIntakeV4RichMessage(args) {
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR)/u.test(line));
+  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +
