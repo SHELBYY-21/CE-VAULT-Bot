@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const runtime = await import('../runtime-patches/live-intake.mjs');
 const source = readFileSync(new URL('../runtime-patches/live-intake.mjs', import.meta.url), 'utf8');
+const sourceOcr = readFileSync(new URL('../src/lib/ocr.ts', import.meta.url), 'utf8');
+const paddleSource = readFileSync(new URL('../src/lib/paddleOcr.ts', import.meta.url), 'utf8');
 
 test('Thai Slip OCR V4 prefers PaddleOCR-VL-1.6 before general VLM fallbacks', () => {
   const cap = runtime.intakeCapability();
@@ -53,4 +55,15 @@ test('biller receipt extraction anchors amount to payment labels instead of larg
 test('provider diagnostics expose only provider/status metadata, never OCR payload content', () => {
   assert.match(source, /\[CE OCR\] PADDLE/);
   assert.doesNotMatch(source, /console\.(?:warn|error)\([^\n]*(?:markdown|rawText|ocrText|base64|receiverName|account_number)/i);
+});
+
+
+test('source Next.js OCR path mirrors PaddleOCR-first provider order', () => {
+  assert.match(sourceOcr, /analyzeSlipWithPaddle/);
+  const paddleIndex = sourceOcr.indexOf('analyzeSlipWithPaddle');
+  const grokIndex = sourceOcr.indexOf('analyzeSlipWithGrok');
+  assert.ok(paddleIndex >= 0 && grokIndex >= 0 && paddleIndex < grokIndex);
+  assert.match(paddleSource, /PaddleOCR-VL-1\.6/);
+  assert.match(paddleSource, /layout-parsing/);
+  assert.match(paddleSource, /useDocUnwarping:\s*true/);
 });
