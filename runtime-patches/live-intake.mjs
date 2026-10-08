@@ -1053,8 +1053,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     const raw = String(value || "").trim();
     if (raw.length > 64 || /[\\r\\n]/.test(raw) || /(?:โอนเงินสำเร็จ|รหัสอ้างอิง|จำนวนเงิน|เงื่อนไขการโอน|ตรวจสอบสถานะ|จากนาง|ไปยัง)/u.test(raw)) return null;
     const code = normalizeBank(raw);
-    return code && /^[A-Z0-9]{2,12}$/.test(code) && code !== raw.toUpperCase().replace(/[^A-Z0-9ก-๙]/g, "") && code !== "BANK"
-      ? code : (["KBANK","SCB","BBL","KTB","BAY","TTB","GSB","KKP","CIMB","UOB","TISCO","TMN"].includes(code) ? code : null);
+    return ["KBANK","SCB","BBL","KTB","BAY","TTB","GSB","KKP","CIMB","UOB","TISCO","TMN"].includes(code) ? code : null;
   };
   const bank = safeBank(pending?.bank) || (pending?.pin_match ? safeBank(pinnedAccount?.bank_name) : null);
   const accountRaw = pending?.account_masked || (pending?.pin_match ? pinnedAccount?.account_number : null);
