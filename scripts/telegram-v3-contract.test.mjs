@@ -81,3 +81,10 @@ test('recorded source card explicitly points to WAIT rather than DONE', () => {
   assert.match(block, /WAIT/i);
   assert.doesNotMatch(block, /DONE\s*✓/);
 });
+
+
+test('classic inline callback buttons avoid RichMessage-only style fields', () => {
+  const callbackButtons = [...live.matchAll(/\{\s*text:\s*'[^']+',\s*callback_data:[^}]+\}/g)].map((m) => m[0]);
+  assert.ok(callbackButtons.length > 0, 'expected callback buttons in liveMessage');
+  for (const button of callbackButtons) assert.doesNotMatch(button, /\bstyle\s*:/);
+});
