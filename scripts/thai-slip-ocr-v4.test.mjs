@@ -59,9 +59,12 @@ test('provider diagnostics expose only provider/status metadata, never OCR paylo
 
 
 test('source Next.js OCR path mirrors PaddleOCR-first provider order', () => {
-  assert.match(sourceOcr, /analyzeSlipWithPaddle/);
-  const paddleIndex = sourceOcr.indexOf('analyzeSlipWithPaddle');
-  const grokIndex = sourceOcr.indexOf('analyzeSlipWithGrok');
+  const start = sourceOcr.indexOf('export async function analyzeSlip(');
+  const end = sourceOcr.indexOf('/** legacy helper', start);
+  assert.ok(start >= 0 && end > start, 'analyzeSlip function must exist');
+  const block = sourceOcr.slice(start, end);
+  const paddleIndex = block.indexOf('analyzeSlipWithPaddle');
+  const grokIndex = block.indexOf('analyzeSlipWithGrok');
   assert.ok(paddleIndex >= 0 && grokIndex >= 0 && paddleIndex < grokIndex);
   assert.match(paddleSource, /PaddleOCR-VL-1\.6/);
   assert.match(paddleSource, /layout-parsing/);
