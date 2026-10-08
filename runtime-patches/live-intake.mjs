@@ -292,6 +292,87 @@ function paddleEndpoint() {
   return /\/layout-parsing\/?$/i.test(raw) ? raw.replace(/\/$/, "") : `${raw.replace(/\/$/, "")}/layout-parsing`;
 }
 
+function paddleLlamaEndpoint() {
+  const raw = String(
+    process.env.PADDLEOCR_LLAMA_URL ||
+    "https://ce-ocr-paddlevl16-production.up.railway.app"
+  ).trim();
+  if (!raw) return null;
+  return /\/v1\/chat\/completions\/?$/i.test(raw)
+    ? raw.replace(/\/$/, "")
+    : `${raw.replace(/\/$/, "")}/v1/chat/completions`;
+}
+
+const PADDLE_LLAMA_MODEL =
+  process.env.PADDLEOCR_LLAMA_MODEL ||
+  "LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M";
+
+const PADDLE_LLAMA_PROMPT =
+  "Transcribe ALL visible text from this Thai payment receipt/slip. Preserve useful line breaks and original Thai/English/numbers. Do not summarize, calculate, translate, or invent missing values. Return plain text only.";
+
+function llamaMessageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part === "string" ? part : part?.text || "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+async function analyzeWithPaddleLlama(buffer, mimeType = "image/jpeg") {
+  const endpoint = paddleLlamaEndpoint();
+  if (!endpoint) return null;
+  const dataUrl = `data:${mimeType || "image/jpeg"};base64,${buffer.toString("base64")}`;
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: PADDLE_LLAMA_MODEL,
+        temperature: 0,
+        max_tokens: 1024,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: PADDLE_LLAMA_PROMPT },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        }],
+      }),
+      signal: AbortSignal.timeout(Math.max(PADDLEOCR_TIMEOUT_MS, 30_000)),
+    });
+
+    if (!response.ok) {
+      console.warn("[CE OCR] PADDLE_LLAMA_HTTP", {
+        status: response.status,
+        model: PADDLEOCR_MODEL,
+      });
+      return null;
+    }
+
+    const payload = await response.json();
+    const text = llamaMessageText(payload?.choices?.[0]?.message?.content);
+    if (!text.trim()) {
+      console.warn("[CE OCR] PADDLE_LLAMA_EMPTY", { model: PADDLEOCR_MODEL });
+      return null;
+    }
+
+    const parsed = parseThaiSlipText(text, "PADDLEOCR_VL_1_6_LLAMA");
+    if (parsed.thbAmount == null) {
+      console.warn("[CE OCR] PADDLE_LLAMA_NO_AMOUNT", { model: PADDLEOCR_MODEL });
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("[CE OCR] PADDLE_LLAMA_ERROR", {
+      name: error?.name || "Error",
+      model: PADDLEOCR_MODEL,
+    });
+    return null;
+  }
+}
+
 async function analyzeWithPaddleVl(buffer) {
   const endpoint = paddleEndpoint();
   if (!endpoint) return null;
@@ -426,7 +507,11 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw asError("EMPTY_IMAGE");
   if (buffer.length > MAX_IMAGE_BYTES) throw asError("IMAGE_TOO_LARGE");
 
-  const paddle = await analyzeWithPaddleVl(buffer);
+  const paddleLlama = await analyzeWithPaddleLlama(buffer, mimeType);
+  if (paddleLlama?.thbAmount != null && extractionScore(paddleLlama) >= 80) return paddleLlama;
+
+  const paddleOfficial = await analyzeWithPaddleVl(buffer);
+  const paddle = bestExtraction(paddleLlama, paddleOfficial);
   if (paddle?.thbAmount != null && extractionScore(paddle) >= 80) return paddle;
 
   const xai = await analyzeWithXai(buffer, mimeType);
@@ -448,19 +533,29 @@ export async function analyzeSlipBuffer(buffer, mimeType = "image/jpeg") {
 }
 
 export function intakeCapability() {
-  const paddle = Boolean(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL);
+  const paddleLlama = Boolean(
+    process.env.PADDLEOCR_LLAMA_URL ||
+    "https://ce-ocr-paddlevl16-production.up.railway.app"
+  );
+  const paddleOfficial = Boolean(process.env.PADDLEOCR_VL_URL || process.env.PADDLEOCR_BASE_URL);
+  const paddle = paddleLlama || paddleOfficial;
   const xai = Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY);
   const ocrSpace = Boolean(process.env.OCR_SPACE_API_KEY);
   return {
     ocr_configured: paddle || xai || ocrSpace,
     preferred_model: PADDLEOCR_MODEL,
     provider_order: ["paddleocr_vl_1_6", "xai_vision", "ocr_space"],
+    paddle_backend: paddleLlama
+      ? "LLAMA_CPP_MULTIMODAL"
+      : paddleOfficial
+        ? "LAYOUT_PARSING"
+        : "UNCONFIGURED",
     providers: {
       paddleocr_vl_1_6: paddle,
       xai_vision: xai,
       ocr_space: ocrSpace,
     },
-    thai_strategy: "PaddleOCR-VL-1.6 primary; dedicated Thai PP-OCRv5 recommended for self-hosted second-pass; PP-OCRv6 is not selected as Thai primary",
+    thai_strategy: "PaddleOCR-VL-1.6 primary; XAI semantic fallback; OCR.space last resort; unresolved evidence goes to manual review/OCR_FAILED",
     auto_min_confidence: OCR_AUTO_MIN,
     market_source: "BINANCE_TH_SPOT",
     market_ttl_seconds: MARKET_TTL_MS / 1000,
