@@ -17,7 +17,7 @@ test('Paddle runtime uses the installed PaddlePaddle engine and exposes the serv
   assert.match(start, /--pipeline/);
   assert.doesNotMatch(start, /--engine\s+transformers/);
   assert.match(start, /--port/);
-  assert.match(start, /PaddleOCR-VL-1\.6/);
+  assert.match(start, /PaddleOCR-VL-1.6-1\.6/);
 });
 
 test('CE bot keeps Paddle first with safe fallbacks', () => {
