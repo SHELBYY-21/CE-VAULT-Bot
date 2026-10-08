@@ -85,3 +85,29 @@ test('Render V4 rich message escapes untrusted slip text', () => {
   assert.match(rich.html, /&lt;script&gt;/);
   assert.match(rich.html, /<details/);
 });
+
+const { assertTransactionDeleteAllowed, DELETE_BLOCKED_MESSAGE } = await import('../src/lib/transactionDeletePolicy.mjs');
+const transactions = readFileSync(new URL('../src/lib/transactions.ts', import.meta.url), 'utf8');
+const deleteMigration = readFileSync(new URL('../supabase/patch-v11-delete-settled-only.sql', import.meta.url), 'utf8');
+
+test('DELETE on RECORDED, WAIT and unknown statuses is rejected; only completed is eligible', () => {
+  for (const status of ['ocr_success', 'waiting_admin', 'RECORDED', 'WAIT_USDT', 'DONE', '', null, undefined]) {
+    assert.throws(() => assertTransactionDeleteAllowed(status), {
+      code: 'TX_NOT_SETTLED', message: DELETE_BLOCKED_MESSAGE,
+    }, String(status));
+  }
+  assert.doesNotThrow(() => assertTransactionDeleteAllowed('completed'));
+});
+
+test('Telegram DELETE checks status before callback acknowledgement and the service checks again', () => {
+  const callback = webhook.slice(webhook.indexOf('const txId = arg;'));
+  assert.match(callback, /if \(action === 'del'\) \{[\s\S]*?assertTransactionDeleteAllowed\(tx\.status\);[\s\S]*?answerCallback\(id, DELETE_BLOCKED_MESSAGE\)/);
+  const deleteService = transactions.slice(transactions.indexOf('export async function deleteTransaction('), transactions.indexOf('export interface RecordDealInput'));
+  assert.match(deleteService, /assertTransactionDeleteAllowed\(old\.status\);[\s\S]*?await rpcDelete\(txId\)/);
+});
+
+test('Supabase deletion migration enforces completed atomically before balance mutations', () => {
+  assert.match(deleteMigration, /delete from public\.transactions\s+where id = p_tx_id and status = 'completed'\s+returning \* into v_old;/);
+  assert.match(deleteMigration, /raise exception 'TX_NOT_FOUND_OR_NOT_SETTLED'/);
+  assert.match(deleteMigration, /revoke execute on function public\.ce_delete_transaction\(uuid\) from public, anon, authenticated;/);
+});
