@@ -182,12 +182,12 @@ function parseVisionJson(text) {
     bank: normalizeBank(data.bank),
     receiverName: typeof data.receiverName === "string" ? data.receiverName.trim() || null : null,
     senderName: typeof data.senderName === "string" ? data.senderName.trim() || null : null,
-    confidence: Number.isFinite(confidence) ? confidence : null,
+    confidence,
     provider: "XAI_VISION",
   };
 }
 
-const SLIP_PROMPT = `You are a Thai bank transfer slip parser. Return ONLY JSON: {"thbAmount":number|null,"time":"HH:MM"|null,"date":"DD/MM/YY"|null,"receiverLast4":"XXXX"|null,"bank":"KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|OTHER"|null,"receiverName":string|null,"senderName":string|null,"confidence":number}. Read the RECEIVER/payee account, not sender. Do not invent values. confidence is 0-100.`;
+const SLIP_PROMPT = `You are a Thai payment evidence parser. The image may be a bank transfer slip, QR payment slip, bill-payment/biller receipt, or a bank-generated receipt screenshot. Return ONLY JSON: {"thbAmount":number|null,"time":"HH:MM"|null,"date":"DD/MM/YY"|null,"receiverLast4":"XXXX"|null,"bank":"KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|OTHER"|null,"receiverName":string|null,"senderName":string|null,"confidence":number|null}. "thbAmount" is the transaction amount actually paid/transferred in THB. Never use account numbers, reference numbers, dates, times, fees, or balances as the transaction amount. Read the RECEIVER/payee or biller, not the sender. For biller receipts, BILLER NOTE may identify the payee but is not an account number. If a value is not visibly supported by the image, return null. Do not invent values. confidence is 0-100 only when the image supports the extraction.`;
 
 async function analyzeWithXai(buffer, mimeType) {
   const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
@@ -205,10 +205,16 @@ async function analyzeWithXai(buffer, mimeType) {
       }),
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn("[CE OCR] XAI_HTTP", { status: response.status, model });
+      return null;
+    }
     const payload = await response.json();
-    return parseVisionJson(payload?.choices?.[0]?.message?.content || "");
-  } catch {
+    const parsed = parseVisionJson(payload?.choices?.[0]?.message?.content || "");
+    if (!parsed?.thbAmount) console.warn("[CE OCR] XAI_NO_AMOUNT", { model });
+    return parsed;
+  } catch (error) {
+    console.warn("[CE OCR] XAI_ERROR", { name: error?.name || "Error" });
     return null;
   }
 }
@@ -232,12 +238,19 @@ async function analyzeWithOcrSpace(buffer, mimeType) {
       body: body.toString(),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn("[CE OCR] OCR_SPACE_HTTP", { status: response.status });
+      return null;
+    }
     const payload = await response.json();
     const amount = pickAmount(payload?.ParsedResults?.[0]?.ParsedText || "");
-    if (amount == null) return null;
+    if (amount == null) {
+      console.warn("[CE OCR] OCR_SPACE_NO_AMOUNT");
+      return null;
+    }
     return { thbAmount: amount, time: null, date: null, receiverLast4: null, bank: null, receiverName: null, senderName: null, confidence: 70, provider: "OCR_SPACE" };
-  } catch {
+  } catch (error) {
+    console.warn("[CE OCR] OCR_SPACE_ERROR", { name: error?.name || "Error" });
     return null;
   }
 }
@@ -351,8 +364,8 @@ function displayMoney(value, maximumFractionDigits = 2) {
 }
 
 function confidenceBadge(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "⚪ OCR UNKNOWN";
+  const n = finiteNumberOrNull(value);
+  if (n == null) return "⚪ OCR UNKNOWN";
   const icon = n >= 90 ? "🟢" : n >= 60 ? "🟡" : "🔴";
   return `${icon} OCR ${String(value).replace(/\.0+$/, "")}%`;
 }
@@ -477,8 +490,15 @@ function richEscape(value) {
 }
 
 function shortTxRef(ledgerRef) {
-  const clean = String(ledgerRef || "").replace(/[^A-Za-z0-9]/g, "");
-  return clean ? clean.slice(-4).toUpperCase() : "—";
+  const raw = String(ledgerRef || "");
+  const token = raw.split("-").at(-1)?.replace(/[^0-9A-Fa-f]/g, "") || "";
+  if (!token) return "—";
+  try {
+    return String(Number(BigInt(`0x${token.slice(0, 12)}`) % 10000n)).padStart(4, "0");
+  } catch {
+    const digits = raw.replace(/\D/g, "");
+    return digits ? digits.slice(-4).padStart(4, "0") : "—";
+  }
 }
 
 function intakeV3State({ pending, recorded, duplicate }) {
@@ -535,8 +555,8 @@ function intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccoun
   else if (status === "NEEDS_REVIEW") rows.push("OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม");
   else if (pending?.pin_match && deskRate?.sell_rate && market?.price) rows.push("🟢 ALL CHECKS PASS");
 
-  const confidence = Number(pending?.ocr_confidence);
-  if (Number.isFinite(confidence) && confidence < 95) rows.push(`OCR confidence · ${confidence}%`);
+  const confidence = finiteNumberOrNull(pending?.ocr_confidence);
+  if (confidence != null && confidence < 95) rows.push(`OCR confidence · ${confidence}%`);
   return rows.length ? rows : ["ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง"];
 }
 
