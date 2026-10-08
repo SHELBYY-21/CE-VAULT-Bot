@@ -145,6 +145,7 @@ export function liveSettled(d: {
   sellRate?: number | null;
   adminName?: string | null;
   bank?: string | null;
+  accountNumber?: string | null;
   last4?: string | null;
   transactionId?: string | null;
 }): OutgoingMessage {
@@ -154,7 +155,7 @@ export function liveSettled(d: {
     text: ceRecorded({
       kind: d.thb != null ? 'incoming' : 'outgoing',
       ledgerRef: d.ledgerRef, thb: d.thb, usdt: d.usdt,
-      sellRate: d.sellRate, adminName: d.adminName, bank: d.bank, last4: d.last4,
+      sellRate: d.sellRate, adminName: d.adminName, bank: d.bank, accountNumber: d.accountNumber, last4: d.last4,
     }),
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
