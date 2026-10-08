@@ -8,7 +8,7 @@ const runtime = readFileSync(new URL('../runtime-patches/live-intake.mjs', impor
 
 test('Paddle runtime pins the 1.6-capable PaddleOCR release', () => {
   assert.match(dockerfile, /paddleocr\[doc-parser\]==3\.6\.0/);
-  assert.match(dockerfile, /paddlepaddle==3\.2\.1/);
+  assert.match(dockerfile, /paddlepaddle==3.3.1/);
   assert.match(dockerfile, /paddlex --install serving/);
 });
 
