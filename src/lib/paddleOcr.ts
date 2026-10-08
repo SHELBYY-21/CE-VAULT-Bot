@@ -151,14 +151,14 @@ async function analyzeSlipWithPaddleLlama(
       body: JSON.stringify({
         model: LLAMA_MODEL,
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: 384,
         messages: [
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Transcribe ALL visible text from this Thai payment receipt/slip. Preserve useful line breaks and original Thai/English/numbers. Do not summarize, calculate, translate, or invent missing values. Return plain text only.',
+                text: 'OCR:',
               },
               {
                 type: 'image_url',
