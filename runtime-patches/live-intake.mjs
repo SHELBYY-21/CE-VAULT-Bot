@@ -1103,7 +1103,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
-    verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → DONE —" :
+    verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → WAIT — → DONE —" :
     status === "BANK_MISMATCH" ? "OCR ✓ → MATCH ✗ → IN —" :
     status === "OCR_FAILED" ? "OCR ✗ → MATCH — → IN —" :
     "OCR ✓ → REVIEW ⏳ → IN —";
