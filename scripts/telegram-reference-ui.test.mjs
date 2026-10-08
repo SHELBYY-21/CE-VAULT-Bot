@@ -11,10 +11,11 @@ test('reference UI exposes CE EMPIRE home and system cards', () => {
 
   const home = runtime.formatBotHomeReply();
   assert.match(home, /CE EMPIRE/);
-  assert.match(home, /01 SCAN/);
-  assert.match(home, /02 OCR \/ EXTRACTED/);
-  assert.match(home, /03 VERIFY/);
-  assert.match(home, /04 RECORD/);
+  assert.match(home, /① OCR/);
+  assert.match(home, /② MATCH/);
+  assert.match(home, /③ IN/);
+  assert.match(home, /④ WAIT/);
+  assert.match(home, /⑤ DONE/);
 
   const system = runtime.formatBotSystemReply({
     telegramOnline: true,
@@ -29,14 +30,15 @@ test('reference UI exposes CE EMPIRE home and system cards', () => {
   assert.match(system, /DATABASE\s+CONFIGURED/);
   assert.match(system, /QUEUE\s+0/);
   assert.match(system, /SAFETY\s+LOCKED/);
-  assert.match(system, /OPERATOR READY/);
+  assert.match(system, /CURRENT STATE\s+READY/);
+  assert.match(system, /NEXT ACTION/);
 });
 
 test('scan card follows the visual state flow without fake progress', () => {
   const scan = runtime.formatScanStageReply();
-  assert.match(scan, /01 SCAN/);
-  assert.match(scan, /READING SLIP/);
-  assert.match(scan, /02 OCR \/ EXTRACTED/);
+  assert.match(scan, /① OCR\s+ACTIVE/);
+  assert.match(scan, /② MATCH\s+NEXT/);
+  assert.match(scan, /NEXT ACTION/);
   assert.doesNotMatch(scan, /\b\d{1,3}%\b/);
 });
 
@@ -54,7 +56,7 @@ test('intake reply renders extracted and recorded states honestly', () => {
     deskRate: { sell_rate: '32.80' },
     market: { price: '32.50' },
   });
-  assert.match(extracted, /02 OCR \/ EXTRACTED/);
+  assert.match(extracted, /② MATCH/);
   assert.match(extracted, /BANK_MISMATCH/);
   assert.match(extracted, /NOT VERIFIED/);
 
@@ -72,8 +74,9 @@ test('intake reply renders extracted and recorded states honestly', () => {
     market: { price: '32.50' },
     recorded: { tx_id: 'tx-safe-id' },
   });
-  assert.match(recorded, /03 DONE/);
-  assert.match(recorded, /RECORD SAVED/);
+  assert.match(recorded, /③ IN\s+RECORDED/);
+  assert.match(recorded, /④ WAIT\s+USDT/);
+  assert.match(recorded, /⑤ DONE\s+PENDING/);
   assert.match(recorded, /SETTLEMENT NOT RUN/);
   assert.doesNotMatch(recorded, /\bSETTLED\b/);
 });

@@ -62,7 +62,7 @@ async function handleTelegramCallback(callback) {
   if (data === "ce:home") return handleTelegramHome(message);
   if (data === "ce:status") return handleTelegramSystemStatus(message);
   if (data === "ce:scan") {
-    await telegram.sendMessage(chatId, "◈ CE · 01 SCAN\n📄 ส่งรูปสลิปธนาคารในแชตนี้เพื่อเริ่ม OCR");
+    await telegram.sendMessage(chatId, formatScanStageReply());
     return true;
   }
   if (data === "ce:rate") {
