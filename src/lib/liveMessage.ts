@@ -9,6 +9,7 @@ import { editMessage, sendMessage, type OutgoingMessage } from './telegram';
 import { formatVolumeThb, type ReceiverIntel } from './receiverIntel';
 import { ceMessage, ceRecorded, ceOcrAmount, CE_DIVIDER } from './ceReplyTheme';
 import { motionAfter, motionGate } from './motionFx';
+import { buildMessage as buildV4Message, buildKeyboard as buildV4Keyboard, type TxData, type TxStatus } from './ceVaultResponse';
 
 export type LiveStage =
   | 'RECEIVING'
@@ -62,10 +63,22 @@ export type LiveCardOpts = {
   ledgerRef?: string | null;
   body?: string;
   reply_markup?: unknown;
+  v4?: { status: TxStatus; data: TxData };
 };
 
 /** Single Live Message shell */
 export function liveCard(opts: LiveCardOpts): OutgoingMessage {
+  if (opts.v4 && process.env.CE_RESPONSE_V4 !== '0') {
+    // Presentation-only feature gate: CE_RESPONSE_V4=0 restores V3 without changing settlement.
+    const safeHtml = esc(buildV4Message(opts.v4.status, opts.v4.data));
+    const buttons = buildV4Keyboard(opts.v4.data);
+    return {
+      text: safeHtml,
+      fallback_text: safeHtml,
+      rich_message: { html: `<pre>${safeHtml}</pre>` },
+      reply_markup: buttons ? { inline_keyboard: buttons } : opts.reply_markup,
+    };
+  }
   const parts = [
     `<b>◈ CE VAULT</b>`,
     `<i>Live Message</i>`,
@@ -184,6 +197,20 @@ export function liveRecorded(d: {
     stage: 'RECORDED',
     ledgerRef: d.ledgerRef,
     body: lines,
+    // RECORDED still means WAIT USDT; never present it as DONE.
+    v4: { status: 'RECORDED', data: {
+      ref: d.ledgerRef,
+      thb: d.thb,
+      usdt: d.usdt,
+      rate: d.sellRate,
+      bank: d.bank,
+      account: d.accountNumber || (d.last4 ? `••••${d.last4}` : null),
+      name: d.adminName,
+      actions: d.transactionId ? [
+        { id: 'edit', label: '✏️ EDIT', arg: d.transactionId },
+        { id: 'del', label: '🗑 DELETE', arg: d.transactionId },
+      ] : [],
+    } },
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
@@ -207,17 +234,27 @@ export function liveSettled(d: {
     `OCR ✓ · MATCH ✓ · IN ✓ · WAIT ✓ · DONE ✓\n` +
     `🆔 <code>#${esc(d.ledgerRef)}</code>` +
     (d.adminName ? `\n👤 ${esc(d.adminName)}` : '');
-  return {
-    text,
-    fallback_text: text,
-    rich_message: { html: text },
+  return liveCard({
+    stage: 'SETTLED',
+    ledgerRef: d.ledgerRef,
+    body: text,
+    v4: { status: 'DONE', data: {
+      ref: d.ledgerRef,
+      fullRef: d.ledgerRef,
+      usdt: d.usdt,
+      name: d.adminName,
+      actions: d.transactionId ? [
+        { id: 'edit', label: '✏️ EDIT', arg: d.transactionId },
+        { id: 'del', label: '🗑 DELETE', arg: d.transactionId },
+      ] : [],
+    } },
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
           { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
         ]] }
       : undefined,
-  };
+  });
 }
 
 export function liveError(_message: string, ledgerRef?: string | null): OutgoingMessage {

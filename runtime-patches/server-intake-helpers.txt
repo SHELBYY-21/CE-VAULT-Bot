@@ -167,8 +167,10 @@ async function handleTelegramPin(message, unpin = false) {
 }
 
 async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
-  const rich = formatIntakeRichMessage(args);
-  const fallback = formatIntakeReply(args);
+  // CE_RESPONSE_V4=0 is the no-redeploy-data-migration rollback switch.
+  const useV4 = process.env.CE_RESPONSE_V4 !== "0";
+  const rich = useV4 ? formatIntakeV4RichMessage(args) : formatIntakeRichMessage(args);
+  const fallback = useV4 ? formatIntakeV4Reply(args) : formatIntakeReply(args);
   if (liveMessageId) {
     try {
       return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback);
