@@ -8,6 +8,7 @@ const docs = readFileSync(new URL('../docs/LIVE-MESSAGE.md', import.meta.url), '
 const runtime = readFileSync(new URL('../runtime-patches/live-intake.mjs', import.meta.url), 'utf8');
 const helpers = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
 const patch = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../app/api/telegram/webhook/route.ts', import.meta.url), 'utf8');
 
 test('state model separates RECORDED from SETTLED/DONE', () => {
   assert.match(live, /'RECORDED'/);
@@ -57,4 +58,26 @@ test('V3 never exposes unimplemented financial action buttons', () => {
   for (const unsafe of ['FORCE NEW', 'OVERRIDE', 'MANUAL RATE', 'SENT', 'CONFIRM']) {
     assert.doesNotMatch(combined, new RegExp('tg-button[^>]+>' + unsafe + '<', 'i'));
   }
+});
+
+
+test('recording THB preserves a WAITING_USDT session for the same live message', () => {
+  const start = route.indexOf('async function commitIncoming');
+  const end = route.indexOf('/** บันทึกขาออก', start);
+  assert.ok(start >= 0 && end > start, 'commitIncoming block must exist');
+  const block = route.slice(start, end);
+  assert.match(block, /const\s+nextLiveMessageId\s*=\s*await\s+upsertLive/);
+  assert.match(block, /await\s+setSession\(chatId,\s*userId,\s*\{[\s\S]*state:\s*'WAITING_USDT'/);
+  assert.match(block, /live_message_id:\s*nextLiveMessageId/);
+  assert.match(block, /ledger_ref:\s*ledgerRef/);
+});
+
+test('recorded source card explicitly points to WAIT rather than DONE', () => {
+  const start = live.indexOf('export function liveRecorded');
+  const end = live.indexOf('export function liveSettled', start);
+  assert.ok(start >= 0 && end > start, 'liveRecorded block must exist');
+  const block = live.slice(start, end);
+  assert.match(block, /stage:\s*'RECORDED'/);
+  assert.match(block, /WAIT/i);
+  assert.doesNotMatch(block, /DONE\s*✓/);
 });
