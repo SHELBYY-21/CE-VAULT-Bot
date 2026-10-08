@@ -1099,6 +1099,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const ocrProvider = note.match(/(?:^|;)OCR=([^;]*)/)?.[1];
   if (slipDate || slipTime) lines.push(`🗓 วันเวลา (Date & Time): ${slipDate || '—'} ${slipTime || ''}`);
   if (pending?.ledger_ref) lines.push(`🔖 อ้างอิง (Reference): ${pending.ledger_ref}`);
+  if (verified && pending?.id) lines.push(`🛡 อนุมัติ (Approve): /approve ${pending.id}`);
   if (ocrProvider) lines.push(`🔎 OCR Provider: ${ocrProvider}`);
   if (confidence != null && Number.isFinite(confidence)) lines.push(`📋 ความมั่นใจ (OCR Confidence): ${n(confidence,1)}%`);
   if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 ความมั่นใจ OCR (OCR Confidence): ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
@@ -1128,7 +1129,7 @@ export function formatIntakeV4RichMessage(args) {
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳|🗓|🔖|🔎|📋)/u.test(line));
+  const amountRows = card.filter(line => /^(📥|💱|🏦|👤|🟡 OCR|📊|✅|⏳|🗓|🔖|🔎|📋|🛡)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('🔍 '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +
