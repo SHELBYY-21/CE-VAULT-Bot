@@ -5,7 +5,10 @@
 
 create or replace function public.ce_delete_transaction(p_tx_id uuid)
 returns table (tx jsonb, admin_holding numeric)
-language plpgsql as $$
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $
 declare
   v_old public.transactions%rowtype;
   v_delta numeric;
