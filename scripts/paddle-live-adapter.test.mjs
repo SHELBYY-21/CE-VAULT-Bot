@@ -9,7 +9,7 @@ test('runtime supports live PaddleOCR-VL llama.cpp multimodal endpoint', () => {
   assert.match(runtime, /PADDLEOCR_LLAMA_URL/);
   assert.match(runtime, /\/v1\/chat\/completions/);
   assert.match(runtime, /image_url/);
-  assert.match(runtime, /PaddleOCR-VL-1\\.6-GGUF-Q4/);
+  assert.match(runtime, /PaddleOCR-VL-1\.6-GGUF-Q4/);
   assert.match(runtime, /PADDLEOCR_VL_1_6_LLAMA/);
 });
 
