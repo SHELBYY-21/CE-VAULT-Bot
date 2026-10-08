@@ -216,8 +216,19 @@ function amountFromLabeledText(text) {
 }
 
 function dateFromText(text) {
-  const match = String(text || "").match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
-  return match?.[1] || null;
+  const raw = String(text || "");
+  const numeric = raw.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
+  if (numeric) return numeric[1];
+
+  const months = {
+    "ม.ค.": 1, "ก.พ.": 2, "มี.ค.": 3, "เม.ย.": 4, "พ.ค.": 5, "มิ.ย.": 6,
+    "ก.ค.": 7, "ส.ค.": 8, "ก.ย.": 9, "ต.ค.": 10, "พ.ย.": 11, "ธ.ค.": 12,
+  };
+  const thai = raw.match(/(?:^|\s)(\d{1,2})\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*(\d{2,4})(?=\s|$)/u);
+  if (!thai) return null;
+  const month = months[thai[2]];
+  if (!month) return null;
+  return `${thai[1]}/${month}/${thai[3]}`;
 }
 
 function timeFromText(text) {
@@ -225,16 +236,40 @@ function timeFromText(text) {
   return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
 }
 
+function receiverSectionText(text) {
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const start = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)\b/i.test(line));
+  if (start < 0) return String(text || "");
+  const out = [];
+  for (let i = start; i < Math.min(lines.length, start + 5); i += 1) {
+    if (i > start && /^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)\b/i.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+
 function receiverLast4FromText(text) {
-  const raw = String(text || "");
-  const masked = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
-  if (masked) return masked[1];
+  const raw = receiverSectionText(text);
+  const direct4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
+  if (direct4) return direct4[1];
+  const split4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{3})[\s-]*(\d)(?!\d)/u.exec(raw);
+  if (split4) return `${split4[1]}${split4[2]}`;
+  const card = /(?:\d{4}[\s-]+)?(?:\d{2}(?:x|X|•|\*){2})[\s-]+(?:x|X|•|\*){4}[\s-]+(\d{4})/u.exec(raw);
+  if (card) return card[1];
   const labeled = /(?:บัญชี(?:ผู้รับ)?|account|acct)[^\d]{0,24}(?:\d[\s-]*){4,}(\d{4})(?!\d)/iu.exec(raw);
   return labeled?.[1] || null;
 }
 
 function receiverNameFromText(text) {
   const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const receiverIndex = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)\b/i.test(line));
+  if (receiverIndex >= 0) {
+    for (let i = receiverIndex + 1; i < Math.min(lines.length, receiverIndex + 4); i += 1) {
+      const candidate = lines[i];
+      if (/^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)\b/i.test(candidate)) break;
+      if (/[A-Za-zก-๙]/u.test(candidate) && !/^(?:x|X|•|\*|\d|[-\s])+$/u.test(candidate)) return candidate;
+    }
+  }
   const inlinePatterns = [
     /^(?:ไปยัง|ผู้รับ|ชื่อผู้รับ|receiver|payee)\s*[:：-]?\s*(.+)$/iu,
     /^biller\s*note\s*[:：-]?\s*([A-Za-zก-๙][A-Za-zก-๙ .'-]{2,})$/iu,
@@ -369,36 +404,6 @@ async function analyzeWithPaddleLlama(buffer, mimeType = "image/jpeg") {
       name: error?.name || "Error",
       model: PADDLEOCR_MODEL,
     });
-    return null;
-  }
-}
-
-async function analyzeWithPaddleLlama(buffer) {
-  const base = String(process.env.PADDLEOCR_LLAMA_URL || "").trim().replace(/\\/$/, "");
-  if (!base) return null;
-  const endpoint = base.endsWith("/v1") ? base + "/chat/completions" : base + "/v1/chat/completions";
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(process.env.PADDLEOCR_ACCESS_TOKEN ? { authorization: "Bearer " + process.env.PADDLEOCR_ACCESS_TOKEN } : {}) },
-      body: JSON.stringify({
-        model: "LunarOilRig/PaddleOCR-VL-1.6-GGUF-Q4:Q4_K_M",
-        temperature: 0, max_tokens: 700,
-        messages: [{ role: "user", content: [
-          { type: "text", text: "Read all visible Thai and English text from this bank transfer slip accurately. Output only the extracted text, preserving numbers, dates, and names. Do not infer missing fields." },
-          { type: "image_url", image_url: { url: "data:image/jpeg;base64," + buffer.toString("base64") } }
-        ] }]
-      }),
-      signal: AbortSignal.timeout(PADDLEOCR_TIMEOUT_MS)
-    });
-    if (!response.ok) { console.warn("[CE OCR] PADDLE_LLAMA_HTTP", { status: response.status }); return null; }
-    const payload = await response.json();
-    const extracted = payload?.choices?.[0]?.message?.content;
-    const text = typeof extracted === "string" ? extracted : "";
-    if (!text.trim()) return null;
-    return parseThaiSlipText(text, "PADDLEOCR_VL_1_6_LLAMA");
-  } catch (error) {
-    console.warn("[CE OCR] PADDLE_LLAMA_ERROR", { name: error?.name || "Error" });
     return null;
   }
 }
