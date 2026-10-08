@@ -191,23 +191,23 @@ test('bilingual financial summary does not invent settlement from OCR', () => {
   assert.match(unverified, /เคลียร์แล้ว \(Cleared\): — USDT/);
 });
 
-test('OCR is retained while admin approval gates all ledger promotions', () => {
+test('OCR remains visible and only explicit admin approval promotes', () => {
   const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
   const patch = readFileSync(new URL('../scripts/patch-live-intake.mjs', import.meta.url), 'utf8');
   const imageHandler = helper.slice(helper.indexOf('async function handleLiveSlipMessage('));
-  assert.doesNotMatch(imageHandler, /repository\\.promotePendingSlip\\(/);
-  assert.match(helper, /async function handleTelegramApprove\\(/);
-  assert.match(helper, /pending\\.status !== "VERIFIED"/);
-  assert.match(helper, /repository\\.promotePendingSlip\\(pending\\.id, operator\\.id/);
-  assert.match(patch, /handleTelegramApprove\\(message\\)/);
-  assert.match(patch, /getPendingSlipForApproval\\(id\\)/);
+  assert.equal(imageHandler.includes('repository.promotePendingSlip('), false);
+  assert.ok(helper.includes('async function handleTelegramApprove('));
+  assert.ok(helper.includes('pending.status !== "VERIFIED"'));
+  assert.ok(helper.includes('repository.promotePendingSlip(pending.id, operator.id'));
+  assert.ok(patch.includes('handleTelegramApprove(message)'));
+  assert.ok(patch.includes('getPendingSlipForApproval(id)'));
   const card = formatIntakeV4Reply({ pending: {
     id: '00000000-0000-0000-0000-000000000001', status: 'VERIFIED',
     ledger_ref: 'CE-1', thb_in: '1000', ocr_confidence: '98',
     note: 'OCR=typhoon;SLIP_DATE=08/10/26;SLIP_TIME=13:30',
   } });
-  assert.match(card, /Pending Admin Approval/);
-  assert.match(card, /08\\/10\\/26 13:30/);
-  assert.match(card, /OCR Confidence\\): 98.0%/);
-  assert.match(card, /\\/approve 00000000-0000-0000-0000-000000000001/);
+  assert.ok(card.includes('Pending Admin Approval'));
+  assert.ok(card.includes('08/10/26 13:30'));
+  assert.ok(card.includes('OCR Confidence): 98.0%'));
+  assert.ok(card.includes('/approve 00000000-0000-0000-0000-000000000001'));
 });
