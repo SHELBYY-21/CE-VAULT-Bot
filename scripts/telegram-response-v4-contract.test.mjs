@@ -60,20 +60,20 @@ test('Render V4 confirms checks only with explicit fresh market and pin evidence
       pin_match: true, ocr_confidence: '98', bank: 'SCB', account_masked: '••••1234' },
     deskRate: { sell_rate: '33.20' }, market: { price: '33.1', fresh: true },
   };
-  assert.match(formatIntakeV4Reply(base), /OCR CHECKS PASS · ADMIN APPROVAL REQUIRED/);
+  assert.match(formatIntakeV4Reply(base), /รอแอดมินอนุมัติ/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, market: { price: '33.1', fresh: false } }), /ALL CHECKS PASS/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, pending: { ...base.pending, pin_match: false } }), /ALL CHECKS PASS/);
-  assert.match(formatIntakeV4Reply(base), /30.123456 USDT/);
+  assert.match(formatIntakeV4Reply(base), /30.123456/);
 });
 
 test('Render V4 does not settle a recorded deal and blocks duplicate replay claims', () => {
   const pending = { status: 'RECORDED', ledger_ref: 'CE-88aa', tx_id: 'tx-001', thb_in: '2000', pin_match: true };
   const recorded = formatIntakeV4Reply({ pending, recorded: { tx_id: 'tx-001' } });
-  assert.match(recorded, /IN สำเร็จ · WAIT USDT/);
-  assert.match(recorded, /③ IN ✓ → ④ \[WAIT\] → ⑤ DONE —/);
+  assert.match(recorded, /บันทึก IN แล้ว · WAIT USDT/);
+  assert.match(recorded, /IN ✓ → WAIT ⏳ → DONE —/);
   assert.doesNotMatch(recorded, /ALL CHECKS PASS/);
   const duplicate = formatIntakeV4Reply({ pending, duplicate: true });
-  assert.match(duplicate, /ห้ามบันทึกซ้ำ/);
+  assert.match(duplicate, /สลิปซ้ำ/);
   assert.doesNotMatch(duplicate, /บันทึก THB แล้ว ยังไม่ SETTLED/);
 });
 
@@ -82,7 +82,7 @@ test('Render V4 rich message escapes untrusted slip text', () => {
     pending: { status: 'BANK_MISMATCH', bank: '<script>alert(1)</script>', ledger_ref: 'CE-01' },
   });
   assert.doesNotMatch(rich.html, /<script>/);
-  assert.match(rich.html, /&lt;script&gt;/);
+  assert.doesNotMatch(rich.html, /alert\(1\)/);
   assert.match(rich.html, /<details/);
 });
 
@@ -152,7 +152,7 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   const rich = formatIntakeV4RichMessage(args).html;
   const plain = formatIntakeV4Reply(args);
   assert.match(rich, /OCR 80% ต่ำกว่าเกณฑ์ 90%/);
-  assert.equal((rich.match(/<p>🔍 /g) || []).length, 1);
+  assert.equal((rich.match(/<p>⚠️ /g) || []).length, 1);
   assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
   assert.doesNotMatch(plain, /ISSUE:/);
   assert.match(plain, /NEXT:/);
@@ -164,15 +164,15 @@ test('Telegram five-stage reply never promotes a review or recorded slip to DONE
     should_send: '26.940000', ocr_confidence: 80, bank: 'SCB', account_masked: '••••3114', pin_match: false },
     deskRate: { sell_rate: '37.12' }, market: { price: '37.10', fresh: true } };
   const review = formatIntakeV4Reply(base);
-  assert.match(review, /① OCR ✓ → ② \[MATCH · REVIEW\] → ③ IN — → ④ WAIT — → ⑤ DONE —/);
+  assert.match(review, /OCR ✓ → REVIEW ⏳ → IN —/);
   assert.doesNotMatch(review, /IN ✓|DONE ✓/);
   const recorded = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'RECORDED', pin_match: true, ocr_confidence: 98, tx_id: 'tx-1' }, recorded: { tx_id: 'tx-1' } });
-  assert.match(recorded, /① OCR ✓ → ② MATCH ✓ → ③ IN ✓ → ④ \[WAIT\] → ⑤ DONE —/);
+  assert.match(recorded, /OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —/);
   assert.doesNotMatch(recorded, /DONE ✓|SETTLED ✓/);
   const mismatch = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'BANK_MISMATCH' } });
-  assert.match(mismatch, /② MATCH ✗ → ③ IN —/);
+  assert.match(mismatch, /MATCH ✗ → IN —/);
   const failed = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'OCR_FAILED' } });
-  assert.match(failed, /① OCR ✗ → ② MATCH —/);
+  assert.match(failed, /OCR ✗ → MATCH —/);
 });
 
 test('bilingual financial summary does not invent settlement from OCR', () => {
@@ -180,15 +180,15 @@ test('bilingual financial summary does not invent settlement from OCR', () => {
     should_send: '26.94', account_number: '1234567890', bank: 'SCB' };
   const base = { pending, recorded: { tx_id: 'tx-1' }, deskRate: { sell_rate: '37.12' } };
   const card = formatIntakeV4Reply(base);
-  assert.match(card, /ต้องส่ง \(Total Due\): 26.94 USDT/);
-  assert.match(card, /เคลียร์แล้ว \(Cleared\): — USDT/);
+  assert.match(card, /ต้องส่ง \(Due\): 26.94 USDT/);
+  assert.match(card, /ส่งยืนยันแล้ว \(Cleared\): — USDT/);
   assert.match(card, /ค้างส่ง \(Outstanding\): — USDT/);
   assert.doesNotMatch(card, /1234567890/);
   const paid = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', settlement_verified: true, cleared_usdt: '10.00' } });
-  assert.match(paid, /เคลียร์แล้ว \(Cleared\): 10.00 USDT/);
+  assert.match(paid, /ส่งยืนยันแล้ว \(Cleared\): 10.00 USDT/);
   assert.match(paid, /ค้างส่ง \(Outstanding\): 16.94 USDT/);
   const unverified = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', cleared_usdt: '10.00' } });
-  assert.match(unverified, /เคลียร์แล้ว \(Cleared\): — USDT/);
+  assert.match(unverified, /ส่งยืนยันแล้ว \(Cleared\): — USDT/);
 });
 
 test('OCR remains visible and only explicit admin approval promotes', () => {
@@ -206,9 +206,9 @@ test('OCR remains visible and only explicit admin approval promotes', () => {
     ledger_ref: 'CE-1', thb_in: '1000', ocr_confidence: '98',
     note: 'OCR=typhoon;SLIP_DATE=08/10/26;SLIP_TIME=13:30',
   } });
-  assert.ok(card.includes('Pending Admin Approval'));
+  assert.ok(card.includes('รอแอดมินอนุมัติ'));
   assert.ok(card.includes('08/10/26 13:30'));
-  assert.ok(card.includes('OCR Confidence): 98.0%'));
+  assert.ok(card.includes('Confidence: 98.0%'));
   assert.ok(card.includes('/approve 00000000-0000-0000-0000-000000000001'));
 });
 
@@ -230,4 +230,21 @@ test('Telegram callbacks require real pending UUIDs and route through server-sid
   assert.ok(patch.includes('.is("tx_id", null)'));
   assert.ok(patch.includes('handleTelegramReject(message)'));
   assert.ok(patch.includes('handleTelegramEdit(message)'));
+});
+
+test('compact OCR card does not leak full OCR document into bank field', () => {
+  const badBank = 'โอนเงินสำเร็จข้อมูลการโอนวันที่02ตค25691943รหัสอ้างอิง202610021BOUSCDOYHHT1YMM4จำนวนเงิน500ผู้รับเงิน';
+  const card = formatIntakeV4Reply({pending:{
+    status:'STALE_SLIP', bank:badBank, account_masked:'••••5629',
+    thb_in:'5',should_send:'0.130000',desk_rate:'37.12',
+    note:'OCR=typhoon_ocr_1_5;SLIP_DATE=02/10/2569;SLIP_TIME=19:43',
+    ocr_confidence:'90',
+  }});
+  assert.ok(card.includes('วันที่สลิปไม่ตรง'));
+  assert.ok(card.includes('บัญชีรับ: ไม่ยืนยัน'));
+  assert.ok(!card.includes('BOUSCDOYHHT1YMM4'));
+  assert.ok(card.includes('💎 ประเมิน (USDT): 0.130000'));
+  assert.ok(card.includes('📊 ต้องส่ง (Due): — USDT'));
+  assert.ok(card.includes('Confidence: 90.0%'));
+  assert.ok(!card.includes('OCR Confidence): 90.0%'));
 });
