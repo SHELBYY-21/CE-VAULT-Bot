@@ -263,16 +263,107 @@ export function intakeCapability() {
   };
 }
 
+export function formatBotHomeReply() {
+  return [
+    "👑 CE EMPIRE",
+    "BUILD • GROW • EMPOWER",
+    "",
+    "🤖 CE VAULT OPERATOR",
+    "ระบบรับสลิปและตรวจสอบรายการ USDT",
+    "",
+    "01 SCAN            ส่งรูปสลิป",
+    "02 OCR / EXTRACTED อ่านยอดและข้อมูลบัญชี",
+    "03 VERIFY          ตรวจบัญชี / เรต / ตลาด",
+    "04 RECORD          บันทึกเมื่อผ่านเงื่อนไข",
+    "",
+    "คำสั่งหลัก: /rate · /pin · /status",
+    "ส่งรูปสลิปเพื่อเริ่มงานได้ทันที",
+  ].join("\n");
+}
+
+export function botHomeReplyMarkup() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🏠 HOME", callback_data: "ce:home" },
+        { text: "📄 SCAN", callback_data: "ce:scan" },
+      ],
+      [
+        { text: "📊 STATUS", callback_data: "ce:status" },
+        { text: "💱 RATE", callback_data: "ce:rate" },
+        { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
+      ],
+    ],
+  };
+}
+
+export function formatBotSystemReply({
+  telegramOnline = true,
+  webhookVerified = false,
+  databaseConfigured = false,
+  pendingUpdates = null,
+  safety = "LOCKED",
+} = {}) {
+  const queue = pendingUpdates == null || !Number.isFinite(Number(pendingUpdates))
+    ? "UNKNOWN"
+    : String(Number(pendingUpdates));
+  const ready = telegramOnline && webhookVerified && databaseConfigured;
+  return [
+    "◈ CE EMPIRE · SYSTEM STATUS",
+    "",
+    `● TELEGRAM      ${telegramOnline ? "ONLINE" : "CHECK"}`,
+    `● WEBHOOK       ${webhookVerified ? "VERIFIED" : "CHECK"}`,
+    `● DATABASE      ${databaseConfigured ? "CONFIGURED" : "UNAVAILABLE"}`,
+    `● QUEUE         ${queue}`,
+    `● SAFETY        ${safety || "LOCKED"}`,
+    "",
+    ready ? "⚡ CE VAULT OPERATOR READY" : "⚠ CE VAULT · CHECK REQUIRED",
+  ].join("\n");
+}
+
+export function formatScanStageReply() {
+  return [
+    "◈ CE · 01 SCAN",
+    "📄 RECEIVING SLIP",
+    "▰▰▰ READING SLIP",
+    "",
+    "กำลังตรวจยอด / บัญชี / Binance TH Spot",
+    "NEXT · 02 OCR / EXTRACTED",
+  ].join("\n");
+}
+
 export function formatIntakeReply({ pending, market, deskRate, recorded, duplicate }) {
-  const lines = ["CE VAULT · INTAKE"];
-  if (duplicate) lines.push("DUPLICATE · รายการนี้เคยรับแล้ว");
-  lines.push(`REF ${pending.ledger_ref}`);
-  lines.push(`STATUS ${pending.status}`);
-  if (pending.thb_in != null) lines.push(`IN ${pending.thb_in} THB`);
-  if (pending.should_send != null) lines.push(`DUE ${pending.should_send} USDT`);
-  if (deskRate?.sell_rate) lines.push(`DESK ${deskRate.sell_rate} THB/USDT`);
-  if (market?.price) lines.push(`MARKET ${market.price} THB/USDT · BINANCE TH SPOT`);
-  if (pending.account_masked) lines.push(`${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "PIN MATCH" : "NOT VERIFIED"}`);
-  if (recorded?.tx_id) lines.push("BOARD RECORDED · settlement ยังปิดอยู่");
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  const isRecorded = status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
+  const isPromotionFailed = status === "PROMOTION_FAILED";
+  const lines = [
+    duplicate ? "◈ CE · DUPLICATE" : isRecorded ? "◈ CE · 03 DONE ✓" : "◈ CE · 02 OCR / EXTRACTED",
+  ];
+
+  if (duplicate) lines.push("⚠️ รายการนี้เคยรับแล้ว");
+  if (pending?.ledger_ref) lines.push(`REF        ${pending.ledger_ref}`);
+  if (pending?.thb_in != null) lines.push(`AMOUNT     ${pending.thb_in} THB`);
+  if (pending?.should_send != null) lines.push(`EST. USDT  ${pending.should_send} USDT`);
+  if (pending?.account_masked) {
+    lines.push(`BANK       ${pending.bank || "BANK"} ${pending.account_masked} · ${pending.pin_match ? "ACCOUNT / DATE MATCH" : "NOT VERIFIED"}`);
+  }
+  if (deskRate?.sell_rate) lines.push(`DESK       ${deskRate.sell_rate} THB/USDT`);
+  if (market?.price) lines.push(`MARKET     ${market.price} THB/USDT · BINANCE TH SPOT`);
+
+  lines.push("");
+  if (duplicate) {
+    lines.push("RESULT     DUPLICATE · ตรวจรายการเดิมก่อนดำเนินการต่อ");
+  } else if (isPromotionFailed) {
+    lines.push("RESULT     RECORD FAILED · ยังไม่บันทึกธุรกรรม");
+  } else if (isRecorded) {
+    lines.push("✅ OCR EXTRACTED");
+    lines.push("✅ ACCOUNT / DATE MATCHED");
+    lines.push("✅ RECORD SAVED");
+    lines.push("⏳ SETTLEMENT NOT RUN · ยังไม่ยืนยันการชำระสุดท้าย");
+    lines.push("READY FOR NEXT");
+  } else {
+    lines.push(`STATUS     ${status}`);
+    lines.push("VERIFYING · ตรวจเงื่อนไขก่อนบันทึก");
+  }
   return lines.join("\n");
 }

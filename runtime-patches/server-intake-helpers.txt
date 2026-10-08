@@ -13,6 +13,69 @@ function maskedBank(account) {
   return `${account?.bank_name || "BANK"} ${last4 ? `••••${last4}` : "••••"}`;
 }
 
+async function handleTelegramHome(message) {
+  if (!message?.chat?.id) return true;
+  await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());
+  return true;
+}
+
+async function getWebhookInfoBounded(timeoutMs = 1500) {
+  let timer;
+  try {
+    return await Promise.race([
+      telegram.getWebhookInfo(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("WEBHOOK_INFO_TIMEOUT")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function handleTelegramSystemStatus(message) {
+  if (!message?.chat?.id) return true;
+  const chatId = message.chat.id;
+  let webhook = null;
+  try {
+    webhook = await getWebhookInfoBounded();
+  } catch {}
+  const origin = String(process.env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com").replace(/\/$/, "");
+  const expectedWebhook = `${origin}/api/telegram/webhook`;
+  await telegram.sendMessage(chatId, formatBotSystemReply({
+    telegramOnline: true,
+    webhookVerified: webhook?.url === expectedWebhook,
+    databaseConfigured: Boolean(repository),
+    pendingUpdates: webhook ? Number(webhook.pending_update_count ?? 0) : null,
+    safety: "LOCKED",
+  }));
+  return true;
+}
+
+async function handleTelegramCallback(callback) {
+  const chatId = callback?.message?.chat?.id;
+  if (!chatId) return true;
+  const data = String(callback?.data || "");
+  await telegram.answerCallbackQuery(callback?.id).catch(() => undefined);
+  const message = { ...callback.message, from: callback.from, chat: callback.message.chat };
+
+  if (data === "ce:home") return handleTelegramHome(message);
+  if (data === "ce:status") return handleTelegramSystemStatus(message);
+  if (data === "ce:scan") {
+    await telegram.sendMessage(chatId, "◈ CE · 01 SCAN\n📄 ส่งรูปสลิปธนาคารในแชตนี้เพื่อเริ่ม OCR");
+    return true;
+  }
+  if (data === "ce:rate") {
+    message.text = "/rate";
+    return handleTelegramRate(message);
+  }
+  if (data === "ce:pin") {
+    message.text = "/pin";
+    return handleTelegramPin(message, false);
+  }
+  return true;
+}
+
 async function requireTelegramOperator(message) {
   const operator = await repository.getOperatorByTelegramId(message?.from?.id);
   if (!operator) {
@@ -98,7 +161,7 @@ async function handleLiveSlipMessage(message) {
   const fileId = imageFileId(message);
   if (!fileId) return;
   const chatId = message.chat.id;
-  await telegram.sendMessage(chatId, "CE VAULT · OCR\nรับภาพแล้ว · กำลังตรวจยอด / บัญชี / Binance TH Spot").catch(() => undefined);
+  await telegram.sendMessage(chatId, formatScanStageReply()).catch(() => undefined);
 
   const downloaded = await telegram.downloadFile(fileId);
   const fingerprint = fingerprintImage(downloaded.buffer);
