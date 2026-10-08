@@ -284,6 +284,15 @@ async function main() {
   const env = await buildRuntimeEnv();
   console.log('[CE Runtime] Bootstrap complete; starting server.');
   const child = spawn(process.execPath, [serverPath, ...process.argv.slice(2)], { cwd: root, env, stdio: 'inherit' });
+  // Explicit opt-in only: no customer data, Telegram send or database writes.
+  // Runs in a child so the main server starts immediately and survives probe failures.
+  if (env.CE_RUN_ONE_SHOT_TY_OCR_PROBE === '1') {
+    const probe = spawn(process.execPath, [path.join(root, 'scripts', 'typhoon-synthetic-live-probe.mjs')], {
+      cwd: root, env, stdio: 'inherit',
+    });
+    probe.on('error', () => console.error('[CE OCR LIVE PROOF] start failed'));
+    probe.on('exit', (code) => console.log('[CE OCR LIVE PROOF] process exit code=' + String(code)));
+  }
   const productionTracer = createCeProductionTracer({ env });
   productionTracer.record('start-ce-runtime', 'ok');
   const stopWebhookMaintainer = startWebhookMaintainer(env);
