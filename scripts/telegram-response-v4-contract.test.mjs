@@ -85,3 +85,37 @@ test('Render V4 rich message escapes untrusted slip text', () => {
   assert.match(rich.html, /&lt;script&gt;/);
   assert.match(rich.html, /<details/);
 });
+
+
+const transactionService = readFileSync(new URL('../src/lib/transactions.ts', import.meta.url), 'utf8');
+const deleteRpcGuard = readFileSync(new URL('../supabase/patch-v10b-delete-settlement-guard.sql', import.meta.url), 'utf8');
+
+test('DELETE on RECORDED or WAITING is rejected before destructive callback and missing status fails closed', () => {
+  const callback = webhook.slice(webhook.indexOf("  const txId = arg;"));
+  assert.match(callback, /if \(action === 'del'\) \{[\s\S]*?getTransactionStatus\(txId\)/);
+  assert.match(callback, /if \(status !== 'completed'\)/);
+  assert.match(callback, /รายการยังไม่ SETTLED ห้ามลบ/);
+  assert.match(callback, /ตรวจสอบสถานะไม่ได้ ไม่ลบรายการ/);
+  const guardedRead = callback.indexOf('await getTransactionStatus(txId)');
+  const destructiveDelete = callback.indexOf('await deleteTransaction(txId)');
+  assert.ok(guardedRead >= 0 && destructiveDelete > guardedRead, 'preflight must precede delete');
+});
+
+test('Ledger service only allows completed and RPC checks atomically under row lock', () => {
+  const deleteService = transactionService.slice(transactionService.indexOf('export async function deleteTransaction('));
+  assert.match(deleteService, /if \(old\.status !== 'completed'\) throw new Error\('TX_NOT_SETTLED'\)/);
+  assert.match(deleteService, /const \{ holding \} = await rpcDelete\(txId\)/);
+  assert.match(transactionService, /export async function getTransactionStatus\(txId: string\)/);
+  assert.match(deleteRpcGuard, /select \* into v_old from public\.transactions where id = p_tx_id for update;/i);
+  assert.match(deleteRpcGuard, /if v_old\.status is distinct from 'completed' then\s+raise exception 'TX_NOT_SETTLED';/i);
+  assert.match(deleteRpcGuard, /delete from public\.transactions where id = p_tx_id;/i);
+  assert.match(deleteRpcGuard, /revoke execute on function public\.ce_delete_transaction\(uuid\) from public, anon, authenticated;/i);
+});
+
+test('V4 keeps real edit/delete callback names and completed delete path', () => {
+  const callback = webhook.slice(webhook.indexOf('  const txId = arg;'));
+  assert.match(callback, /if \(action === 'edit'\) \{/);
+  assert.match(callback, /else if \(action === 'del'\) \{/);
+  assert.match(callback, /const r = await deleteTransaction\(txId\)/);
+  assert.match(callback, /TX_NOT_SETTLED/);
+});
