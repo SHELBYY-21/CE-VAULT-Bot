@@ -107,7 +107,7 @@ async function handleTelegramReject(message) {
     await telegram.sendMessage(message.chat.id, "⛔ ไม่มีสิทธิ์ปฏิเสธ (Reject denied)");
     return true;
   }
-  const id = String(message.text || "").match(/^\\/reject(?:@\\w+)?\\s+([0-9a-f-]{36})\\s*$/i)?.[1];
+  const id = String(message.text || "").match(/^\/reject(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
   if (!id) {
     await telegram.sendMessage(message.chat.id, "ใช้ /reject <pending UUID> (Reject)");
     return true;
@@ -135,7 +135,7 @@ async function handleTelegramEdit(message) {
     await telegram.sendMessage(message.chat.id, "⛔ ไม่มีสิทธิ์แก้ไข (Edit denied)");
     return true;
   }
-  const id = String(message.text || "").match(/^\\/edit(?:@\\w+)?\\s+([0-9a-f-]{36})\\s*$/i)?.[1];
+  const id = String(message.text || "").match(/^\/edit(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
   if (!id) {
     await telegram.sendMessage(message.chat.id, "ใช้ /edit <pending UUID> เพื่อดูข้อมูลก่อนแก้ไข (Review)");
     return true;
@@ -152,7 +152,7 @@ async function handleTelegramEdit(message) {
     "ยอดรับ (Received): " + (pending.thb_in ?? "—") + " THB",
     "ต้องส่ง (Total Due): " + (pending.should_send ?? "—") + " USDT",
     "การแก้ไขยอดยังปิดอยู่เพื่อป้องกันการเปลี่ยน Ledger โดยไม่มีหลักฐาน (Edit disabled).",
-  ].join("\\n"));
+  ].join("\n"));
   return true;
 }
 
