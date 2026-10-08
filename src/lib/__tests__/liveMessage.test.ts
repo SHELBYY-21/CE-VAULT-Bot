@@ -4,6 +4,7 @@ import {
   liveCard,
   liveRail,
   liveReceiving,
+  liveRecorded,
   liveSettled,
   liveWaiting,
   receiverIntelCard,
@@ -15,9 +16,10 @@ describe('liveRail', () => {
     const rail = liveRail('RECEIVING');
     expect(rail).toContain('<b>● Receiving...</b>');
     expect(rail).toContain('<i>○ OCR</i>');
-    expect(rail).toContain('<i>○ Profile / OCR</i>');
-    expect(rail).toContain('<i>○ Waiting</i>');
+    expect(rail).toContain('<i>○ Match</i>');
     expect(rail).toContain('<i>○ Recorded</i>');
+    expect(rail).toContain('<i>○ Waiting</i>');
+    expect(rail).toContain('<i>○ Done</i>');
     expect(rail.match(/<b>●/g)?.length).toBe(1);
   });
 
@@ -25,15 +27,21 @@ describe('liveRail', () => {
     const rail = liveRail('WAITING');
     expect(rail).toContain('✓ Receiving...');
     expect(rail).toContain('✓ OCR');
-    expect(rail).toContain('✓ Profile / OCR');
+    expect(rail).toContain('✓ Match');
+    expect(rail).toContain('✓ Recorded');
     expect(rail).toContain('<b>● Waiting</b>');
-    expect(rail).toContain('<i>○ Recorded</i>');
+    expect(rail).toContain('<i>○ Done</i>');
   });
 
-  it('ends on Recorded without asserting financial settlement', () => {
-    const rail = liveRail('SETTLED');
-    expect(rail).toContain('<b>● Recorded</b>');
-    expect(rail).toContain('✓ Waiting');
+  it('separates Recorded from final Done', () => {
+    const recorded = liveRail('RECORDED');
+    expect(recorded).toContain('<b>● Recorded</b>');
+    expect(recorded).toContain('<i>○ Waiting</i>');
+    expect(recorded).toContain('<i>○ Done</i>');
+
+    const settled = liveRail('SETTLED');
+    expect(settled).toContain('<b>● Done</b>');
+    expect(settled).toContain('✓ Waiting');
   });
 });
 
@@ -47,13 +55,17 @@ describe('liveCard', () => {
     expect(m.text).toContain('reading');
   });
 
-  it('liveReceiving / liveWaiting / liveSettled stages', () => {
-    expect(liveReceiving('CE-1').text).toContain('Receiving...');
+  it('liveReceiving / liveWaiting / liveRecorded / liveSettled stages', () => {
+    expect(liveReceiving('CE-1').text).toContain('Receiving');
     expect(liveWaiting({ ledgerRef: 'CE-1', thb: 500 }).text).toContain('<b>● Waiting</b>');
-    expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain(
-      '◈ CE · RECORDED (已记录) ✓',
-    );
-    expect(liveSettled({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 }).text).toContain('Settlement not verified / 尚未结算确认');
+
+    const recorded = liveRecorded({ ledgerRef: 'CE-1', thb: 500, usdt: 12.5 });
+    expect(recorded.text).toContain('◈ CE · RECORDED (已记录) ✓');
+    expect(recorded.text).toContain('Settlement not verified / 尚未结算确认');
+
+    const settled = liveSettled({ ledgerRef: 'CE-1', usdt: 12.5 });
+    expect(settled.text).toContain('◈ CE · DONE ✓');
+    expect(settled.text).toContain('SETTLED');
   });
 
   it('renders Receiver Intelligence block', () => {
