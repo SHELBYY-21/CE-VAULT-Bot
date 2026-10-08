@@ -17,7 +17,7 @@
     "test:ocr-v3": "node --test scripts/ocr-v3-hardening.test.mjs",
     "test:thai-ocr-v4": "node --test scripts/thai-slip-ocr-v4.test.mjs",
     "test:paddle-runtime": "node --test scripts/paddle-runtime-contract.test.mjs",
-    "test:paddle-live": "node --test scripts/paddle-live-adapter.test.mjs scripts/paddle-live-inference-contract.test.mjs",
+    "test:paddle-live": "node --test scripts/paddle-live-adapter.test.mjs scripts/paddle-live-inference-contract.test.mjs scripts/ocr-fast-fail.test.mjs",
     "test:scb-samples": "node --test scripts/scb-slip-samples.test.mjs",
     "test:paddle-502-hotfix": "node --test scripts/paddle-502-hotfix.test.mjs",
     "test:typhoon-ocr": "node --test scripts/typhoon-ocr-provider.test.mjs",
