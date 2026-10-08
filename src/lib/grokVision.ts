@@ -15,18 +15,18 @@ export interface SlipExtract {
   raw?: string; // ข้อความดิบ (debug)
 }
 
-const PROMPT = `You are a Thai bank slip parser. Analyze this slip image and reply with ONLY a JSON object (no prose, no markdown fence) with keys:
+const PROMPT = `You are a Thai payment evidence parser. The image may be a bank transfer slip, QR payment receipt, bill-payment/biller receipt, or a bank-generated receipt screenshot. Reply with ONLY JSON:
 {
-  "thbAmount": number,           // amount transferred in THB (the main highlighted number)
-  "time": "HH:MM",               // 24-hour transfer time
-  "date": "DD/MM/YY",            // transfer date, Buddhist year → subtract 543 to Gregorian, output as YY (2-digit Gregorian)
-  "receiverLast4": "XXXX",       // last 4 digits of RECEIVER (payee) account number
-  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|other-uppercase",
-  "receiverName": "name or null",// RECEIVER (payee) full name — Thai or English as shown
-  "senderName": "name or null",  // sender full name if visible
-  "confidence": number           // 0-100 how confident you are the image is a real, clearly-legible bank slip and the amount is correct
+  "thbAmount": number|null,
+  "time": "HH:MM"|null,
+  "date": "DD/MM/YY"|null,
+  "receiverLast4": "XXXX"|null,
+  "bank": "KBANK|SCB|BBL|KTB|BAY|TTB|GSB|KKP|CIMB|LH|UOB|TISCO|TMN|other-uppercase"|null,
+  "receiverName": string|null,
+  "senderName": string|null,
+  "confidence": number|null
 }
-If unable to read any field, use null (except confidence — always give a number). Do not invent values. Output raw JSON only.`;
+The amount must be the transaction amount actually paid/transferred in THB. Never use account numbers, references, dates, times, fees, balances, or BILLER NOTE identifiers as the amount. Read the receiver/payee/biller, not the sender. If a field is not visibly supported, return null. Do not invent values. confidence is 0-100 only when the image supports the extraction. Output raw JSON only.`;
 
 // ─── USDT transfer screenshot (Binance/OKX/TronScan ฯลฯ) ───
 export interface UsdtExtract {
@@ -94,12 +94,14 @@ export async function analyzeUsdtWithGrok(imageUrl: string): Promise<UsdtExtract
     if (first < 0 || last < 0)
       return { amount: null, network: null, txid: null, time: null, confidence: null, raw: text };
     const data = JSON.parse(cleaned.slice(first, last + 1));
-    const num = (v: any) =>
-      typeof v === 'number' && Number.isFinite(v)
-        ? v
-        : Number.isFinite(parseFloat(v))
-          ? parseFloat(v)
-          : null;
+    const num = (v: any) => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      if (typeof v === 'string' && v.trim()) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    };
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
     return {
       amount: num(data.amount),
@@ -142,7 +144,7 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       }),
     });
     if (!res.ok) {
-      console.error('Grok API error:', res.status, await res.text().catch(() => ''));
+      console.warn('[CE OCR] XAI_HTTP', { status: res.status, model });
       return null;
     }
     const json: any = await res.json();
@@ -170,12 +172,14 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
     const jsonStr = cleaned.slice(first, last + 1);
     const data = JSON.parse(jsonStr);
 
-    const num = (v: any) =>
-      typeof v === 'number' && Number.isFinite(v)
-        ? v
-        : Number.isFinite(parseFloat(v))
-          ? parseFloat(v)
-          : null;
+const num = (v: any) => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      if (typeof v === 'string' && v.trim()) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    };
     const str = (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
     return {
@@ -190,7 +194,7 @@ export async function analyzeSlipWithGrok(imageUrl: string): Promise<SlipExtract
       raw: text,
     };
   } catch (e: any) {
-    console.error('grokVision error:', e?.message);
+    console.warn('[CE OCR] XAI_ERROR', { name: e?.name || 'Error' });
     return null;
   }
 }

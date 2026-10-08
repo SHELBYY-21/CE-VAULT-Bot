@@ -1,10 +1,12 @@
 // ============================================================
-// อ่านสลิป — ลำดับความสำคัญ (ทดแทน slipApi เสียเงิน):
-//   1) Grok Vision — ยอด / เวลา / ธนาคาร / เลขท้าย / ชื่อ
-//   2) OCR.space (fallback) — แค่ยอด THB
+// Thai Slip OCR V4 — provider order:
+//   1) PaddleOCR-VL-1.6 — Thai-first document parsing
+//   2) Grok Vision — semantic vision fallback
+//   3) OCR.space — last-resort amount extraction
 // แอดมิน /pin บัญชีวันนี้ → Vision มั่นใจ + เลขตรง = ตีสำเร็จอัตโนมัติ
 // ============================================================
 import { analyzeSlipWithGrok, analyzeUsdtWithGrok, SlipExtract, UsdtExtract } from './grokVision';
+import { analyzeSlipWithPaddle } from './paddleOcr';
 
 /** อ่านสกรีนช็อตโอน USDT (Grok, 12s timeout) — null ถ้าอ่านไม่ได้/ไม่มี key */
 export async function analyzeUsdtScreenshot(imageUrl: string): Promise<UsdtExtract | null> {
@@ -33,18 +35,26 @@ function pickAmount(text: string): number | null {
 
 /** อ่านสลิปครบชุด — คืน SlipExtract (fields อาจเป็น null) */
 export async function analyzeSlip(imageUrl: string): Promise<SlipExtract> {
-  // 1) Grok Vision (with 10s timeout)
+  // 1) PaddleOCR-VL-1.6: best current Thai-capable document parser in this stack.
+  try {
+    const paddle = await analyzeSlipWithPaddle(imageUrl);
+    if (paddle && paddle.thbAmount !== null && Number(paddle.confidence || 0) >= 80) return paddle;
+  } catch (e) {
+    console.warn('[CE OCR] PADDLE_SOURCE_ERROR', { name: e instanceof Error ? e.name : 'Error' });
+  }
+
+  // 2) Grok Vision semantic fallback.
   try {
     const grok = await Promise.race([
       analyzeSlipWithGrok(imageUrl),
-      new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 10000)),
+      new Promise<SlipExtract | null>((resolve) => setTimeout(() => resolve(null), 12000)),
     ]);
     if (grok && grok.thbAmount !== null) return grok;
   } catch (e) {
-    console.warn('Grok vision error:', e instanceof Error ? e.message : e);
+    console.warn('[CE OCR] XAI_SOURCE_ERROR', { name: e instanceof Error ? e.name : 'Error' });
   }
 
-  // 2) fallback: OCR.space (แค่ยอด, 8s timeout)
+  // 3) fallback: OCR.space (แค่ยอด, 8s timeout)
   try {
     const thb = await Promise.race([
       extractThbAmountFromOcrSpace(imageUrl),
