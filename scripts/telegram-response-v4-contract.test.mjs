@@ -280,17 +280,17 @@ test('state gate: ADMIN APPROVED must precede ledger IN RECORDED', () => {
 test('state gate: SETTLED requires verified ledger evidence, not just an OCR or caller amount', () => {
   const pending = {status:'RECORDED', tx_id:'tx-fixture', should_send:'25'};
   const noEvidence = formatIntakeV4Reply({pending, recorded:{tx_id:'tx-fixture', cleared_usdt:'25'}});
-  assert.match(noEvidence, /Cleared\\): — USDT/);
-  assert.match(noEvidence, /Outstanding\\): — USDT/);
+  assert.match(noEvidence, /Cleared\): — USDT/);
+  assert.match(noEvidence, /Outstanding\): — USDT/);
   const partial = formatIntakeV4Reply({pending, recorded:{
     tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'20'}});
-  assert.match(partial, /Cleared\\): 20.00 USDT/);
-  assert.match(partial, /Outstanding\\): 5.00 USDT/);
+  assert.match(partial, /Cleared\): 20.00 USDT/);
+  assert.match(partial, /Outstanding\): 5.00 USDT/);
   assert.doesNotMatch(partial, /SETTLED/);
   const full = formatIntakeV4Reply({pending, recorded:{
     tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'25'}});
-  assert.match(full, /Cleared\\): 25.00 USDT/);
-  assert.match(full, /Outstanding\\): 0.00 USDT/);
+  assert.match(full, /Cleared\): 25.00 USDT/);
+  assert.match(full, /Outstanding\): 0.00 USDT/);
   assert.doesNotMatch(full, /SETTLED/);
 });
 
@@ -313,7 +313,7 @@ test('exception gate: SHORT cannot be called SETTLED', () => {
   const pending = {status:'RECORDED', tx_id:'tx-fixture',should_send:'25'};
   const partial = formatIntakeV4Reply({pending,recorded:{
     tx_id:'tx-fixture',settlement_verified:true,cleared_usdt:'24.99'}});
-  assert.match(partial, /Outstanding\\): 0.01 USDT/);
+  assert.match(partial, /Outstanding\): 0.01 USDT/);
   assert.doesNotMatch(partial, /SETTLED/);
   assert.doesNotMatch(partial, /DONE ✓/);
 });
