@@ -1,5 +1,6 @@
 // Opt-in, one-shot proof of CANONICAL Render bot outbound delivery.
 // This is NOT inbound /status or photo E2E. Never writes ledger/PIN/balances.
+import { createHash } from "node:crypto";
 const TG_API = "https://api.telegram.org/bot";
 function logProof(payload) {
   console.log("[CE TELEGRAM REAL OUTBOUND PROOF]", JSON.stringify(payload));
@@ -12,11 +13,17 @@ function err(code) {
 export async function probeCanonicalBotDelivery(env = process.env, fetchImpl = globalThis.fetch) {
   const started = Date.now();
   const token = String(env.TELEGRAM_BOT_TOKEN || env.BOT_TOKEN || "").trim();
-  const url = String(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+  const url = String(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || "https://iuaaviivkumvzbdmpzty.supabase.co").replace(/\/$/, "");
   const dbKey = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   const targetWebhook = String(env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com").replace(/\/$/, "") + "/api/telegram/webhook";
   const result = { verdict: "NOT_RUN", botVerified: false, webhookVerified: false, eligiblePrivateOperator: false, acceptedByTelegram: false, connectorBotSame: null };
-  if (!token || !url || !dbKey || !/^https:\/\/[^/?#]+/i.test(url)) {
+  const gatewayUrl = String(env.SUPABASE_GATEWAY_URL || "").trim();
+  const anon = String(env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
+  const gatewayAuth = env.CE_DATA_GATEWAY_SECRET ||
+    (token ? createHash("sha256").update("ce-vault-data-gateway-v1:" + token).digest("hex") : "");
+  const useDirectDb = Boolean(dbKey) && env.SUPABASE_FORCE_GATEWAY !== "1";
+  const hasDbPath = useDirectDb || Boolean(gatewayUrl && anon && gatewayAuth);
+  if (!token || !/^https:\/\/[^/?#]+/i.test(url) || !hasDbPath) {
     result.reason = "MISSING_CANONICAL_RUNTIME_CONFIGURATION";
     logProof(result);
     return false;
@@ -44,10 +51,31 @@ export async function probeCanonicalBotDelivery(env = process.env, fetchImpl = g
     const webhook = await telegram("getWebhookInfo");
     result.webhookVerified = webhook?.url === targetWebhook;
     if (!result.webhookVerified) throw err("CANONICAL_WEBHOOK_MISMATCH");
-    const headers = { apikey: dbKey, accept: "application/json" };
-    if (dbKey.split(".").length === 3) headers.authorization = "Bearer " + dbKey;
     const query = "/rest/v1/admins?select=telegram_user_id&is_active=eq.true&order=created_at.asc&limit=10";
-    const admins = await fetchBounded(url + query, { method: "GET", headers });
+    let admins;
+    if (useDirectDb) {
+      const headers = { apikey: dbKey, accept: "application/json" };
+      if (dbKey.split(".").length === 3) headers.authorization = "Bearer " + dbKey;
+      admins = await fetchBounded(url + query, { method: "GET", headers });
+    } else {
+      // The existing CE Data Gateway is the official server-only fallback.
+      // Forward only a read-only SELECT request; never put its secret in a log.
+      admins = await fetchBounded(gatewayUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          apikey: anon,
+          authorization: "Bearer " + anon,
+          "x-ce-gateway-auth": gatewayAuth,
+        },
+        body: JSON.stringify({
+          method: "GET",
+          path: query,
+          headers: { accept: "application/json" },
+          bodyBase64: null,
+        }),
+      });
+    }
     if (!Array.isArray(admins) || !admins.length) throw err("NO_ACTIVE_ADMINS");
     let chosen = null;
     for (const admin of admins) {
