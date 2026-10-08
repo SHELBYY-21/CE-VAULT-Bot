@@ -16,6 +16,12 @@
  * PIN_REQUIRED, RATE_REQUIRED, MARKET_UNAVAILABLE, PROMOTION_FAILED, VERIFIED,
  * RECORDED + duplicate) and the tx lifecycle (ocr_success → waiting_admin → completed),
  * matching runtime-patches/live-intake.mjs formatIntakeV4Reply titles.
+ *
+ * Card style follows the owner's CE EMPIRE — WEB FLOW: BANK SLIP to USDT
+ * mockup (650.jpg): CE EMPIRE branding header, step icons on the five-stage
+ * trace (📄 OCR · 🛡️ MATCH · 💰 IN · ⏳ WAIT · ✅ DONE), bilingual step labels
+ * (OCR สำเร็จ / AI VERIFIED / สำเร็จ DONE), and a closing rule that frames
+ * every card like the mockup's glowing step borders.
  */
 
 export type Stage = 'OCR' | 'MATCH' | 'IN' | 'WAIT' | 'DONE';
@@ -101,14 +107,14 @@ export const STATUS_MAP: Record<TxStatus, StatusMeta> = {
   },
   OCR_OK: {
     icon: '✅',
-    headline: 'อ่านสลิปสำเร็จ',
+    headline: 'OCR สำเร็จ',
     next: 'ระบบตรวจบัญชีอัตโนมัติ',
     stages: { OCR: 'done', MATCH: 'current', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
     traceFrom: true,
   },
   MATCH_PASS: {
     icon: '🟢',
-    headline: 'ตรวจบัญชีผ่าน',
+    headline: 'AI VERIFIED — ตรวจสอบเรียบร้อย',
     next: 'ดำเนินการตาม action ที่ระบบเปิดไว้',
     stages: { OCR: 'done', MATCH: 'done', IN: 'pending', WAIT: 'pending', DONE: 'pending' },
     traceFrom: true,
@@ -143,7 +149,7 @@ export const STATUS_MAP: Record<TxStatus, StatusMeta> = {
   },
   DONE: {
     icon: '💎',
-    headline: 'จบรายการเรียบร้อย — SETTLED',
+    headline: 'สำเร็จ DONE — SETTLED',
     next: 'ปิด ticket แล้ว',
     stages: { OCR: 'done', MATCH: 'done', IN: 'done', WAIT: 'done', DONE: 'done' },
     traceFrom: true,
@@ -234,14 +240,19 @@ const RULE_LIGHT = '─────────────';
 const fmt = (n: number | null | undefined, d = 2): string =>
   n === null || n === undefined || Number.isNaN(n) ? '—' : n.toFixed(d);
 
+// Step icons per the CE EMPIRE web-flow mockup: scan, verified shield,
+// money in, hourglass wait, settled check.
+const STAGE_ICON: Record<Stage, string> = { OCR: '📄', MATCH: '🛡️', IN: '💰', WAIT: '⏳', DONE: '✅' };
+
 function traceLine(meta: StatusMeta): string {
   const mark: Record<StageState, string> = { done: '✓', current: '', pending: '', failed: '✗' };
   const stages: Stage[] = ['OCR', 'MATCH', 'IN', 'WAIT', 'DONE'];
   return stages.map((stage) => {
     const state = meta.stages[stage];
-    if (state === 'current') return `[${stage}]`;
-    if (state === 'pending') return stage;
-    return `${stage} ${mark[state]}`;
+    const icon = STAGE_ICON[stage];
+    if (state === 'current') return `${icon} [${stage}]`;
+    if (state === 'pending') return `${icon} ${stage}`;
+    return `${icon} ${stage} ${mark[state]}`;
   }).join(' ─ ');
 }
 
@@ -259,13 +270,14 @@ function issueBlock(data: TxData): string {
 export function buildMessage(status: TxStatus, data: TxData): string {
   const meta = STATUS_MAP[status];
   const lines: string[] = [
-    `◈ CE · TX-${data.ref || '—'}`,
+    `◈ CE EMPIRE · SLIP→USDT · TX-${data.ref || '—'}`,
     `${meta.icon} ${meta.headline}`,
     RULE_HEAVY,
   ];
 
   if (status === 'OCR_RUNNING') {
     lines.push('ระบบกำลังประมวลผลภาพ ถัดไป: ตรวจบัญชีอัตโนมัติ');
+    lines.push(RULE_HEAVY);
     return lines.join('\n');
   }
 
@@ -308,6 +320,7 @@ export function buildMessage(status: TxStatus, data: TxData): string {
 
   lines.push(`NEXT: ${meta.next}`);
   if (status === 'DONE' && data.fullRef) lines.push(`REF ${data.fullRef} · ปิด ticket แล้ว`);
+  lines.push(RULE_HEAVY);
   return lines.join('\n');
 }
 
