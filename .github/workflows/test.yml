@@ -32,6 +32,9 @@ jobs:
         run: npm ci
         working-directory: bot
 
+      - name: Validate Langfuse privacy tests (offline, no credentials)
+        run: node --test observability/langfuse.test.mjs
+
       - name: Run canonical generated-app checks
         run: npm run build
 
