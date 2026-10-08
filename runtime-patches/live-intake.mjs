@@ -216,8 +216,18 @@ function amountFromLabeledText(text) {
 }
 
 function dateFromText(text) {
-  const match = String(text || "").match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
-  return match?.[1] || null;
+  const raw = String(text || "");
+  const numeric = raw.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/);
+  if (numeric) return numeric[1];
+
+  const months = {
+    "ม.ค.": 1, "ก.พ.": 2, "มี.ค.": 3, "เม.ย.": 4, "พ.ค.": 5, "มิ.ย.": 6,
+    "ก.ค.": 7, "ส.ค.": 8, "ก.ย.": 9, "ต.ค.": 10, "พ.ย.": 11, "ธ.ค.": 12,
+  };
+  const thai = raw.match(/(?:^|\s)(\d{1,2})\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*(\d{2,4})(?=\s|$)/u);
+  if (!thai) return null;
+  const month = months[thai[2]];
+  return month ? `${thai[1]}/${month}/${thai[3]}` : null;
 }
 
 function timeFromText(text) {
@@ -225,16 +235,43 @@ function timeFromText(text) {
   return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
 }
 
+function receiverSectionText(text) {
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const start = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)(?:\b|$)/iu.test(line));
+  if (start < 0) return String(text || "");
+  const out = [];
+  for (let index = start; index < Math.min(lines.length, start + 5); index += 1) {
+    const line = lines[index];
+    if (index > start && /^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)(?:\b|$)/iu.test(line)) break;
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 function receiverLast4FromText(text) {
-  const raw = String(text || "");
-  const masked = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
-  if (masked) return masked[1];
+  const raw = receiverSectionText(text);
+  const direct4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
+  if (direct4) return direct4[1];
+  const split4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{3})[\s-]*(\d)(?!\d)/u.exec(raw);
+  if (split4) return `${split4[1]}${split4[2]}`;
+  const card = /(?:\d{4}[\s-]+)?\d{2}(?:x|X|•|\*){2}[\s-]+(?:x|X|•|\*){4}[\s-]+(\d{4})/u.exec(raw);
+  if (card) return card[1];
   const labeled = /(?:บัญชี(?:ผู้รับ)?|account|acct)[^\d]{0,24}(?:\d[\s-]*){4,}(\d{4})(?!\d)/iu.exec(raw);
   return labeled?.[1] || null;
 }
 
 function receiverNameFromText(text) {
   const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const receiverIndex = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)(?:\b|$)/iu.test(line));
+  if (receiverIndex >= 0) {
+    const sameLine = /^(?:ไปยัง|TO|ผู้รับ|PAYEE)\s*[:：-]?\s*(.+)$/iu.exec(lines[receiverIndex]);
+    if (sameLine?.[1] && /[A-Za-zก-๙]/u.test(sameLine[1])) return sameLine[1].trim();
+    for (let index = receiverIndex + 1; index < Math.min(lines.length, receiverIndex + 4); index += 1) {
+      const candidate = lines[index];
+      if (/^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)(?:\b|$)/iu.test(candidate)) break;
+      if (/[A-Za-zก-๙]/u.test(candidate) && !/^(?:x|X|•|\*|\d|[-\s])+$/u.test(candidate)) return candidate;
+    }
+  }
   const inlinePatterns = [
     /^(?:ไปยัง|ผู้รับ|ชื่อผู้รับ|receiver|payee)\s*[:：-]?\s*(.+)$/iu,
     /^biller\s*note\s*[:：-]?\s*([A-Za-zก-๙][A-Za-zก-๙ .'-]{2,})$/iu,
@@ -544,7 +581,6 @@ export function intakeCapability() {
   return {
     ocr_configured: paddle || xai || ocrSpace,
     preferred_model: PADDLEOCR_MODEL,
-    paddle_backend: process.env.PADDLEOCR_LLAMA_URL ? 'LLAMA_CPP' : 'PADDLEX',
     provider_order: ["paddleocr_vl_1_6", "xai_vision", "ocr_space"],
     paddle_backend: paddleLlama
       ? "LLAMA_CPP_MULTIMODAL"
