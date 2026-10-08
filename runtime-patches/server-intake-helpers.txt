@@ -95,7 +95,7 @@ async function handleTelegramApprove(message) {
     await telegram.sendMessage(chatId, "⛔ ไม่มีสิทธิ์อนุมัติ (Approval denied)");
     return true;
   }
-  const pendingId = String(message.text || "").match(/^\\/approve(?:@\\w+)?\\s+([0-9a-f-]{36})\\s*$/i)?.[1];
+  const pendingId = String(message.text || "").match(/^\/approve(?:@\w+)?\s+([0-9a-f-]{36})\s*$/i)?.[1];
   if (!pendingId) {
     await telegram.sendMessage(chatId, "ใช้ /approve <pending UUID> หลังตรวจข้อมูล OCR และบัญชีรับครบแล้ว");
     return true;
@@ -120,7 +120,7 @@ async function handleTelegramApprove(message) {
       "เคลียร์แล้ว (Cleared): — USDT",
       "ค้างส่ง (Outstanding): — USDT",
       `Transaction ID: ${result.tx_id}`,
-    ].join("\\n"));
+    ].join("\n"));
   } catch (error) {
     await telegram.sendMessage(chatId, "⛔ บันทึกไม่สำเร็จ (Approval failed) — ตรวจ Ledger ก่อน retry");
   }
