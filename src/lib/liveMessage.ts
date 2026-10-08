@@ -187,7 +187,7 @@ export function liveRecorded(d: {
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
-          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}`, style: 'danger' },
+          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
         ]] }
       : undefined,
   });
@@ -214,7 +214,7 @@ export function liveSettled(d: {
     reply_markup: d.transactionId
       ? { inline_keyboard: [[
           { text: '✏️ EDIT', callback_data: `edit:${d.transactionId}` },
-          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}`, style: 'danger' },
+          { text: '🗑 DELETE', callback_data: `del:${d.transactionId}` },
         ]] }
       : undefined,
   };
