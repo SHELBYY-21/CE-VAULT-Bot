@@ -36,18 +36,43 @@ function amountFromLabeledText(text: string): number | null {
   return null;
 }
 
+function receiverSectionText(text: string): string {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const start = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)(?:\b|$)/iu.test(line));
+  if (start < 0) return String(text || '');
+  const out: string[] = [];
+  for (let index = start; index < Math.min(lines.length, start + 5); index += 1) {
+    const line = lines[index];
+    if (index > start && /^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)(?:\b|$)/iu.test(line)) break;
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 function accountLast4(text: string): string | null {
-  const masked = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(text);
-  return masked?.[1] || null;
+  const raw = receiverSectionText(text);
+  const direct4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{4})(?=[\s\-xX•*]|$)/u.exec(raw);
+  if (direct4) return direct4[1];
+  const split4 = /(?:x|X|•|\*)[\s\-xX•*]*?(\d{3})[\s-]*(\d)(?!\d)/u.exec(raw);
+  if (split4) return `${split4[1]}${split4[2]}`;
+  const card = /(?:\d{4}[\s-]+)?\d{2}(?:x|X|•|\*){2}[\s-]+(?:x|X|•|\*){4}[\s-]+(\d{4})/u.exec(raw);
+  return card?.[1] || null;
 }
 
 function receiverName(text: string): string | null {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const receiverIndex = lines.findIndex((line) => /^(?:ไปยัง|TO|ผู้รับ|PAYEE)(?:\b|$)/iu.test(line));
+  if (receiverIndex >= 0) {
+    const sameLine = /^(?:ไปยัง|TO|ผู้รับ|PAYEE)\s*[:：-]?\s*(.+)$/iu.exec(lines[receiverIndex]);
+    if (sameLine?.[1] && /[A-Za-zก-๙]/u.test(sameLine[1])) return sameLine[1].trim();
+    for (let i = receiverIndex + 1; i < Math.min(lines.length, receiverIndex + 4); i += 1) {
+      const candidate = lines[i];
+      if (/^(?:จำนวนเงิน|AMOUNT|ยอดชำระ|ยอดเงิน|ข้อมูลเพิ่มเติม|BILLER NOTE)(?:\b|$)/iu.test(candidate)) break;
+      if (/[A-Za-zก-๙]/u.test(candidate) && !/^(?:x|X|•|\*|\d|[-\s])+$/u.test(candidate)) return candidate;
+    }
+  }
   for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const inline = /^(?:ไปยัง|ผู้รับ|ชื่อผู้รับ|receiver|payee)\s*[:：-]?\s*(.+)$/iu.exec(line);
-    if (inline?.[1] && /[A-Za-zก-๙]/u.test(inline[1])) return inline[1].trim();
-    if (/^biller\s*note\b/i.test(line)) {
+    if (/^biller\s*note\b/i.test(lines[i])) {
       const next = lines[i + 1];
       if (next && /[A-Za-zก-๙]/u.test(next) && !/^\d[\d\s-]+$/.test(next)) return next;
     }
@@ -57,7 +82,15 @@ function receiverName(text: string): string | null {
 
 export function parsePaddleThaiSlipText(text: string): SlipExtract {
   const raw = String(text || '').trim();
-  const date = raw.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/)?.[1] || null;
+  const numericDate = raw.match(/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})\b/)?.[1] || null;
+  const thaiMonthMap: Record<string, number> = {
+    'ม.ค.': 1, 'ก.พ.': 2, 'มี.ค.': 3, 'เม.ย.': 4, 'พ.ค.': 5, 'มิ.ย.': 6,
+    'ก.ค.': 7, 'ส.ค.': 8, 'ก.ย.': 9, 'ต.ค.': 10, 'พ.ย.': 11, 'ธ.ค.': 12,
+  };
+  const thaiDate = raw.match(/(?:^|\s)(\d{1,2})\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*(\d{2,4})(?=\s|$)/u);
+  const date = numericDate || (thaiDate && thaiMonthMap[thaiDate[2]]
+    ? `${thaiDate[1]}/${thaiMonthMap[thaiDate[2]]}/${thaiDate[3]}`
+    : null);
   const timeMatch = raw.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
   const time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
   const thbAmount = amountFromLabeledText(raw);
