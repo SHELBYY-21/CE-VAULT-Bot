@@ -7,22 +7,23 @@ const source = readFileSync(new URL('../runtime-patches/live-intake.mjs', import
 const sourceOcr = readFileSync(new URL('../src/lib/ocr.ts', import.meta.url), 'utf8');
 const paddleSource = readFileSync(new URL('../src/lib/paddleOcr.ts', import.meta.url), 'utf8');
 
-test('Thai Slip OCR V4 keeps Typhoon conditional and Paddle as default when Typhoon is unconfigured', () => {
-  const previousKey = process.env.TYPHOON_OCR_API_KEY;
-  const previousBase = process.env.TYPHOON_OCR_BASE_URL;
-  delete process.env.TYPHOON_OCR_API_KEY;
-  delete process.env.TYPHOON_OCR_BASE_URL;
+test('Thai OCR V4 does not claim unproven Paddle fallback is default when no providers are configured', () => {
+  const keys = ['TYPHOON_OCR_API_KEY', 'TYPHOON_OCR_BASE_URL', 'PADDLEOCR_LLAMA_ENABLED',
+    'PADDLEOCR_LLAMA_URL', 'PADDLEOCR_VL_URL', 'PADDLEOCR_BASE_URL'];
+  const original = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+  for (const key of keys) delete process.env[key];
   try {
     const cap = runtime.intakeCapability();
-    assert.equal(cap.preferred_model, 'PaddleOCR-VL-1.6');
-    assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
+    assert.equal(cap.preferred_model, 'MANUAL_REVIEW');
     assert.equal(cap.providers.typhoon_ocr_1_5, false);
+    assert.equal(cap.providers.paddleocr_vl_1_6, false);
+    assert.deepEqual(cap.provider_order, ['typhoon_ocr_1_5', 'paddleocr_vl_1_6', 'xai_vision', 'ocr_space']);
     assert.notEqual(cap.preferred_model, 'PP-OCRv6');
   } finally {
-    if (previousKey === undefined) delete process.env.TYPHOON_OCR_API_KEY;
-    else process.env.TYPHOON_OCR_API_KEY = previousKey;
-    if (previousBase === undefined) delete process.env.TYPHOON_OCR_BASE_URL;
-    else process.env.TYPHOON_OCR_BASE_URL = previousBase;
+    for (const key of keys) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+    }
   }
 });
 
