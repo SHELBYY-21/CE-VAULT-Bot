@@ -1042,82 +1042,78 @@ export function formatIntakeRichMessage({
 
 // V4 is presentation-only. Financial decisions remain in decideIntake/promotePendingSlip.
 export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,pinnedAccount=null,pinnedAccounts=[]}) {
-  const status = String(pending?.status || 'NEEDS_REVIEW');
-  const isRecorded = !duplicate && status === 'RECORDED' && Boolean(recorded?.tx_id || pending?.tx_id);
-  const verified = status === 'VERIFIED';
-  const titles = {
-    OCR_FAILED: ['🔴 อ่านสลิปไม่สำเร็จ', 'ส่งภาพสลิปใหม่ที่ชัดขึ้น'],
-    BANK_MISMATCH: ['🔴 บัญชีในสลิปไม่ตรง', 'ตรวจเลขบัญชีในสลิปเทียบกับบัญชี PIN'],
-    NEEDS_REVIEW: ['🟡 ต้องตรวจข้อมูลสลิป', 'ตรวจยอดและความมั่นใจ OCR ด้วยตา'],
-    PIN_REQUIRED: ['🟡 ยังไม่ได้ PIN บัญชี', 'เลือกบัญชีรับเงินก่อนบันทึก'],
-    STALE_SLIP: ['🔴 วันที่สลิปไม่ตรง', 'ตรวจวันของสลิปก่อนดำเนินการ'],
-    RATE_REQUIRED: ['🟡 ยังไม่มีเรตห้อง', 'ตั้งเรตที่ตรวจสอบแล้ว'],
-    MARKET_UNAVAILABLE: ['🟡 ยืนยันราคาไม่ได้', 'รอราคาตลาดที่ตรวจสอบได้'],
-    PROMOTION_FAILED: ['🔴 ไม่สามารถยืนยันผลบันทึก', 'ตรวจ Ledger ก่อน retry เพื่อกันรายการซ้ำ'],
-    VERIFIED: ['🟡 รอแอดมินอนุมัติ (Pending Admin Approval)', 'แอดมินตรวจ OCR และใช้ /approve <pending UUID> เพื่อบันทึก'],
-    RECORDED: ['🟡 IN สำเร็จ · WAIT USDT', 'รอหลักฐานการส่ง USDT และการยืนยันปิดรายการ'],
+  const status = String(pending?.status || "NEEDS_REVIEW");
+  const isRecorded = !duplicate && status === "RECORDED" && Boolean(recorded?.tx_id || pending?.tx_id);
+  const verified = !duplicate && status === "VERIFIED";
+  const n = (value, digits=2) => value == null || String(value).trim() === "" ||
+    !Number.isFinite(Number(value)) ? "—" : Number(value).toLocaleString("en-US", {
+      minimumFractionDigits: digits, maximumFractionDigits: digits,
+    });
+  const safeBank = (value) => {
+    const raw = String(value || "").trim();
+    if (raw.length > 64 || /[\\r\\n]/.test(raw) || /(?:โอนเงินสำเร็จ|รหัสอ้างอิง|จำนวนเงิน|เงื่อนไขการโอน|ตรวจสอบสถานะ|จากนาง|ไปยัง)/u.test(raw)) return null;
+    const code = normalizeBank(raw);
+    return code && /^[A-Z0-9]{2,12}$/.test(code) && code !== raw.toUpperCase().replace(/[^A-Z0-9ก-๙]/g, "") && code !== "BANK"
+      ? code : (["KBANK","SCB","BBL","KTB","BAY","TTB","GSB","KKP","CIMB","UOB","TISCO","TMN"].includes(code) ? code : null);
   };
-  const [headline,next] = duplicate ? ['⛔ พบรายการซ้ำ ห้ามบันทึกซ้ำ','ตรวจรายการเดิมใน Ledger ก่อน'] :
-    isRecorded ? titles.RECORDED : (titles[status] || ['🟡 ต้องตรวจสอบข้อมูล','ตรวจข้อมูลก่อนดำเนินการ']);
-  const n = (value, digits=2) => value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('en-US',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-  const fullAccount = pending?.account_number || (pending?.pin_match ? pinnedAccount?.account_number : null);
-  const bank = pending?.bank || (pending?.pin_match ? pinnedAccount?.bank_name : null);
-  const account = fullAccount || pending?.account_masked || null;
+  const bank = safeBank(pending?.bank) || (pending?.pin_match ? safeBank(pinnedAccount?.bank_name) : null);
+  const accountRaw = pending?.account_masked || (pending?.pin_match ? pinnedAccount?.account_number : null);
+  const accountLast = accountLast4(accountRaw);
+  const account = accountLast ? "••••" + accountLast : "—";
   const amount = n(pending?.thb_in);
-  const usdt = n(pending?.should_send,6);
-  const rate = n(deskRate?.sell_rate);
-  // Intake has no authoritative outbound ledger read. Never treat an OCR value as paid.
-  // A settlement summary is accepted only when explicitly supplied from a verified ledger read.
-  const ledgerSettlement = recorded?.settlement_verified === true ? recorded : null;
-  const dueRaw = (isRecorded || verified) && Number.isFinite(Number(pending?.should_send)) && Number(pending.should_send) >= 0
-    ? Number(pending.should_send) : null;
-  const clearedRaw = ledgerSettlement && Number.isFinite(Number(ledgerSettlement?.cleared_usdt)) &&
-    Number(ledgerSettlement.cleared_usdt) >= 0 ? Number(ledgerSettlement.cleared_usdt) : null;
-  const outstandingRaw = dueRaw != null && clearedRaw != null && clearedRaw <= dueRaw
-    ? Math.max(0, dueRaw - clearedRaw) : null;
-  const confidence = pending?.ocr_confidence == null ? null : Number(pending.ocr_confidence);
-  const allChecksPass = !duplicate && (verified || isRecorded) && pending?.pin_match === true &&
-    Number(deskRate?.sell_rate) > 0 && market?.fresh === true && Number.isFinite(confidence) &&
-    confidence >= OCR_AUTO_MIN;
-  const lines = [
-    `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
-    `${headline} (Status)`, '━━━━━━━━━━━━━━',
-    `📥 ${amount} THB → 💎 ${usdt} USDT`,
-    `💱 RATE ${rate}${allChecksPass ? (isRecorded ? ' · 🟡 INPUT VERIFIED · SETTLEMENT PENDING' : ' · 🟡 OCR CHECKS PASS · ADMIN APPROVAL REQUIRED') : ''}`,
-    `📊 ต้องส่ง (Total Due): ${n(dueRaw)} USDT`,
-    `✅ เคลียร์แล้ว (Cleared): ${n(clearedRaw)} USDT`,
-    `⏳ ค้างส่ง (Outstanding): ${n(outstandingRaw)} USDT`,
-    `📥 เงินรับ (Received): ${amount} THB · เรตห้อง (Room Rate): ${rate}`,
-  ];
-  if (!duplicate && status !== 'PROMOTION_FAILED') {
-    if (bank || account) lines.push(`🏦 บัญชีรับ (Receiving Bank): ${bank || '—'} · ${account ? String(account).replace(/.(?=.{4})/g, '•') : '—'}`);
-    if (pending?.name) lines.push(`👤 ${pending.name}`);
-  }
-  const note = String(pending?.note || '');
+  const estimate = n(pending?.should_send, 6);
+  const rate = n(pending?.desk_rate ?? deskRate?.sell_rate);
+  const due = (isRecorded || verified) && pending?.should_send != null && String(pending.should_send).trim() !== ""
+    ? n(pending.should_send, 2) : "—";
+  const cleared = isRecorded && recorded?.settlement_verified === true && recorded?.cleared_usdt != null &&
+    String(recorded.cleared_usdt).trim() !== "" ? Number(recorded.cleared_usdt) : null;
+  const dueValue = due === "—" ? null : Number(pending.should_send);
+  const clearedValid = cleared != null && Number.isFinite(cleared) && cleared >= 0 &&
+    dueValue != null && cleared <= dueValue;
+  const confidence = pending?.ocr_confidence == null || String(pending.ocr_confidence).trim() === ""
+    ? null : Number(pending.ocr_confidence);
+  const note = String(pending?.note || "");
   const slipDate = note.match(/(?:^|;)SLIP_DATE=([^;]*)/)?.[1];
   const slipTime = note.match(/(?:^|;)SLIP_TIME=([^;]*)/)?.[1];
   const ocrProvider = note.match(/(?:^|;)OCR=([^;]*)/)?.[1];
-  if (slipDate || slipTime) lines.push(`🗓 วันเวลา (Date & Time): ${slipDate || '—'} ${slipTime || ''}`);
-  if (pending?.ledger_ref) lines.push(`🔖 อ้างอิง (Reference): ${pending.ledger_ref}`);
-  if (verified && pending?.id) lines.push(`🛡 อนุมัติ (Approve): /approve ${pending.id}`);
-  if (ocrProvider) lines.push(`🔎 OCR Provider: ${ocrProvider}`);
-  if (confidence != null && Number.isFinite(confidence)) lines.push(`📋 ความมั่นใจ (OCR Confidence): ${n(confidence,1)}%`);
-  if (confidence != null && Number.isFinite(confidence) && confidence < 95) lines.push(`🟡 ความมั่นใจ OCR (OCR Confidence): ${n(confidence,1)}% · ตรวจสอบด้วยตา`);
-  lines.push('─────────────');
-  // Five-stage flow is an evidence-based presentation, not a settlement command.
-  // Only an authoritative recorded transaction can advance to IN; never infer DONE.
-  if (isRecorded) lines.push('① OCR ✓ → ② MATCH ✓ → ③ IN ✓ → ④ [WAIT] → ⑤ DONE —');
-  else if (duplicate) lines.push('① OCR ✓ → ② MATCH ⛔ → ③ IN — → ④ WAIT — → ⑤ DONE —');
-  else if (status === 'OCR_FAILED') lines.push('① OCR ✗ → ② MATCH — → ③ IN — → ④ WAIT — → ⑤ DONE —');
-  else if (status === 'BANK_MISMATCH') lines.push('① OCR ✓ → ② MATCH ✗ → ③ IN — → ④ WAIT — → ⑤ DONE —');
-  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [ADMIN APPROVAL] → ④ IN — → ⑤ WAIT — → ⑥ DONE —');
-  else lines.push('① OCR ✓ → ② [MATCH · REVIEW] → ③ IN — → ④ WAIT — → ⑤ DONE —');
+  const titles = {
+    OCR_FAILED: "🔴 OCR อ่านไม่สำเร็จ", BANK_MISMATCH: "🔴 บัญชีไม่ตรง",
+    NEEDS_REVIEW: "🟡 รอตรวจสอบ OCR", PIN_REQUIRED: "🟡 ยังไม่ PIN บัญชี",
+    STALE_SLIP: "🔴 วันที่สลิปไม่ตรง", RATE_REQUIRED: "🟡 ยังไม่มีเรต",
+    MARKET_UNAVAILABLE: "🟡 ราคาตลาดไม่พร้อม", PROMOTION_FAILED: "🔴 บันทึกไม่สำเร็จ",
+    VERIFIED: "🟡 รอแอดมินอนุมัติ", RECORDED: "🟡 บันทึก IN แล้ว · WAIT USDT",
+    REJECTED: "⛔ แอดมินปฏิเสธ",
+  };
+  const headline = duplicate ? "⛔ สลิปซ้ำ" : isRecorded ? titles.RECORDED :
+    (titles[status] || "🟡 รอตรวจสอบ");
+  const lines = [
+    `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
+    headline,
+    `💵 รับ (THB): ${amount} · เรต: ${rate}`,
+    `💎 ประเมิน (USDT): ${estimate}`,
+    `📊 ต้องส่ง (Due): ${due} USDT`,
+    `✅ ส่งยืนยันแล้ว (Cleared): ${clearedValid ? n(cleared) : "—"} USDT`,
+    `⏳ ค้างส่ง (Outstanding): ${clearedValid ? n(dueValue-cleared) : "—"} USDT`,
+    `🏦 บัญชีรับ: ${bank || "ไม่ยืนยัน"} · ${account}`,
+  ];
+  if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ผู้รับ: ${pending.name}`);
+  if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
+  if (pending?.ledger_ref) lines.push(`🔖 Ref: ${pending.ledger_ref}`);
+  if (ocrProvider) lines.push(`🔎 OCR: ${ocrProvider}`);
+  lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
+  if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
+  const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
+    verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → DONE —" :
+    status === "BANK_MISMATCH" ? "OCR ✓ → MATCH ✗ → IN —" :
+    status === "OCR_FAILED" ? "OCR ✗ → MATCH — → IN —" :
+    "OCR ✓ → REVIEW ⏳ → IN —";
+  lines.push("─────────────", flow);
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
-    .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
-  for (const issue of issues) lines.push(`🔍 ${issue}`);
-  if (duplicate && pending?.ledger_ref) lines.push(`DUPLICATE REF ${pending.ledger_ref}`);
-  lines.push(`NEXT: ${next}`);
-  return lines.join('\n');
+    .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
+  for (const issue of issues.slice(0,4)) lines.push("⚠️ " + issue);
+  lines.push("NEXT: " + (duplicate ? "ตรวจรายการเดิม" : isRecorded ? "รอหลักฐานส่ง USDT" :
+    verified ? "แอดมินตรวจสลิปแล้วกด Approve" : "ตรวจข้อมูลก่อนอนุมัติ"));
+  return lines.join("\n");
 }
 
 export function formatIntakeV4RichMessage(args) {
