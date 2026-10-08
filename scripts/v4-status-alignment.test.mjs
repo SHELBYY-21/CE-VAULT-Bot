@@ -56,3 +56,20 @@ test('DUE renders caller-supplied positive-owed amount per canonical convention'
   assert.match(response, /💎 DUE \$\{fmt\(data\.dueUsdt, 6\)\} USDT/);
   assert.match(response, /dueUsdt = expectedUsdt − sentUsdt/);
 });
+
+test('card style matches the CE EMPIRE web-flow mockup (650.jpg)', () => {
+  // Branding header on every card.
+  assert.match(response, /◈ CE EMPIRE · SLIP→USDT · TX-\$\{data\.ref \|\| '—'\}/);
+  // Step icons on the five-stage trace.
+  assert.match(response, /OCR: '📄'/);
+  assert.match(response, /MATCH: '🛡️'/);
+  assert.match(response, /IN: '💰'/);
+  assert.match(response, /WAIT: '⏳'/);
+  assert.match(response, /DONE: '✅'/);
+  // Bilingual step labels from the mockup.
+  assert.match(blockOf('OCR_OK'), /OCR สำเร็จ/);
+  assert.match(blockOf('MATCH_PASS'), /AI VERIFIED/);
+  assert.match(blockOf('DONE'), /สำเร็จ DONE — SETTLED/);
+  // Framed card: every card closes with the heavy rule.
+  assert.equal((response.match(/lines\.push\(RULE_HEAVY\)/g) || []).length, 2);
+});
