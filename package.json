@@ -7,7 +7,7 @@
     "test:env-policy": "node --test scripts/env-policy.test.mjs",
     "env:check": "npx --yes @dotenvx/dotenvx@2.32.4 check",
     "env:protect": "npx --yes @dotenvx/dotenvx@2.32.4 protect",
-    "build": "npm run test:langfuse-prod && npm run test:env-policy && npm run test:telegram-ui && npm run test:ce-response-design && npm run test:crud-reply && npm run test:telegram-v3 && npm run test:telegram-v4 && npm run test:ocr-v3 && npm run test:thai-ocr-v4 && npm run test:paddle-runtime && npm run test:paddle-live && npm run test:scb-samples && npm run test:paddle-502-hotfix && npm run test:typhoon-ocr && node --test scripts/webhook-info-safe.test.mjs && node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && cd appsrc && npm run check",
+    "build": "npm run test:langfuse-prod && npm run test:env-policy && npm run test:telegram-ui && npm run test:ce-response-design && npm run test:crud-reply && npm run test:telegram-v3 && npm run test:telegram-v4 && npm run test:ocr-v3 && npm run test:thai-ocr-v4 && npm run test:paddle-runtime && npm run test:paddle-live && npm run test:intake-simulation && npm run test:scb-samples && npm run test:paddle-502-hotfix && npm run test:typhoon-ocr && node --test scripts/webhook-info-safe.test.mjs && node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && cd appsrc && npm run check",
     "start": "node scripts/refresh-telegram-webhook.mjs && node scripts/start.mjs",
     "test:telegram-ui": "node --test scripts/telegram-reference-ui.test.mjs",
     "test:ce-response-design": "node --test scripts/ce-response-design.test.mjs",
@@ -22,6 +22,7 @@
     "test:paddle-502-hotfix": "node --test scripts/paddle-502-hotfix.test.mjs",
     "test:typhoon-ocr": "node --test scripts/typhoon-ocr-provider.test.mjs",
     "test:telegram-v4": "node --test scripts/telegram-response-v4-contract.test.mjs",
-    "test:paddle-live-inference": "node scripts/paddle-live-inference-smoke.mjs"
+    "test:paddle-live-inference": "node scripts/paddle-live-inference-smoke.mjs",
+    "test:intake-simulation": "node --test scripts/intake-realistic-sandbox.test.mjs"
   }
 }
