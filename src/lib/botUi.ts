@@ -402,9 +402,9 @@ export function pinStatusCard(d: {
   }
   const lines = d.banks
     .map((b, i) => {
-      const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
+      const account = b.account_number || 'ไม่พบเลขบัญชี';
       return (
-        `<b>${i + 1}.</b> 🏦 <b>${b.bank_name}</b>  <code>••••${last4}</code>\n` +
+        `<b>${i + 1}.</b> 🏦 <b>${b.bank_name}</b>  <code>${account}</code>\n` +
         `    ${b.label} · คงเหลือ <b>${money(b.current_balance)} THB</b>`
       );
     })
@@ -424,7 +424,7 @@ export function pinStatusCard(d: {
 export function pinSetOk(d: {
   today: string;
   bank_name: string;
-  last4: string;
+  account_number: string | null;
   label: string;
   count: number;
   max?: number;
@@ -433,7 +433,7 @@ export function pinSetOk(d: {
   return {
     text:
       `✅ <b>เซ็ตบัญชีในระบบแล้ว (ไม่ใช่ Telegram PIN)</b> <i>(${d.today})</i> · ${d.count}/${max}\n` +
-      `🏦 <b>${d.bank_name}</b>  <code>••••${d.last4}</code> · ${d.label}\n` +
+      `🏦 <b>${d.bank_name}</b>  <code>${d.account_number || 'ไม่พบเลขบัญชี'}</code> · ${d.label}\n` +
       `ส่งสลิปได้เลย — ตรงบัญชีที่เซ็ต = OCR สำเร็จ`,
   };
 }
@@ -450,8 +450,8 @@ export function pinLimitCard(d: {
   const max = d.max ?? 3;
   const lines = d.banks
     .map((b, i) => {
-      const last4 = (b.account_number || '').replace(/\D/g, '').slice(-4) || '????';
-      return `<b>${i + 1}.</b> ${b.bank_name} <code>••••${last4}</code> · ${b.label}`;
+      const account = b.account_number || 'ไม่พบเลขบัญชี';
+      return `<b>${i + 1}.</b> ${b.bank_name} <code>${account}</code> · ${b.label}`;
     })
     .join('\n');
   return {
