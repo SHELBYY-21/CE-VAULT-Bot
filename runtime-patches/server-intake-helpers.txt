@@ -13,6 +13,31 @@ function maskedBank(account) {
   return `${account?.bank_name || "BANK"} ${last4 ? `••••${last4}` : "••••"}`;
 }
 
+async function handleTelegramHome(message) {
+  if (!message?.chat?.id) return true;
+  await telegram.sendMessage(message.chat.id, formatBotHomeReply());
+  return true;
+}
+
+async function handleTelegramSystemStatus(message) {
+  if (!message?.chat?.id) return true;
+  const chatId = message.chat.id;
+  let webhook = null;
+  try {
+    webhook = await telegram.getWebhookInfo();
+  } catch {}
+  const origin = String(process.env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com").replace(/\/$/, "");
+  const expectedWebhook = `${origin}/api/telegram/webhook`;
+  await telegram.sendMessage(chatId, formatBotSystemReply({
+    telegramOnline: true,
+    webhookVerified: webhook?.url === expectedWebhook,
+    databaseConfigured: Boolean(repository),
+    pendingUpdates: Number(webhook?.pending_update_count || 0),
+    safety: "LOCKED",
+  }));
+  return true;
+}
+
 async function requireTelegramOperator(message) {
   const operator = await repository.getOperatorByTelegramId(message?.from?.id);
   if (!operator) {
@@ -98,7 +123,7 @@ async function handleLiveSlipMessage(message) {
   const fileId = imageFileId(message);
   if (!fileId) return;
   const chatId = message.chat.id;
-  await telegram.sendMessage(chatId, "CE VAULT · OCR\nรับภาพแล้ว · กำลังตรวจยอด / บัญชี / Binance TH Spot").catch(() => undefined);
+  await telegram.sendMessage(chatId, formatScanStageReply()).catch(() => undefined);
 
   const downloaded = await telegram.downloadFile(fileId);
   const fingerprint = fingerprintImage(downloaded.buffer);
