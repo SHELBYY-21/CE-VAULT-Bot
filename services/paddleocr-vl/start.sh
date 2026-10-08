@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-PIPELINE="${PADDLE_PIPELINE:-PaddleOCR-VL}"
+PIPELINE="${PADDLE_PIPELINE:-PaddleOCR-VL-1.6}"
 DEVICE="${PADDLE_DEVICE:-cpu}"
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8080}"
