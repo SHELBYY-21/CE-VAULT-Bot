@@ -126,6 +126,12 @@ const repoMethods = String.raw`  return Object.freeze({
         .select("id,ledger_ref,status,thb_in,should_send,desk_rate,mkt_rate,bank,account_masked,pin_match,ocr_confidence,tx_id,slip_fingerprint")
         .single());
     },
+    async getPendingSlipForApproval(id) {
+      return ensureData(await db.from("pending_slips")
+        .select("id,chat_id,ledger_ref,status,thb_in,should_send,pin_match,tx_id")
+        .eq("id", id)
+        .maybeSingle());
+    },
     async promotePendingSlip(pendingId, adminId, roomName) {
       const data = ensureData(await db.rpc("ce_promote_pending_slip", {
         p_pending_id: pendingId,
@@ -172,7 +178,11 @@ const intakeHelpers = readFileSync(path.join(root, 'runtime-patches', 'server-in
 server = replaceOnce(server, '\nasync function processTelegramUpdate(update) {', `${intakeHelpers}\nasync function processTelegramUpdate(update) {`, 'LIVE_INTAKE_PROCESS_ANCHOR_NOT_FOUND');
 
 const messageAnchor = '  const message = update.message;\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {';
-const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCallback?.message?.chat?.id && /^ce:/.test(String(ceCallback.data || ""))) {\n    await handleTelegramCallback(ceCallback);\n    return;\n  }\n  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:start|help|menu|ce)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
+const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCallback?.message?.chat?.id && /^ce:/.test(String(ceCallback.data || ""))) {\n    await handleTelegramCallback(ceCallback);\n    return;\n  }\n  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:start|help|menu|ce)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/approve(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
+    await handleTelegramApprove(message);
+    return;
+  }
+  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
 server = replaceOnce(server, messageAnchor, messageRouter, 'LIVE_INTAKE_MESSAGE_ROUTER_ANCHOR_NOT_FOUND');
 
 // Public, read-only diagnostics. No secrets or PII.
