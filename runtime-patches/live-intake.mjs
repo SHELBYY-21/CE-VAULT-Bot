@@ -1110,7 +1110,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   else if (duplicate) lines.push('① OCR ✓ → ② MATCH ⛔ → ③ IN — → ④ WAIT — → ⑤ DONE —');
   else if (status === 'OCR_FAILED') lines.push('① OCR ✗ → ② MATCH — → ③ IN — → ④ WAIT — → ⑤ DONE —');
   else if (status === 'BANK_MISMATCH') lines.push('① OCR ✓ → ② MATCH ✗ → ③ IN — → ④ WAIT — → ⑤ DONE —');
-  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [IN] → ④ WAIT — → ⑤ DONE —');
+  else if (verified) lines.push('① OCR ✓ → ② MATCH ✓ → ③ [ADMIN APPROVAL] → ④ IN — → ⑤ WAIT — → ⑥ DONE —');
   else lines.push('① OCR ✓ → ② [MATCH · REVIEW] → ③ IN — → ④ WAIT — → ⑤ DONE —');
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(issue=>issue !== '🟢 ALL CHECKS PASS' && issue !== 'ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง');
