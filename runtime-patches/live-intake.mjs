@@ -703,12 +703,7 @@ export function formatBotHomeReply() {
     "👑 CE EMPIRE · OPERATOR",
     "CURRENT STATE  READY",
     "",
-    "FLOW · BANK SLIP → USDT",
-    "① OCR    รับและอ่านสลิป",
-    "② MATCH  ตรวจบัญชี / วัน / เรต",
-    "③ IN     บันทึกยอดเมื่อผ่านเงื่อนไข",
-    "④ WAIT   รอ USDT / การดำเนินการถัดไป",
-    "⑤ DONE   ปิดเมื่อมีผลลัพธ์จริง",
+    "FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE",
     "",
     "NEXT ACTION",
     "→ ส่งรูปสลิปธนาคารในแชตนี้",
@@ -772,7 +767,7 @@ export function formatScanStageReply() {
     "⑤ DONE   LOCKED",
     "",
     "NEXT ACTION",
-    "→ กำลังอ่านยอด / บัญชี / วันที่จากสลิป",
+    "→ กำลังอ่านสลิป",
   ].join("\n");
 }
 
@@ -1098,14 +1093,15 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   ];
   if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ผู้รับ: ${pending.name}`);
   if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
-  if (pending?.ledger_ref) lines.push(`🔖 Ref: ${pending.ledger_ref}`);
-  if (ocrProvider) lines.push(`🔎 OCR: ${ocrProvider}`);
   lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
     verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → WAIT — → DONE —" :
-    status === "BANK_MISMATCH" ? "OCR ✓ → MATCH ✗ → IN —" :
+    duplicate ? "OCR ✓ → DUP ⚠" :
+    status === "BANK_MISMATCH" || status === "STALE_SLIP" ? "OCR ✓ → MATCH ✗ → IN —" :
     status === "OCR_FAILED" ? "OCR ✗ → MATCH — → IN —" :
+    status === "PROMOTION_FAILED" ? "OCR ✓ → MATCH ✓ → IN ✗ → WAIT —" :
+    status === "REJECTED" ? "OCR ✓ → MATCH ✓ → APPROVE ✗" :
     "OCR ✓ → REVIEW ⏳ → IN —";
   lines.push("─────────────", flow);
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})

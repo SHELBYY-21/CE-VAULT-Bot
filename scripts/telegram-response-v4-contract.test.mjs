@@ -317,3 +317,21 @@ test('exception gate: SHORT cannot be called SETTLED', () => {
   assert.doesNotMatch(partial, /SETTLED/);
   assert.doesNotMatch(partial, /DONE ✓/);
 });
+
+
+test('V4 stage flow is accurate for every real status and stays compact', () => {
+  const base = { pending: { ledger_ref: 'CE-TX-2460', status: 'NEEDS_REVIEW', thb_in: '1000',
+    should_send: '26.940000', ocr_confidence: 90, bank: 'SCB', account_masked: '••••3114', pin_match: false,
+    note: 'OCR=typhoon;SLIP_DATE=08/10/26;SLIP_TIME=13:30' },
+    deskRate: { sell_rate: '37.12' }, market: { price: '37.10', fresh: true } };
+  const stale = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'STALE_SLIP' } });
+  assert.match(stale, /OCR ✓ → MATCH ✗ → IN —/);
+  const promo = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'PROMOTION_FAILED' } });
+  assert.match(promo, /IN ✗ → WAIT —/);
+  const dup = formatIntakeV4Reply({ ...base, duplicate: true });
+  assert.match(dup, /DUP ⚠/);
+  const compact = formatIntakeV4Reply(base);
+  assert.doesNotMatch(compact, /Ref:/);
+  assert.doesNotMatch(compact, /typhoon/);
+  assert.match(compact, /🗓 สลิป: 08\/10\/26 13:30/);
+});

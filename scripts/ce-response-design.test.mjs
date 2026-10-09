@@ -93,3 +93,13 @@ test('web board patch carries CE EMPIRE fintech visual system and five-stage rai
   assert.match(patch, /@media\(max-width:760px\)/);
   assert.match(patch, /prefers-reduced-motion/);
 });
+
+
+test('home and scan replies stay compact - no per-stage explanations', () => {
+  const home = runtime.formatBotHomeReply();
+  assert.match(home, /FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE/);
+  assert.doesNotMatch(home, /รับและอ่านสลิป|บันทึกยอดเมื่อผ่านเงื่อนไข|ปิดเมื่อมีผลลัพธ์จริง/);
+  const scan = runtime.formatScanStageReply();
+  assert.match(scan, /① OCR\s+ACTIVE/);
+  assert.match(scan, /→ กำลังอ่านสลิป$/);
+});
