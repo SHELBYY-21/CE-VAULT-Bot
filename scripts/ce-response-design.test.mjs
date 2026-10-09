@@ -101,5 +101,5 @@ test('home and scan replies stay compact - no per-stage explanations', () => {
   assert.doesNotMatch(home, /รับและอ่านสลิป|บันทึกยอดเมื่อผ่านเงื่อนไข|ปิดเมื่อมีผลลัพธ์จริง/);
   const scan = runtime.formatScanStageReply();
   assert.match(scan, /① OCR\s+ACTIVE/);
-  assert.match(scan, /→ กำลังอ่านสลิป$/);
+  assert.match(scan, /→ ⚡ AI SCAN — ถอดรหัสสลิปจากภาพจริง$/);
 });

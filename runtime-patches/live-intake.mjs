@@ -767,7 +767,7 @@ export function formatScanStageReply() {
     "⑤ DONE   LOCKED",
     "",
     "NEXT ACTION",
-    "→ กำลังอ่านสลิป",
+    "→ ⚡ AI SCAN — ถอดรหัสสลิปจากภาพจริง",
   ].join("\n");
 }
 
@@ -983,10 +983,10 @@ function intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccoun
 export function formatScanStageRichMessage() {
   return {
     html:
-      "<h3>◈ CE · OCR</h3>" +
-      "<p><b>⚙️ กำลังอ่านสลิป</b> — NEXT: ตรวจบัญชีอัตโนมัติ</p>" +
+      "<h3>◈ CE · SCAN ⚡</h3>" +
+      "<p><b>🤖 AI OCR ถอดรหัสสลิปจากภาพจริง…</b> — NEXT: ตรวจบัญชีอัตโนมัติ</p>" +
       "<hr/>" +
-      "<p>OCR กำลังประมวลผลจากภาพจริง · ไม่มี fake progress</p>",
+      "<p>⚡ ENGINE ONLINE · ประมวลผลจากภาพจริง · ไม่มี fake progress</p>",
   };
 }
 
@@ -1089,16 +1089,17 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     lines.push(`🔒 รายการเดิม: ${pending?.ledger_ref || shortTxRef(pending?.ledger_ref)}`);
   } else {
     lines.push(
-    `💵 รับ (THB): ${amount} · เรต: ${rate}`,
-    `💎 ประเมิน (USDT): ${estimate}`,
-    `📊 ต้องส่ง (Due): ${due} USDT`,
-    `✅ ส่งยืนยันแล้ว (Cleared): ${clearedValid ? n(cleared) : "—"} USDT`,
-    `⏳ ค้างส่ง (Outstanding): ${clearedValid ? n(dueValue-cleared) : "—"} USDT`,
-    `🏦 บัญชีรับ: ${bank || "ไม่ยืนยัน"} · ${account}`,
+    `💵 THB (รับ): ${amount}`,
+    `📈 RATE: ${rate}`,
+    `💎 USDT (ประเมิน): ${estimate}`,
+    `📤 DUE (ต้องส่ง): ${due} USDT`,
+    `✅ CLEARED (ส่งแล้ว): ${clearedValid ? n(cleared) : "—"} USDT`,
+    `⏳ OUTSTANDING (ค้างส่ง): ${clearedValid ? n(dueValue-cleared) : "—"} USDT`,
+    `🏦 BANK: ${bank || "ไม่ยืนยัน"} · ACCOUNT: ${account}`,
     );
-    if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ผู้รับ: ${pending.name}`);
+    if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 NAME: ${pending.name}`);
     if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
-    lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
+    lines.push(`📋 CONF: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
   }
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
@@ -1137,7 +1138,7 @@ export function formatIntakeV4RichMessage(args) {
     fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.slice(2).filter(line => /^(💵|💎|📊|✅|⏳|🏦|👤|🗓|🔖|🔎|📋|🛡)/u.test(line));
+  const amountRows = card.slice(2).filter(line => /^(💵|📈|💎|📤|✅|⏳|🏦|👤|🗓|🔖|🔎|📋|🛡)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('⚠️ '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +
