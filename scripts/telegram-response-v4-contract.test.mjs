@@ -335,3 +335,16 @@ test('V4 stage flow is accurate for every real status and stays compact', () => 
   assert.doesNotMatch(compact, /typhoon/);
   assert.match(compact, /🗓 สลิป: 08\/10\/26 13:30/);
 });
+
+
+test('compact duplicate card: no financial table, only original-record pointer', () => {
+  const dup = formatIntakeV4Reply({ pending: { ledger_ref: 'CE-20261008-4862ABCDEF', status: 'VERIFIED',
+    thb_in: '5000', should_send: '150', ocr_confidence: 98, name: 'Test User' }, deskRate: { sell_rate: '33.50' }, duplicate: true });
+  assert.match(dup, /สลิปซ้ำ/);
+  assert.match(dup, /รายการเดิม: CE-20261008-4862ABCDEF/);
+  assert.doesNotMatch(dup, /รับ \(THB\)/);
+  assert.doesNotMatch(dup, /Confidence:/);
+  assert.doesNotMatch(dup, /บัญชีรับ/);
+  assert.match(dup, /DUP ⚠/);
+  assert.match(dup, /NEXT: ตรวจรายการเดิม/);
+});
