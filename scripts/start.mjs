@@ -24,7 +24,26 @@ function derivedGatewayAuth(botToken) {
 }
 
 function safeErrorCode(error) {
-  return String(error?.cause?.code || error?.code || error?.message || 'unknown').slice(0, 80);
+  return String(error?.cause?.code || error?.code || error?.message || 'unknown').slice(0, 120);
+}
+
+function safeRpcDiagnosticPart(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9_.-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+}
+
+function rpcPayloadCode(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  return payload.code || payload.error || payload.error_code || payload.message || '';
+}
+
+function rpcFailureCode(prefix, name, response, payload) {
+  const parts = [prefix, name, 'HTTP', response.status, rpcPayloadCode(payload)]
+    .map(safeRpcDiagnosticPart)
+    .filter(Boolean);
+  return parts.join('_').slice(0, 160);
 }
 
 async function loadVaultSecret(name) {
@@ -137,7 +156,7 @@ async function supabaseRpc(env, name, body = {}) {
       method: 'POST', headers: supabaseHeaders(key), body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(`SUPABASE_RPC_${name}_FAILED`);
+    if (!response.ok) throw new Error(rpcFailureCode('SUPABASE_RPC', name, response, payload));
     return payload;
   }
 
@@ -160,7 +179,7 @@ async function supabaseRpc(env, name, body = {}) {
     }),
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`SUPABASE_GATEWAY_RPC_${name}_FAILED`);
+  if (!response.ok) throw new Error(rpcFailureCode('SUPABASE_GATEWAY_RPC', name, response, payload));
   return payload;
 }
 
@@ -199,7 +218,8 @@ function startOutboxDispatcher(env, productionTracer) {
     while (!stopped) {
       try {
         const items = await supabaseRpc(env, 'ce_claim_outbox_batch', { p_limit: 10 });
-        for (const item of Array.isArray(items) ? items : []) {
+        if (!Array.isArray(items)) throw new Error('CE_OUTBOX_RPC_UNEXPECTED_PAYLOAD');
+        for (const item of items) {
           try {
             if (shouldNotifyOutbox(item)) {
               await telegramApi(token, 'sendMessage', { chat_id: chatId, text: renderOutboxMessage(item), disable_web_page_preview: true });
