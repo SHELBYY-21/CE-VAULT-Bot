@@ -95,9 +95,7 @@ export function welcomeRegistered(name: string): OutgoingMessage {
       `◈ <b>CE VAULT · ROOM CONTROL</b>\n` +
       `ยินดีต้อนรับ <b>${ceEscape(name)}</b>\n` +
       `─────────────\n` +
-      `ส่งสลิป THB เพื่อเริ่มอ่านข้อมูล (ยังไม่ใช่การยืนยันธุรกรรม)\n` +
-      `เมนูห้อง: <code>/ce</code> · คำสั่ง: <code>/help</code>\n` +
-      `ยกเลิกขั้นตอนค้าง: <code>/cancel</code>`,
+      `ส่งสลิป THB เพื่อเริ่ม · <code>/ce</code> · <code>/help</code> · <code>/cancel</code>`,
     reply_markup: {
       inline_keyboard: [[{ text: '◈ เปิด CE VAULT', callback_data: 'ce:home' }]],
     },
