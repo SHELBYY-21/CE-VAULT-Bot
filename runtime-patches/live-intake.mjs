@@ -1084,16 +1084,22 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const lines = [
     `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
     headline,
+  ];
+  if (duplicate) {
+    lines.push(`🔒 รายการเดิม: ${pending?.ledger_ref || shortTxRef(pending?.ledger_ref)}`);
+  } else {
+    lines.push(
     `💵 รับ (THB): ${amount} · เรต: ${rate}`,
     `💎 ประเมิน (USDT): ${estimate}`,
     `📊 ต้องส่ง (Due): ${due} USDT`,
     `✅ ส่งยืนยันแล้ว (Cleared): ${clearedValid ? n(cleared) : "—"} USDT`,
     `⏳ ค้างส่ง (Outstanding): ${clearedValid ? n(dueValue-cleared) : "—"} USDT`,
     `🏦 บัญชีรับ: ${bank || "ไม่ยืนยัน"} · ${account}`,
-  ];
-  if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ผู้รับ: ${pending.name}`);
-  if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
-  lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
+    );
+    if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ผู้รับ: ${pending.name}`);
+    if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
+    lines.push(`📋 Confidence: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
+  }
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
     verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → WAIT — → DONE —" :
