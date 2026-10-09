@@ -65,3 +65,14 @@ describe('CE VAULT Telegram reply contract', () => {
     expect(reply.text).toContain('ยังไม่เชื่อม Telegram PIN');
   });
 });
+
+
+describe('welcome compactness', () => {
+  it('keeps welcome to brand, greeting, and one command line', () => {
+    const w = welcomeRegistered('A');
+    expect(w.text).toContain('ยินดีต้อนรับ');
+    expect(w.text).not.toContain('ยังไม่ใช่การยืนยันธุรกรรม');
+    expect(w.text).toContain('/ce');
+    expect(w.text.split('\n').length).toBeLessThanOrEqual(5);
+  });
+});
