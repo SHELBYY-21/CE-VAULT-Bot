@@ -29,7 +29,7 @@ Allowed without approval:
 - edit files on a non-main branch
 - run lint, typecheck, tests and builds
 - create commits and pull requests
-- diagnose failures and retry reversible fixes up to 3 times
+- diagnose failures and retry reversible fixes up to 2 times
 
 Requires approval:
 
@@ -183,7 +183,7 @@ For reversible failures:
 1. diagnose
 2. attempt a targeted fix
 3. rerun verification
-4. repeat up to 3 total attempts
+4. repeat up to 2 total attempts
 5. stop and report root cause if still failing
 
 Never use blind retry loops. Preserve successful work and the last known-good state.
@@ -200,3 +200,5 @@ An agent may say `DONE` only when it reports:
 - remaining unverified external dependencies
 
 A CI pass is not proof that Telegram, Supabase, Railway, Render, Vercel or any other live integration is healthy unless that live integration was checked directly.
+
+Agent-run ceilings and completion rules are also defined in `ops/agent-control-policy.json` and `AGENTS.md` (20 tool calls, 2 retries per operation, 15-minute limit). These are orchestration rules; they must be enforced by the agent host or runner where supported.
