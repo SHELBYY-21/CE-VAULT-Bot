@@ -240,8 +240,21 @@ server = replaceOnce(
   'import { runSandboxE2E } from "./e2e.mjs";\nimport { buildOpsOverview } from "./ops-summary.mjs";',
   'OPS_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
+server = replaceOnce(server, 'import { buildOpsOverview } from "./ops-summary.mjs";', 'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { timingSafeEqual } from "node:crypto";', 'OPS_CRYPTO_IMPORT_ANCHOR_NOT_FOUND');
 const jobsRouteAnchor = 'app.get("/api/v1/jobs", async (req, res) => {';
 const opsRoute = String.raw`app.get("/api/v1/ops/overview", async (req, res) => {
+  // Fail closed until a dedicated read-only operations token is configured.
+  // Never accept credentials in query strings or log their values.
+  const opsToken = process.env.CE_OPS_READ_TOKEN;
+  const supplied = req.get("Authorization") || "";
+  if (!opsToken || !supplied.startsWith("Bearer ")) {
+    return res.set("Cache-Control", "no-store").status(401).json({ error: "unauthorized" });
+  }
+  const expected = Buffer.from(opsToken, "utf8");
+  const actual = Buffer.from(supplied.slice(7), "utf8");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return res.set("Cache-Control", "no-store").status(403).json({ error: "forbidden" });
+  }
   if (!requireRepository(req, res)) return;
   try {
     const transactionLimit = 1000;
