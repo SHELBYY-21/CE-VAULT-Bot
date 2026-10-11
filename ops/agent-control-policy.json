@@ -2,7 +2,7 @@
   "schemaVersion": "2.2",
   "project": "CE VAULT",
   "defaultDecision": "approval",
-  "maxReversibleRetries": 3,
+  "maxReversibleRetries": 2,
   "roles": {
     "DEV": {
       "mode": "write-branch-only",
@@ -126,7 +126,18 @@
     "production.env.change",
     "database.destructive",
     "domain.change",
-    "dns.change"
+    "dns.change",
+    "pull_request.merge",
+    "git.protected_branch.push",
+    "git.main.push",
+    "release.deploy",
+    "external.data.share",
+    "external.message.send",
+    "automation.external.activate",
+    "security.permission.change",
+    "system.install",
+    "paid.service.use",
+    "major.stack.migrate"
   ],
   "globalBlock": [
     "finance.transfer",
@@ -148,5 +159,86 @@
     "checks_run",
     "check_results",
     "verified_live_state_or_explicitly_unverified_dependencies"
-  ]
+  ],
+  "policyVersion": "2.3-draft",
+  "projectConfig": {
+    "name": "CE VAULT",
+    "goal": "Thai-first Telegram fintech operations with read-only monitoring, auditable development and safety-locked settlement",
+    "repository": "SHELBYY-21/CE-VAULT-Bot",
+    "defaultBranch": "main",
+    "workingBranchPrefix": "agent/",
+    "workspace": "isolated project worktree or sandbox; verify actual workspace and absence of production credentials before running code"
+  },
+  "userPreferences": {
+    "language": "th",
+    "tone": "เป็นกันเอง ตรงประเด็น เข้าใจง่าย",
+    "summaryLines": 5,
+    "dailyPriorityLimit": 3,
+    "explainTechnicalTerms": true
+  },
+  "delegatedPermissions": {
+    "readProjectFiles": true,
+    "editProjectFiles": true,
+    "createWorkBranch": true,
+    "runSafeChecksInSandbox": true,
+    "installProjectDependencies": true,
+    "commitToWorkBranch": true,
+    "pushToWorkBranch": true,
+    "openPullRequest": true,
+    "scope": "only approved repository and isolated working branch; least privilege, inspect license/install scripts, no production credentials"
+  },
+  "requiresApproval": [
+    "merge_pull_request",
+    "push_to_default_or_protected_branch",
+    "release_or_deploy",
+    "destructive_operations",
+    "production_database_changes",
+    "security_or_permission_changes",
+    "system_wide_installation",
+    "paid_services",
+    "external_data_sharing",
+    "major_stack_migration",
+    "production_environment_changes",
+    "external_message_or_webhook_activation"
+  ],
+  "limits": {
+    "maxToolCallsPerRun": 20,
+    "maxRetriesPerOperation": 2,
+    "maxRuntimeMinutes": 15,
+    "stopOnSuspectedSecretExposure": true
+  },
+  "completion": {
+    "inspectDiff": true,
+    "checkForSecrets": true,
+    "runRelevantTests": true,
+    "reportUnverifiedItems": true,
+    "includeCommitHashWhenAvailable": true,
+    "committedDoesNotMeanProductionReady": true
+  },
+  "executionContract": {
+    "intentClassifications": [
+      "answer_or_summary",
+      "proposal_or_plan",
+      "explicit_execution"
+    ],
+    "questionsDoNotAuthorizeInstallation": true,
+    "requireObjectiveAndDoneCriteria": true,
+    "preferMinimalReversibleChange": true,
+    "workInVerifiableBatches": true,
+    "doNotExpandScopeWithoutRequest": true,
+    "recordUnrelatedIdeasAsProposals": true,
+    "doNotRetryWithoutNewEvidence": true,
+    "stopAndReportOnLimits": true,
+    "checkForOthersPendingChangesBeforeWrites": true,
+    "neverCleanOrResetWorkspaceAutomatically": true,
+    "rollbackOnlyTaskChanges": true,
+    "stopForOthersChanges": true,
+    "completedOnlyWhenVerifiedAndCommittedWhereRequested": true,
+    "reportsSeparate": [
+      "done",
+      "proposed",
+      "not_verified"
+    ],
+    "noFabricatedHashesLinksOrTests": true
+  }
 }
