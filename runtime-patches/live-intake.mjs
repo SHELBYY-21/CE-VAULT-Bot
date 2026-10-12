@@ -702,6 +702,8 @@ export function formatBotHomeReply() {
   return [
     "👑 CE EMPIRE · OPERATOR",
     "CURRENT STATE  READY",
+    "⚡ ยินดีต้อนรับ BOSS — ระบบปลุกเสร็จ พร้อมรับคำสั่ง",
+    "🔒 AI OCR ONLINE · SANDBOX LOCKED · คุมเงินได้ คุมทุกบาท",
     "",
     "FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE",
     "",
