@@ -285,20 +285,25 @@ async function handleTelegramPin(message, unpin = false) {
   return true;
 }
 
+function buildIntakeApprovalButtons(pending) {
+  const useV4 = process.env.CE_RESPONSE_V4 !== "0";
+  const id = String(pending?.id || "");
+  return useV4 && pending?.status === "VERIFIED" &&
+    /^[0-9a-f-]{36}$/i.test(id) ? {
+      inline_keyboard: [[
+        { text: "✅ เข้า · ยืนยัน", style: "success", callback_data: "ce:approve:" + id },
+        { text: "📝 แก้ไข", style: "primary", callback_data: "ce:edit:" + id },
+        { text: "⛔ ไม่เข้า · ยกเลิก", style: "danger", callback_data: "ce:reject:" + id },
+      ]],
+    } : undefined;
+}
+
 async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
   // CE_RESPONSE_V4=0 is the no-redeploy-data-migration rollback switch.
   const useV4 = process.env.CE_RESPONSE_V4 !== "0";
   const rich = useV4 ? formatIntakeV4RichMessage(args) : formatIntakeRichMessage(args);
   const fallback = useV4 ? formatIntakeV4Reply(args) : formatIntakeReply(args);
-  const id = String(args?.pending?.id || "");
-  const approvalButtons = useV4 && args?.pending?.status === "VERIFIED" &&
-    /^[0-9a-f-]{36}$/i.test(id) ? {
-      inline_keyboard: [[
-        { text: "✅ APPROVE", style: "success", callback_data: "ce:approve:" + id },
-        { text: "📝 EDIT", style: "primary", callback_data: "ce:edit:" + id },
-        { text: "⛔ REJECT", style: "danger", callback_data: "ce:reject:" + id },
-      ]],
-    } : undefined;
+  const approvalButtons = args?.approvalHandled ? undefined : buildIntakeApprovalButtons(args?.pending);
   if (liveMessageId) {
     try {
       return await telegram.editRichMessageWithFallback(chatId, liveMessageId, rich, fallback, approvalButtons);
@@ -428,11 +433,26 @@ async function handleLiveSlipMessage(message) {
     account_number: pinnedMatch?.account_number || null,
     name: finalPending?.name || slip?.receiverName || null,
   };
+  // Slip photo evidence: slip + amounts + confirm/cancel buttons (money in or not).
+  const approvalButtons = buildIntakeApprovalButtons(replyPending);
+  let approvalHandled = false;
+  if (approvalButtons && typeof telegram.sendPhotoWithMarkup === "function") {
+    try {
+      await telegram.sendPhotoWithMarkup(
+        chatId,
+        fileId,
+        formatSlipPhotoCaption({ pending: replyPending, pinnedAccount: pinnedAccount }),
+        approvalButtons,
+      );
+      approvalHandled = true;
+    } catch {}
+  }
   await upsertIntakeLiveMessage(chatId, liveMessageId, {
     pending: replyPending,
     market,
     deskRate,
     recorded,
+    approvalHandled: approvalHandled,
     pinnedAccount: pinnedAccount,
     pinnedAccounts: pinnedAccountsForReply,
   });
