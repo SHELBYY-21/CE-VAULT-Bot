@@ -323,6 +323,15 @@ async function main() {
     probe.on('error', () => console.error('[CE TG OUTBOUND PROOF] start failed'));
     probe.on('exit', (code) => console.log('[CE TG OUTBOUND PROOF] process exit code=' + String(code)));
   }
+
+  // Opt-in one-shot preview of every operator card. Sample data only, never writes the ledger.
+  if (env.CE_RUN_ONE_SHOT_TG_DEMO_CARDS === '1') {
+    const demo = spawn(process.execPath, [path.join(root, 'scripts', 'telegram-demo-cards.mjs')], {
+      cwd: root, env, stdio: 'inherit',
+    });
+    demo.on('error', () => console.error('[CE DEMO CARDS] start failed'));
+    demo.on('exit', (code) => console.log('[CE DEMO CARDS] process exit code=' + String(code)));
+  }
   const productionTracer = createCeProductionTracer({ env });
   productionTracer.record('start-ce-runtime', 'ok');
   const stopWebhookMaintainer = startWebhookMaintainer(env);
