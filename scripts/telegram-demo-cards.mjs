@@ -1,5 +1,6 @@
 // Opt-in, one-shot PREVIEW of every operator card for the boss.
 // Sample payloads are DEMO-only; nothing is written to the ledger or production tables.
+import { createHash } from 'node:crypto';
 import {
   botHomeReplyMarkup,
   formatBotHomeReply,
@@ -54,9 +55,15 @@ export function buildDemoCards() {
 export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fetch) {
   const result = { verdict: 'NOT_RUN', sent: 0, cards: 0, reason: '' };
   const token = String(env.TELEGRAM_BOT_TOKEN || env.BOT_TOKEN || '').trim();
-  const dbUrl = String(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const url = String(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || 'https://iuaaviivkumvzbdmpzty.supabase.co');
   const dbKey = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!token || !dbUrl || !dbKey) {
+  const gatewayUrl = String(env.SUPABASE_GATEWAY_URL || '').trim();
+  const anon = String(env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  const gatewayAuth = env.CE_DATA_GATEWAY_SECRET ||
+    (token ? createHash('sha256').update('ce-vault-data-gateway-v1:' + token).digest('hex') : '');
+  const useDirectDb = Boolean(dbKey) && env.SUPABASE_FORCE_GATEWAY !== '1';
+  const hasDbPath = useDirectDb || Boolean(gatewayUrl && anon && gatewayAuth);
+  if (!token || !/^https:\/\/[^/?#]+/i.test(url) || !hasDbPath) {
     result.reason = 'MISSING_CANONICAL_RUNTIME_CONFIGURATION';
     logDemo(result);
     return result;
@@ -76,9 +83,19 @@ export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fe
   try {
     const origin = String(env.RENDER_EXTERNAL_URL || 'https://ce-vault-menu-first.onrender.com');
     const welcomeUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/welcome.jpg';
-    const admins = await fetchBounded(dbUrl + '/rest/v1/admins?select=telegram_user_id&is_active=eq.true&order=created_at.asc&limit=10', {
-      method: 'GET', headers: { apikey: dbKey, accept: 'application/json', authorization: 'Bearer ' + dbKey },
-    });
+    const query = '/rest/v1/admins?select=telegram_user_id&is_active=eq.true&order=created_at.asc&limit=10';
+    let admins;
+    if (useDirectDb) {
+      const headers = { apikey: dbKey, accept: 'application/json' };
+      if (dbKey.split('.').length === 3) headers.authorization = 'Bearer ' + dbKey;
+      admins = await fetchBounded(url + query, { method: 'GET', headers });
+    } else {
+      admins = await fetchBounded(gatewayUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', apikey: anon, authorization: 'Bearer ' + anon, 'x-ce-gateway-auth': gatewayAuth },
+        body: JSON.stringify({ method: 'GET', path: query, headers: { accept: 'application/json' }, bodyBase64: null }),
+      });
+    }
     if (!Array.isArray(admins) || !admins.length) throw new Error('NO_ACTIVE_ADMINS');
     let chosen = null;
     for (const admin of admins) {
