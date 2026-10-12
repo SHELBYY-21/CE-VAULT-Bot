@@ -70,6 +70,11 @@ function prepareScenario(overrides = {}) {
     },
   };
   const telegram = {
+    ...(options.stream ? {
+      async sendRichMessageDraft(chatId, draftId, rich) {
+        sent.push({ kind: 'draft', chatId, draftId, rich });
+      },
+    } : {}),
     async sendRichMessageWithFallback(chatId, rich, fallback) {
       const m = { kind: 'send', chatId, rich, fallback, message_id: 600 };
       sent.push(m);
@@ -147,6 +152,22 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       assert.equal(context.events.length, 0);
       assert.equal(context.sent[0].kind, 'send');
       assert.equal(context.sent.at(-1).kind, 'edit');
+    });
+
+    await t.test('telegram 2026 streaming: animated drafts then final card persists', async () => {
+      context = prepareScenario({ stream: true });
+      await context.run.handleLiveSlipMessage(context.message);
+      const drafts = context.sent.filter(m => m.kind === 'draft');
+      assert.equal(drafts.length, 3);
+      assert.ok(drafts.every(d => d.draftId === 200));
+      assert.match(drafts[0].rich.html, /tg-thinking/);
+      assert.match(drafts.at(-1).rich.html, /AI OCR/);
+      assert.equal(context.sent[0].kind, 'draft');
+      assert.equal(context.sent.at(-1).kind, 'send');
+      assert.match(context.sent.at(-1).fallback, /Pending Admin Approval/);
+      assert.equal(context.audit.ocrCalls, 1);
+      assert.equal(context.audit.create, 1);
+      assert.equal(context.pendingRows[0].status, 'VERIFIED');
     });
 
     await t.test('duplicate replay does not call Typhoon or create a second ledger record', async () => {

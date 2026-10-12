@@ -992,6 +992,23 @@ export function formatScanStageRichMessage() {
   };
 }
 
+export function formatScanDraftRichMessage(stage) {
+  const stages = {
+    download: "ดึงไฟล์ภาพสลิปจาก Telegram…",
+    match: "ตรวจสลิปซ้ำ · จับคู่บัญชี PIN…",
+    ocr: "AI OCR ถอดรหัสสลิปจากภาพจริง · ดึงอัตราจากตลาด…",
+  };
+  const line = stages[stage] || stages.download;
+  return {
+    html:
+      "<tg-thinking>กำลังประมวลผลสลิปจากภาพจริง…</tg-thinking>" +
+      "<h3>◈ CE · SCAN ⚡</h3>" +
+      "<p><b>" + line + "</b></p>" +
+      "<hr/>" +
+      "<p>⚡ ENGINE ONLINE · ประมวลผลจากภาพจริง · ไม่มี fake progress</p>",
+  };
+}
+
 export function formatIntakeRichMessage({
   pending,
   market,
@@ -1015,8 +1032,8 @@ export function formatIntakeRichMessage({
   const detailOpen = state.error ? " open" : "";
   const details = issues.map((line) => `<p>${richEscape(line)}</p>`).join("");
   const copyButtons = [
-    fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : "",
-    pending?.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : "",
+    fullAccount ? `<tg-button type="copy_text" style="primary" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : "",
+    pending?.ledger_ref ? `<tg-button type="copy_text" style="primary" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : "",
   ].filter(Boolean).join("");
 
   const html =
@@ -1137,8 +1154,8 @@ export function formatIntakeV4RichMessage(args) {
   const fullAccount = pending.account_number || (pending.pin_match ? args?.pinnedAccount?.account_number : null);
   const issueHtml = card.filter(line => line.startsWith('⚠️ ')).map(line => `<p>${richEscape(line)}</p>`).join('');
   const copyButtons = [
-    fullAccount ? `<tg-button type="copy_text" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
-    pending.ledger_ref ? `<tg-button type="copy_text" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
+    fullAccount ? `<tg-button type="copy_text" style="primary" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
+    pending.ledger_ref ? `<tg-button type="copy_text" style="primary" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
   const amountRows = card.slice(2).filter(line => /^(💵|📈|💎|📤|✅|⏳|🏦|👤|🗓|🔖|🔎|📋|🛡)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('⚠️ '));
