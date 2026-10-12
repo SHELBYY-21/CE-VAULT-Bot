@@ -302,7 +302,7 @@ export function buildMessage(status: TxStatus, data: TxData): string {
     Number.isFinite(data.ocrConfidence) &&
     data.ocrConfidence < 95
   ) {
-    lines.push(`🟡 OCR ${data.ocrConfidence.toFixed(1)}% — ต่ำกว่าเกณฑ์ ตรวจสอบด้วยตา`);
+    lines.push(`🟡 OCR อ่านไม่ชัด — ตรวจสอบด้วยตา`);
   }
 
   if (status === 'DUPLICATE') {
