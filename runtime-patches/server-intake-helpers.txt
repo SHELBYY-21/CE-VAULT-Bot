@@ -26,7 +26,13 @@ function fullBank(account) {
 
 async function handleTelegramHome(message) {
   if (!message?.chat?.id) return true;
-  await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());
+  const welcomeOrigin = String(process.env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com");
+  const welcomeUrl = (welcomeOrigin.endsWith("/") ? welcomeOrigin.slice(0, -1) : welcomeOrigin) + "/brand/welcome.jpg";
+  try {
+    await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());
+  } catch {
+    await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());
+  }
   return true;
 }
 
