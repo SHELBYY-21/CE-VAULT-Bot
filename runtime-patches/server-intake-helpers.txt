@@ -294,9 +294,9 @@ async function upsertIntakeLiveMessage(chatId, liveMessageId, args) {
   const approvalButtons = useV4 && args?.pending?.status === "VERIFIED" &&
     /^[0-9a-f-]{36}$/i.test(id) ? {
       inline_keyboard: [[
-        { text: "✅ APPROVE", callback_data: "ce:approve:" + id },
-        { text: "📝 EDIT", callback_data: "ce:edit:" + id },
-        { text: "⛔ REJECT", callback_data: "ce:reject:" + id },
+        { text: "✅ APPROVE", style: "success", callback_data: "ce:approve:" + id },
+        { text: "📝 EDIT", style: "primary", callback_data: "ce:edit:" + id },
+        { text: "⛔ REJECT", style: "danger", callback_data: "ce:reject:" + id },
       ]],
     } : undefined;
   if (liveMessageId) {
@@ -314,16 +314,33 @@ async function handleLiveSlipMessage(message) {
   if (!fileId) return;
   const chatId = message.chat.id;
   let liveMessage = null;
-  try {
-    liveMessage = await telegram.sendRichMessageWithFallback(
-      chatId,
-      formatScanStageRichMessage(),
-      formatScanStageReply(),
-    );
-  } catch {}
+  // Telegram 2026 (Bot API 10.1+): stream honest scan status as animated drafts.
+  // Same draft_id animates in place; drafts are ephemeral and the final card persists.
+  let streamScan = false;
+  const scanDraftId = Number(message.message_id) || 0;
+  if (process.env.CE_RESPONSE_STREAM_SCAN !== "0" && scanDraftId && typeof telegram.sendRichMessageDraft === "function") {
+    try {
+      await telegram.sendRichMessageDraft(chatId, scanDraftId, formatScanDraftRichMessage("download"));
+      streamScan = true;
+    } catch {}
+  }
+  if (!streamScan) {
+    try {
+      liveMessage = await telegram.sendRichMessageWithFallback(
+        chatId,
+        formatScanStageRichMessage(),
+        formatScanStageReply(),
+      );
+    } catch {}
+  }
   const liveMessageId = Number(liveMessage?.message_id) || null;
 
   const downloaded = await telegram.downloadFile(fileId);
+  if (streamScan) {
+    try {
+      await telegram.sendRichMessageDraft(chatId, scanDraftId, formatScanDraftRichMessage("match"));
+    } catch {}
+  }
   const fingerprint = fingerprintImage(downloaded.buffer);
   const duplicate = await repository.findIntakeDuplicate(fingerprint);
   if (duplicate) {
@@ -341,6 +358,11 @@ async function handleLiveSlipMessage(message) {
   }
 
   const businessDate = bangkokDateKey();
+  if (streamScan) {
+    try {
+      await telegram.sendRichMessageDraft(chatId, scanDraftId, formatScanDraftRichMessage("ocr"));
+    } catch {}
+  }
   const [slip, deskRate, pinnedBanks, market] = await Promise.all([
     analyzeSlipBuffer(downloaded.buffer, downloaded.mimeType),
     repository.getLatestDeskRate(),
