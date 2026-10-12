@@ -15,6 +15,16 @@ function logDemo(payload) {
   console.log('[CE DEMO CARDS]', JSON.stringify(payload));
 }
 
+function buildDemoApprovalMarkup(ref) {
+  return {
+    inline_keyboard: [[
+      { text: '✅ เข้า · ยืนยัน', style: 'success', callback_data: 'ce:approve:' + ref },
+      { text: '📝 แก้ไข', style: 'primary', callback_data: 'ce:edit:' + ref },
+      { text: '⛔ ไม่เข้า · ยกเลิก', style: 'danger', callback_data: 'ce:reject:' + ref },
+    ]],
+  };
+}
+
 export function buildDemoCards() {
   const deskRate = { sell_rate: '33.30' };
   const market = { price: '33.25', fresh: true };
@@ -43,7 +53,7 @@ export function buildDemoCards() {
     { id: 'intro', kind: 'text', text: ['🧪 CE DEMO PREVIEW · ตัวอย่างการ์ดทั้งหมด', 'ข้อมูลทั้งหมดเป็น DEMO · ไม่มีรายการจริง · ไม่เขียน Ledger'].join('\n') },
     { id: 'home', kind: 'photo', caption: formatBotHomeReply(), markup: botHomeReplyMarkup() },
     { id: 'scan', kind: 'text', text: formatScanStageReply() },
-    { id: 'verified', kind: 'text', text: formatIntakeV4Reply(verified) },
+    { id: 'verified', kind: 'text', text: formatIntakeV4Reply(verified), markup: buildDemoApprovalMarkup('CE-DEMO-0001') },
     { id: 'blocked', kind: 'text', text: formatIntakeV4Reply(blocked) },
     { id: 'recorded', kind: 'text', text: formatIntakeV4Reply(recorded) },
     { id: 'duplicate', kind: 'text', text: formatIntakeV4Reply({ pending: recorded.pending, duplicate: true }) },

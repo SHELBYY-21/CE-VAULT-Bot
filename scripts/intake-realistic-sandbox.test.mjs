@@ -50,7 +50,7 @@ function prepareScenario(overrides = {}) {
     async listPinnedBanksForDate() { return options.pins; },
     async createPendingSlip(row) {
       audit.create++;
-      const stored = { ...row, id: 'pending-' + (pendingRows.length + 1), duplicate: false };
+      const stored = { ...row, id: '11111111-1111-4111-8111-111111111111', duplicate: false };
       pendingRows.push(stored);
       return stored;
     },
@@ -75,13 +75,20 @@ function prepareScenario(overrides = {}) {
         sent.push({ kind: 'draft', chatId, draftId, rich });
       },
     } : {}),
-    async sendRichMessageWithFallback(chatId, rich, fallback) {
-      const m = { kind: 'send', chatId, rich, fallback, message_id: 600 };
+    ...(options.photo ? {
+      async sendPhotoWithMarkup(chatId, photo, caption, markup) {
+        const m = { kind: 'photo', chatId, fileId: photo, caption, markup };
+        sent.push(m);
+        return m;
+      },
+    } : {}),
+    async sendRichMessageWithFallback(chatId, rich, fallback, markup) {
+      const m = { kind: 'send', chatId, rich, fallback, markup, message_id: 600 };
       sent.push(m);
       return m;
     },
-    async editRichMessageWithFallback(chatId, id, rich, fallback) {
-      const m = { kind: 'edit', chatId, message_id: id, rich, fallback };
+    async editRichMessageWithFallback(chatId, id, rich, fallback, markup) {
+      const m = { kind: 'edit', chatId, message_id: id, rich, fallback, markup };
       sent.push(m);
       return m;
     },
@@ -168,6 +175,28 @@ test('REALISTIC SANDBOX: telegram slip -> mocked Typhoon response -> match -> pe
       assert.equal(context.audit.ocrCalls, 1);
       assert.equal(context.audit.create, 1);
       assert.equal(context.pendingRows[0].status, 'VERIFIED');
+    });
+
+    await t.test('VERIFIED slip sends photo evidence with confirm/cancel buttons; card stays detail-only', async () => {
+      context = prepareScenario({ photo: true });
+      await context.run.handleLiveSlipMessage(context.message);
+      const photos = context.sent.filter(m => m.kind === 'photo');
+      assert.equal(photos.length, 1);
+      assert.equal(photos[0].fileId, 'synthetic-image');
+      assert.match(photos[0].caption, /รับ 1,234\.50 THB/);
+      assert.match(photos[0].caption, /ต้องส่ง .* USDT/);
+      assert.match(photos[0].caption, /ยืนยัน/);
+      const row = photos[0].markup.inline_keyboard[0];
+      assert.match(row[0].text, /เข้า · ยืนยัน/);
+      assert.match(row[2].text, /ไม่เข้า · ยกเลิก/);
+      assert.match(row[0].callback_data, /^ce:approve:/);
+      assert.equal(row[0].style, 'success');
+      assert.equal(row[2].style, 'danger');
+      const finalMsg = context.sent.at(-1);
+      assert.equal(finalMsg.markup, undefined);
+      assert.match(finalMsg.fallback, /Pending Admin Approval/);
+      assert.equal(context.pendingRows[0].status, 'VERIFIED');
+      assert.equal(context.audit.ocrCalls, 1);
     });
 
     await t.test('duplicate replay does not call Typhoon or create a second ledger record', async () => {

@@ -29,7 +29,7 @@ test('runtime intake reply follows legacy CRUD card structure and shows sourced 
   assert.match(reply, /🏦\s+KBANK · 123-4-56789-0/);
   assert.match(reply, /👤\s+นาย สมชาย ใจดี/);
   assert.match(reply, /💱\s+RATE 43\.00/);
-  assert.match(reply, /🟢 OCR 98\.7%/);
+  assert.match(reply, /🟢 OCR อ่านชัด/);
   assert.match(reply, /🟢 BANK MATCH/);
   assert.match(reply, /STATUS/);
 });

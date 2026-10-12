@@ -785,8 +785,7 @@ function displayMoney(value, maximumFractionDigits = 2) {
 function confidenceBadge(value) {
   const n = finiteNumberOrNull(value);
   if (n == null) return "⚪ OCR UNKNOWN";
-  const icon = n >= 90 ? "🟢" : n >= 60 ? "🟡" : "🔴";
-  return `${icon} OCR ${String(value).replace(/\.0+$/, "")}%`;
+  return n >= 90 ? "🟢 OCR อ่านชัด" : n >= 60 ? "🟡 OCR อ่านพอใช้" : "🔴 OCR อ่านไม่ชัด";
 }
 
 function pinAccountLines(pinnedAccount, pinnedAccounts) {
@@ -978,7 +977,7 @@ function intakeV3Issues({ pending, deskRate, market, pinnedAccount, pinnedAccoun
   else if (pending?.pin_match && deskRate?.sell_rate && market?.price) rows.push("🟢 ALL CHECKS PASS");
 
   const confidence = finiteNumberOrNull(pending?.ocr_confidence);
-  if (confidence != null && confidence < OCR_AUTO_MIN) rows.push(`OCR ${confidence}% ต่ำกว่าเกณฑ์ ${OCR_AUTO_MIN}% · ตรวจสอบด้วยตา`);
+  if (confidence != null && confidence < OCR_AUTO_MIN) rows.push("OCR อ่านไม่ชัด · ตรวจสลิปด้วยตา");
   return rows.length ? rows : ["ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง"];
 }
 
@@ -1007,6 +1006,21 @@ export function formatScanDraftRichMessage(stage) {
       "<hr/>" +
       "<p>⚡ ENGINE ONLINE · ประมวลผลจากภาพจริง · ไม่มี fake progress</p>",
   };
+}
+
+export function formatSlipPhotoCaption({ pending, pinnedAccount = null }) {
+  const fmt = (value, digits) => value == null || String(value).trim() === "" ||
+    !Number.isFinite(Number(value)) ? "—" : Number(value).toLocaleString("en-US", {
+      minimumFractionDigits: digits, maximumFractionDigits: digits,
+    });
+  const bank = normalizeBank(pending?.bank || pinnedAccount?.bank_name) || "ไม่ยืนยัน";
+  return [
+    "◈ CE · สลิปรับเงิน · TX-" + shortTxRef(pending?.ledger_ref),
+    "💵 รับ " + fmt(pending?.thb_in, 2) + " THB",
+    "📤 ต้องส่ง " + fmt(pending?.should_send, 6) + " USDT",
+    "🏦 " + bank,
+    "กดปุ่มด้านล่าง · เงินเข้าจริง → ยืนยัน · ไม่เข้า → ยกเลิก",
+  ].join("\n");
 }
 
 export function formatIntakeRichMessage({
@@ -1118,7 +1132,6 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     );
     if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 NAME: ${pending.name}`);
     if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
-    lines.push(`📋 CONF: ${confidence != null && Number.isFinite(confidence) ? n(confidence,1)+"%" : "—"}`);
   }
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
@@ -1133,13 +1146,13 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
   if (confidence != null && Number.isFinite(confidence) && confidence < 90) {
-    lines.push("⚠️ ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา");
+    lines.push("⚠️ OCR อ่านไม่ชัด · ตรวจสลิปด้วยตา");
   } else   for (const issue of issues.slice(0,4)) {
     // Never echo raw OCR into warnings, even HTML-escaped; keep reason category only.
     const raw = String(issue);
     const safeIssue = /FOUND|EXPECTED|BANK|บัญชี/u.test(raw) ? "ข้อมูลบัญชีไม่ตรงกับ PIN · ตรวจสลิปต้นฉบับ" :
       /DATE|วันที่/u.test(raw) ? "วันที่สลิปต้องตรวจสอบ" :
-      /CONFIDENCE|ความมั่นใจ/u.test(raw) ? "ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา" :
+      /CONFIDENCE|ความมั่นใจ/u.test(raw) ? "OCR อ่านไม่ชัด · ตรวจสลิปด้วยตา" :
       "ข้อมูลต้องตรวจสอบ";
     if (!lines.includes("⚠️ " + safeIssue)) lines.push("⚠️ " + safeIssue);
   }

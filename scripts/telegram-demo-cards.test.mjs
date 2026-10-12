@@ -53,3 +53,15 @@ test('demo cards never reference real ledger rows', () => {
     for (const ref of refs) assert.match(ref, /^CE-DEMO-/);
   }
 });
+
+test('demo verified card previews the Thai confirm/cancel approval keyboard', () => {
+  const verified = buildDemoCards().find((card) => card.id === 'verified');
+  const row = verified.markup.inline_keyboard[0];
+  assert.match(row[0].text, /เข้า · ยืนยัน/);
+  assert.match(row[1].text, /แก้ไข/);
+  assert.match(row[2].text, /ไม่เข้า · ยกเลิก/);
+  assert.match(row[0].callback_data, /^ce:approve:CE-DEMO-/);
+  assert.match(row[2].callback_data, /^ce:reject:CE-DEMO-/);
+  assert.equal(row[0].style, 'success');
+  assert.equal(row[2].style, 'danger');
+});

@@ -151,7 +151,7 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   };
   const rich = formatIntakeV4RichMessage(args).html;
   const plain = formatIntakeV4Reply(args);
-  assert.match(rich, /ความมั่นใจ OCR ต่ำ · ตรวจด้วยตา/);
+  assert.match(rich, /OCR อ่านไม่ชัด · ตรวจสลิปด้วยตา/);
   assert.equal((rich.match(/<p>⚠️ /g) || []).length, 1);
   assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
   assert.doesNotMatch(plain, /ISSUE:/);
@@ -208,14 +208,16 @@ test('OCR remains visible and only explicit admin approval promotes', () => {
   } });
   assert.ok(card.includes('รอแอดมินอนุมัติ'));
   assert.ok(card.includes('08/10/26 13:30'));
-  assert.ok(card.includes('CONF: 98.0%'));
+  assert.ok(!card.includes('CONF'));
+  assert.ok(!card.includes('%'));
   assert.ok(card.includes('/approve 00000000-0000-0000-0000-000000000001'));
 });
 
 test('Telegram callbacks require real pending UUIDs and route through server-side operator checks', () => {
   const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
   const patch = readFileSync(new URL('../scripts/patch-live-intake.mjs', import.meta.url), 'utf8');
-  assert.ok(helper.includes('args?.pending?.status === "VERIFIED"'));
+  assert.ok(helper.includes('function buildIntakeApprovalButtons(pending)'));
+  assert.ok(helper.includes('pending?.status === "VERIFIED"'));
   assert.ok(helper.includes('callback_data: "ce:approve:" + id'));
   assert.ok(helper.includes('callback_data: "ce:reject:" + id'));
   assert.ok(helper.includes('callback_data: "ce:edit:" + id'));
@@ -245,7 +247,8 @@ test('compact OCR card does not leak full OCR document into bank field', () => {
   assert.ok(!card.includes('BOUSCDOYHHT1YMM4'));
   assert.ok(card.includes('💎 USDT (ประเมิน): 0.130000'));
   assert.ok(card.includes('📤 DUE (ต้องส่ง): — USDT'));
-  assert.ok(card.includes('CONF: 90.0%'));
+  assert.ok(!card.includes('CONF'));
+  assert.ok(!card.includes('%'));
   assert.ok(!card.includes('OCR Confidence): 90.0%'));
 });
 
@@ -347,4 +350,13 @@ test('compact duplicate card: no financial table, only original-record pointer',
   assert.doesNotMatch(dup, /BANK:/);
   assert.match(dup, /DUP ⚠/);
   assert.match(dup, /NEXT: ตรวจรายการเดิม/);
+});
+
+test('VERIFIED intake attaches slip photo evidence with Thai confirm/cancel buttons', () => {
+  const helper = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
+  assert.ok(helper.includes('typeof telegram.sendPhotoWithMarkup === "function"'));
+  assert.ok(helper.includes('formatSlipPhotoCaption({ pending: replyPending, pinnedAccount: pinnedAccount })'));
+  assert.ok(helper.includes('approvalHandled: approvalHandled'));
+  assert.ok(helper.includes('✅ เข้า · ยืนยัน'));
+  assert.ok(helper.includes('⛔ ไม่เข้า · ยกเลิก'));
 });
