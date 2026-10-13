@@ -65,8 +65,8 @@ export function buildDemoCards() {
 
 async function sendDemoAnimationCard(telegram, chatId, webmUrl, card) {
   try {
-    await telegram('sendAnimation', { chat_id: chatId, animation: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
-    return 'sendAnimation';
+    const message = await telegram('sendAnimation', { chat_id: chatId, animation: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
+    return message?.animation ? 'sendAnimation:animation' : (message?.document ? 'sendAnimation:document' : 'sendAnimation:unknown');
   } catch (animationError) {
     try {
       await telegram('sendDocument', { chat_id: chatId, document: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
@@ -109,7 +109,7 @@ export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fe
   try {
     const origin = String(env.RENDER_EXTERNAL_URL || 'https://ce-vault-menu-first.onrender.com');
     const welcomeUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/welcome.jpg';
-    const webmUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/webflow.webm';
+    const webmUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/webflow.mp4';
     const query = '/rest/v1/admins?select=telegram_user_id&is_active=eq.true&order=created_at.asc&limit=10';
     let admins;
     if (useDirectDb) {
