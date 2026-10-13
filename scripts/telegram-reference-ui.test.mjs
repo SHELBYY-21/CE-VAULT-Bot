@@ -24,21 +24,21 @@ test('reference UI exposes CE EMPIRE home and system cards', () => {
     pendingUpdates: 0,
     safety: 'LOCKED',
   });
-  assert.match(system, /CE EMPIRE · SYSTEM STATUS/);
+  assert.match(system, /CE EMPIRE · SYSTEM/);
   assert.match(system, /TELEGRAM\s+ONLINE/);
   assert.match(system, /WEBHOOK\s+VERIFIED/);
   assert.match(system, /DATABASE\s+CONFIGURED/);
   assert.match(system, /QUEUE\s+0/);
   assert.match(system, /SAFETY\s+LOCKED/);
-  assert.match(system, /CURRENT STATE\s+READY/);
-  assert.match(system, /NEXT ACTION/);
+  assert.match(system, /● STATE\s+READY/);
+  assert.match(system, /NEXT ▸/);
 });
 
 test('scan card follows the visual state flow without fake progress', () => {
   const scan = runtime.formatScanStageReply();
   assert.match(scan, /① OCR\s+ACTIVE/);
   assert.match(scan, /② MATCH\s+NEXT/);
-  assert.match(scan, /NEXT ACTION/);
+  assert.match(scan, /AI SCAN/);
   assert.doesNotMatch(scan, /\b\d{1,3}%\b/);
 });
 
