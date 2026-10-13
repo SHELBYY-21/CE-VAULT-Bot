@@ -51,6 +51,7 @@ export function buildDemoCards() {
   };
   return [
     { id: 'intro', kind: 'text', text: ['🧪 CE DEMO PREVIEW · ตัวอย่างการ์ดทั้งหมด', 'ข้อมูลทั้งหมดเป็น DEMO · ไม่มีรายการจริง · ไม่เขียน Ledger'].join('\n') },
+    { id: 'webm', kind: 'animation', caption: ['⚡ CE EMPIRE · WEB FLOW — ANIMATION DEMO', 'OCR → MATCH → IN → WAIT → DONE'].join('\n') },
     { id: 'home', kind: 'photo', caption: formatBotHomeReply(), markup: botHomeReplyMarkup() },
     { id: 'scan', kind: 'text', text: formatScanStageReply() },
     { id: 'verified', kind: 'text', text: formatIntakeV4Reply(verified), markup: buildDemoApprovalMarkup('CE-DEMO-0001') },
@@ -60,6 +61,21 @@ export function buildDemoCards() {
     { id: 'status', kind: 'text', text: formatBotSystemReply({ telegramOnline: true, webhookVerified: true, databaseConfigured: true, pendingUpdates: 0, safety: 'LOCKED' }) },
     { id: 'outro', kind: 'text', text: '🧪 จบการสาธิต — ส่งรูปสลิปจริงเพื่อเริ่มใช้งานจริง' },
   ];
+}
+
+async function sendDemoAnimationCard(telegram, chatId, webmUrl, card) {
+  try {
+    await telegram('sendAnimation', { chat_id: chatId, animation: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
+    return 'sendAnimation';
+  } catch (animationError) {
+    try {
+      await telegram('sendDocument', { chat_id: chatId, document: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
+      return 'sendDocument';
+    } catch {
+      logDemo({ card: card.id, error: String(animationError?.message || 'ANIMATION_TRANSPORT_FAILED').slice(0, 80) });
+      return null;
+    }
+  }
 }
 
 export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fetch) {
@@ -93,6 +109,7 @@ export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fe
   try {
     const origin = String(env.RENDER_EXTERNAL_URL || 'https://ce-vault-menu-first.onrender.com');
     const welcomeUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/welcome.jpg';
+    const webmUrl = (origin.endsWith('/') ? origin.slice(0, -1) : origin) + '/brand/webflow.webm';
     const query = '/rest/v1/admins?select=telegram_user_id&is_active=eq.true&order=created_at.asc&limit=10';
     let admins;
     if (useDirectDb) {
@@ -122,6 +139,13 @@ export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fe
     const cards = buildDemoCards();
     result.cards = cards.length;
     for (const card of cards) {
+      if (card.kind === 'animation') {
+        const transport = await sendDemoAnimationCard(telegram, chosen, webmUrl, card);
+        if (transport) result.sent++;
+        logDemo({ card: card.id, transport: transport || 'FAILED' });
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        continue;
+      }
       if (card.kind === 'photo') {
         await telegram('sendPhoto', { chat_id: chosen, photo: welcomeUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
       } else {
