@@ -730,11 +730,14 @@ export function botHomeReplyMarkup() {
   return {
     inline_keyboard: [
       [
+        { text: "🧠 CE BRIEF", style: "primary", callback_data: "ce:brief" },
         { text: "🏠 HOME", callback_data: "ce:home" },
-        { text: "📄 SCAN", callback_data: "ce:scan" },
       ],
       [
+        { text: "📄 SCAN", callback_data: "ce:scan" },
         { text: "📊 STATUS", callback_data: "ce:status" },
+      ],
+      [
         { text: "💱 RATE", callback_data: "ce:rate" },
         { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
       ],
@@ -1266,4 +1269,51 @@ export function formatSlipVerifyReply(result, context = "") {
     lines = [head, "🔴 ตรวจสลิปไม่สำเร็จ · ลองใหม่อีกครั้ง"];
   }
   return lines.join("\n");
+}
+
+export function ceBriefReplyMarkup() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🧠 CE BRIEF", style: "primary", callback_data: "ce:brief" },
+        { text: "📊 STATUS", callback_data: "ce:status" },
+      ],
+      [
+        { text: "📄 SCAN", callback_data: "ce:scan" },
+        { text: "💱 RATE", callback_data: "ce:rate" },
+        { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
+      ],
+    ],
+  };
+}
+
+export function formatBotCeBriefReply(overview, env = process.env) {
+  const NL = String.fromCharCode(10);
+  const head = ["◈ CE · BRIEF", "● BRAIN ONLINE"];
+  if (!overview || !overview.kpis) {
+    return [head[0], head[1], "🟡 ยังไม่สามารถอ่านข้อมูลจริงจากฐานข้อมูลได้", "TRACE ▸ OPS → BRIEF → ✗", "NEXT ▸ กด STATUS เช็กระบบ แล้วลองใหม่"].join(NL);
+  }
+  const k = overview.kpis;
+  const rate = overview.rate;
+  const lines = [head[0], head[1]];
+  if (k.thb_in && k.thb_in !== "0") lines.push("💵 รับวันนี้ " + k.thb_in + " THB · " + String(k.transactions || 0) + " รายการ");
+  if (k.sent_usdt && k.sent_usdt !== "0") lines.push("✅ ส่งแล้ว " + k.sent_usdt + " USDT");
+  if (k.pending_usdt && k.pending_usdt !== "0") lines.push("⏳ DUE " + k.pending_usdt + " USDT");
+  if (rate) lines.push("📈 RATE " + rate.sell_rate + " THB/USDT");
+  if (Number(k.pending_slips) > 0) lines.push("📥 สลิปรอตรวจ " + k.pending_slips + " ใบ");
+  if (Number(k.open_exceptions) > 0) lines.push("⚠ EXCEPTIONS เปิด " + k.open_exceptions + " รายการ");
+  if (lines.length === 2) lines.push("● วันนี้ยังไม่มีรายการจริง");
+  const next = [];
+  if (env.CE_SLIP_VERIFY === "0") {
+    next.push("ตรวจสลิปอัตโนมัติถูกปิดด้วย CE_SLIP_VERIFY=0");
+  } else {
+    const verifyConfig = resolveSlipVerifyConfig(env);
+    if (!verifyConfig) next.push("ตรวจสลิปอัตโนมัติยังไม่เปิด — ใส่ SLIPOK_BRANCH_ID + SLIPOK_API_KEY แล้วระบบเปิดเอง");
+    else if (verifyConfig.provider !== "slipok") next.push("พบ credentials " + verifyConfig.provider + " · provider นี้ยังไม่เปิดใช้งาน");
+  }
+  if (Number(k.open_exceptions) > 0) next.push("จัดการ exceptions " + k.open_exceptions + " รายการก่อนอื่น");
+  if (Number(k.pending_slips) > 0) next.push("สลิปรอตรวจ " + k.pending_slips + " ใบ — ส่งรูปสลิปเพื่อดำเนินการ");
+  if (!next.length) next.push("ระบบพร้อม · ตรวจสลิปอัตโนมัติใช้งานได้ · รอสลิปถัดไป");
+  lines.push("", "TRACE ▸ OPS → BRAIN → ✓", "NEXT ▸ " + next.join(" · "));
+  return lines.join(NL);
 }
