@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import {
   botHomeReplyMarkup,
+  formatAccountPinReply,
   formatBotHomeReply,
   formatBotSystemReply,
   formatScanStageReply,
@@ -51,8 +52,9 @@ export function buildDemoCards() {
   };
   return [
     { id: 'intro', kind: 'text', text: ['🧪 CE DEMO PREVIEW · ตัวอย่างการ์ดทั้งหมด', 'ข้อมูลทั้งหมดเป็น DEMO · ไม่มีรายการจริง · ไม่เขียน Ledger'].join('\n') },
-    { id: 'webm', kind: 'animation', caption: formatBotHomeReply(), pin: true },
+    { id: 'webm', kind: 'animation', caption: formatBotHomeReply() },
     { id: 'home', kind: 'photo', caption: formatBotHomeReply(), markup: botHomeReplyMarkup() },
+    { id: 'account', kind: 'text', text: formatAccountPinReply(), markup: botHomeReplyMarkup(), pin: true },
     { id: 'scan', kind: 'text', text: formatScanStageReply() },
     { id: 'verified', kind: 'text', text: formatIntakeV4Reply(verified), markup: buildDemoApprovalMarkup('CE-DEMO-0001') },
     { id: 'blocked', kind: 'text', text: formatIntakeV4Reply(blocked) },
@@ -158,7 +160,14 @@ export async function fireDemoCards(env = process.env, fetchImpl = globalThis.fe
       if (card.kind === 'photo') {
         await telegram('sendPhoto', { chat_id: chosen, photo: welcomeUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
       } else {
-        await telegram('sendMessage', { chat_id: chosen, text: card.text, reply_markup: card.markup, disable_notification: true, link_preview_options: { is_disabled: true } });
+        const sentMessage = await telegram('sendMessage', { chat_id: chosen, text: card.text, reply_markup: card.markup, disable_notification: true, link_preview_options: { is_disabled: true } });
+        if (card.pin && Number(sentMessage?.message_id) > 0) {
+          try {
+            await telegram('pinChatMessage', { chat_id: chosen, message_id: Number(sentMessage.message_id), disable_notification: true });
+          } catch {
+            // Pinning is best-effort.
+          }
+        }
       }
       result.sent++;
       await new Promise((resolve) => setTimeout(resolve, 1200));
