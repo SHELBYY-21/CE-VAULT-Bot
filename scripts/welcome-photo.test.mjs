@@ -41,7 +41,7 @@ test('home reply welcomes the boss while keeping CE EMPIRE pins', () => {
   const home = runtime.formatBotHomeReply();
   assert.match(home, /ยินดีต้อนรับ BOSS/);
   assert.match(home, /CE EMPIRE/);
-  assert.match(home, /CURRENT STATE  READY/);
-  assert.match(home, /FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE/);
-  assert.match(home, /NEXT ACTION/);
+  assert.match(home, /OPERATOR ONLINE/);
+  assert.match(home, /FLOW ▸ ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE/);
+  assert.match(home, /NEXT ▸/);
 });
