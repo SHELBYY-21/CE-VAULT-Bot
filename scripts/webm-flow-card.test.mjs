@@ -21,7 +21,9 @@ test('home handler sends the webm animation first, falls back to photo and text'
   assert.ok(helpers.includes('await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());'));
-  assert.ok(helpers.includes('await telegram.pinChatMessage(message.chat.id, Number(animationMessage.message_id));'));
+  assert.ok(helpers.includes('await telegram.pinChatMessage(message.chat.id, Number(pinMessage.message_id));'));
+  assert.ok(helpers.includes('formatAccountPinReply'));
+  assert.ok(helpers.includes('CE_RESPONSE_ACCOUNT_PIN'));
   assert.ok(helpers.includes('/brand/welcome.jpg'));
 });
 

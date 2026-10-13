@@ -19,12 +19,16 @@ test('build runs the demo cards pin test', () => {
 test('demo preview covers every operator card', () => {
   const cards = buildDemoCards();
   const byId = new Map(cards.map((card) => [card.id, card]));
-  for (const id of ['intro', 'webm', 'home', 'scan', 'verified', 'blocked', 'recorded', 'duplicate', 'status', 'outro']) {
+  for (const id of ['intro', 'webm', 'home', 'account', 'scan', 'verified', 'blocked', 'recorded', 'duplicate', 'status', 'outro']) {
     assert.ok(byId.has(id), 'missing demo card: ' + id);
   }
   assert.match(byId.get('intro').text, /DEMO/);
   assert.match(byId.get('webm').caption, /CE EMPIRE/);
-  assert.equal(byId.get('webm').pin, true);
+  assert.ok(!('pin' in byId.get('webm')));
+  assert.match(byId.get('account').text, /SCB/);
+  assert.match(byId.get('account').text, /337-4105629/);
+  assert.match(byId.get('account').text, /วงเงิน/);
+  assert.equal(byId.get('account').pin, true);
   assert.match(byId.get('home').caption, /CE EMPIRE/);
   assert.match(byId.get('scan').text, /① OCR/);
   assert.match(byId.get('verified').text, /TX-0001/);
