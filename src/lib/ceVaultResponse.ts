@@ -18,9 +18,10 @@
  * matching runtime-patches/live-intake.mjs formatIntakeV4Reply titles.
  *
  * Card style follows the owner's CE EMPIRE — WEB FLOW: BANK SLIP to USDT
- * mockup (650.jpg): CE EMPIRE branding header, step icons on the five-stage
- * trace (📄 OCR · 🛡️ MATCH · 💰 IN · ⏳ WAIT · ✅ DONE), bilingual step labels
- * (OCR สำเร็จ / AI VERIFIED / สำเร็จ DONE), and a closing rule that frames
+ * mockups (650.jpg → 1063.jpg): WEB FLOW branding header, step icons on the
+ * five-stage trace (📄 OCR · 🛡️ MATCH · 💰 IN · ⏳ WAIT · ✅ DONE), bilingual
+ * step captions (Reading Slip / OCR OK / AI VERIFIED / Check In: System
+ * Vault / Waiting for transfer / สำเร็จ), and a closing rule that frames
  * every card like the mockup's glowing step borders.
  */
 
@@ -256,6 +257,20 @@ function traceLine(meta: StatusMeta): string {
   }).join(' ─ ');
 }
 
+// WEB FLOW (1063.jpg): rollback switch CE_RESPONSE_WEB_FLOW=0 restores the
+// pre-web-flow card strings without a code revert. Default on.
+const WEB_FLOW = process.env.CE_RESPONSE_WEB_FLOW !== '0';
+
+// Bilingual step captions from the WEB FLOW mockup (1063.jpg), applied over
+// STATUS_MAP headlines while the switch is on. STATUS_MAP stays untouched.
+const WEB_FLOW_HEADLINE: Partial<Record<TxStatus, string>> = {
+  OCR_RUNNING: 'Reading Slip — กำลังถอดรหัสสลิปจากภาพจริง',
+  OCR_OK: 'OCR OK — สำเร็จ',
+  MATCH_PASS: 'AI VERIFIED — ตรวจสอบข้อมูลสำเร็จ',
+  RECORDED: 'บันทึกเข้า System Vault — ยังไม่จบรายการ',
+  WAIT_USDT: 'รอ USDT — Waiting for transfer · ยังไม่ SETTLE',
+};
+
 function issueBlock(data: TxData): string {
   const lines: string[] = [];
   for (const issue of data.issues ?? []) lines.push(`🔍 ISSUE: ${issue}`);
@@ -270,8 +285,10 @@ function issueBlock(data: TxData): string {
 export function buildMessage(status: TxStatus, data: TxData): string {
   const meta = STATUS_MAP[status];
   const lines: string[] = [
-    `◈ CE EMPIRE · SLIP→USDT · TX-${data.ref || '—'}`,
-    `${meta.icon} ${meta.headline}`,
+  const headline = (WEB_FLOW ? WEB_FLOW_HEADLINE[status] : undefined) ?? meta.headline;
+  const lines: string[] = [
+    `${WEB_FLOW ? '◈ CE EMPIRE · WEB FLOW · BANK SLIP→USDT' : '◈ CE EMPIRE · SLIP→USDT'} · TX-${data.ref || '—'}`,
+    `${meta.icon} ${headline}`,
     RULE_HEAVY,
   ];
 
@@ -283,6 +300,9 @@ export function buildMessage(status: TxStatus, data: TxData): string {
 
   const hasUsdt = data.usdt !== null && data.usdt !== undefined;
   lines.push(`📥 ${fmt(data.thb)} THB${hasUsdt ? ` → 💎 ${fmt(data.usdt, 6)} USDT` : ''}`);
+  if (WEB_FLOW && status === 'MATCH_PASS') {
+    lines.push('🛡️ SLIP to THB → USDT MATCH');
+  }
 
   if (data.allChecksPass === true) {
     lines.push(`💱 RATE ${fmt(data.rate)} · 🟢 ALL CHECKS PASS`);
