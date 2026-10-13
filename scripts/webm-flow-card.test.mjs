@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const asset = readFileSync(new URL('../runtime-patches/webflow.webm', import.meta.url));
+const asset = readFileSync(new URL('../runtime-patches/webflow.mp4', import.meta.url));
 const helpers = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
 const patch = readFileSync(new URL('./patch-webm-flow-card.mjs', import.meta.url), 'utf8');
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
-test('WEB FLOW animation is a genuine EBML/WebM video of meaningful size', () => {
-  assert.equal(asset[0], 0x1a);
-  assert.equal(asset[1], 0x45);
-  assert.equal(asset[2], 0xdf);
-  assert.equal(asset[3], 0xa3);
+test('WEB FLOW animation is a genuine MP4/H.264 video of meaningful size', () => {
+  assert.equal(asset[4], 0x66);
+  assert.equal(asset[5], 0x74);
+  assert.equal(asset[6], 0x79);
+  assert.equal(asset[7], 0x70);
   assert.ok(asset.length > 30000, 'animation must be a real rendered video, not a stub');
 });
 
@@ -21,13 +21,13 @@ test('home handler sends the webm animation first, falls back to photo and text'
   assert.ok(helpers.includes('await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());'));
-  assert.ok(helpers.includes('/brand/webflow.webm'));
+  assert.ok(helpers.includes('/brand/webflow.mp4'));
   assert.ok(helpers.includes('/brand/welcome.jpg'));
 });
 
 test('webm patch wires asset, route and telegram method at real anchors', () => {
-  assert.ok(patch.includes("path.join(root, 'runtime-patches', 'webflow.webm')"));
-  assert.ok(patch.includes('/brand/webflow.webm'));
+  assert.ok(patch.includes("path.join(root, 'runtime-patches', 'webflow.mp4')"));
+  assert.ok(patch.includes('/brand/webflow.mp4'));
   assert.ok(patch.includes('sendAnimationWithMarkup'));
   assert.ok(patch.includes('WEBM_FLOW_ROUTE_ANCHOR_NOT_FOUND'));
   assert.ok(patch.includes('WEBM_FLOW_TELEGRAM_ANCHOR_NOT_FOUND'));
