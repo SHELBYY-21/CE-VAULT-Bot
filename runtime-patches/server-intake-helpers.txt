@@ -76,6 +76,27 @@ async function handleSlipVerifyMessage(message) {
   return true;
 }
 
+async function handleTelegramCeBrief(message) {
+  const operator = await requireTelegramOperator(message);
+  if (!operator) return true;
+  const chatId = message.chat.id;
+  let overview = null;
+  if (typeof buildOpsOverview === "function" && repository && typeof repository.listOpsTransactions === "function") {
+    try {
+      const [transactions, pendingSlips, rates, cycles, bankAccounts, exceptions] = await Promise.all([
+        repository.listOpsTransactions(1000),
+        repository.listOpsPendingSlips(100),
+        repository.listOpsRates(),
+        repository.listOpsOpenCycles(),
+        repository.listOpsBankAccounts(),
+        repository.listOpsOpenExceptions(),
+      ]);
+      overview = buildOpsOverview({ transactions, pendingSlips, rates, cycles, bankAccounts, exceptions, transactionLimit: 1000 });
+    } catch {}
+  }
+  await telegram.sendMessageWithMarkup(chatId, formatBotCeBriefReply(overview, process.env), ceBriefReplyMarkup());
+  return true;
+}
 async function getWebhookInfoBounded(timeoutMs = 1500) {
   let timer;
   try {
@@ -128,6 +149,10 @@ async function handleTelegramCallback(callback) {
   if (/^ce:edit:[0-9a-f-]{36}$/i.test(data)) {
     message.text = "/edit " + data.slice("ce:edit:".length);
     return handleTelegramEdit(message);
+  }
+  if (data === "ce:brief") {
+    message.text = "/ce";
+    return handleTelegramCeBrief(message);
   }
   if (data === "ce:home") return handleTelegramHome(message);
   if (data === "ce:status") return handleTelegramSystemStatus(message);
