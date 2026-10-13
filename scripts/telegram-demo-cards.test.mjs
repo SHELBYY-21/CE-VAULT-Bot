@@ -23,8 +23,8 @@ test('demo preview covers every operator card', () => {
     assert.ok(byId.has(id), 'missing demo card: ' + id);
   }
   assert.match(byId.get('intro').text, /DEMO/);
-  assert.match(byId.get('webm').caption, /WEB FLOW/);
-  assert.match(byId.get('webm').caption, /DEMO/);
+  assert.match(byId.get('webm').caption, /CE EMPIRE/);
+  assert.equal(byId.get('webm').pin, true);
   assert.match(byId.get('home').caption, /CE EMPIRE/);
   assert.match(byId.get('scan').text, /① OCR/);
   assert.match(byId.get('verified').text, /TX-0001/);
@@ -73,6 +73,7 @@ test('demo broadcast carries the animated WEB FLOW card with a resilient transpo
   const demo = readFileSync(new URL('./telegram-demo-cards.mjs', import.meta.url), 'utf8');
   assert.match(demo, /kind: 'animation'/);
   assert.match(demo, /sendAnimation/);
+  assert.match(demo, /pinChatMessage/);
   assert.match(demo, /sendDocument/);
   assert.match(demo, /\/brand\/webflow\.mp4/);
 });
