@@ -36,6 +36,12 @@ writeFileSync(serverPath, server);
 
 // 3. Telegram client: animation + caption + keyboard.
 let telegram = readFileSync(telegramPath, 'utf8');
+const pinMethod = [
+  '    async pinChatMessage(chatId, messageId) {',
+  '      return telegramRequest(token, "pinChatMessage", { chat_id: chatId, message_id: messageId, disable_notification: true });',
+  '    },',
+  '',
+].join('\n');
 const tgAnchor = '    sendMessageWithMarkup(chatId, text, replyMarkup) {';
 const animMethod = [
   '    async sendAnimationWithMarkup(chatId, animation, caption, replyMarkup) {',
@@ -43,6 +49,7 @@ const animMethod = [
   '    },',
   '',
 ].join('\n');
+telegram = replaceOnce(telegram, tgAnchor, pinMethod + tgAnchor, 'WEBM_FLOW_PIN_TELEGRAM_ANCHOR_NOT_FOUND');
 telegram = replaceOnce(telegram, tgAnchor, animMethod + tgAnchor, 'WEBM_FLOW_TELEGRAM_ANCHOR_NOT_FOUND');
 writeFileSync(telegramPath, telegram);
 
