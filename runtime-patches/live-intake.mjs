@@ -718,6 +718,16 @@ export function formatBotHomeReply() {
   ].join("\n");
 }
 
+export function formatAccountPinReply() {
+  return [
+    "◈ CE EMPIRE · ข้อมูลบัญชีรับเงิน",
+    "ธนาคาร : ไทยพาณิชย์ ( SCB ) 👍",
+    "เลขบัญชี : 337-4105629",
+    "ชื่อ-สกุล : มาลัย ภู่ชาดา",
+    "วงเงิน : 200.000฿",
+  ].join("\n");
+}
+
 export function botHomeReplyMarkup() {
   return {
     inline_keyboard: [
