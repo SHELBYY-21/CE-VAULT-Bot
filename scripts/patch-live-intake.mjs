@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +19,17 @@ function replaceOnce(source, needle, replacement, code) {
 
 mkdirSync(testsPath, { recursive: true });
 writeFileSync(runtimeTargetPath, readFileSync(runtimeTemplatePath, 'utf8'));
+
+// Slip QR decode layer: vendored jsQR (MIT) + jpeg-js (BSD-3), see vendor/ATTRIBUTION.md.
+function copyTree(fromDir, toDir) {
+  mkdirSync(toDir, { recursive: true });
+  for (const entry of readdirSync(fromDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) copyTree(path.join(fromDir, entry.name), path.join(toDir, entry.name));
+    else copyFileSync(path.join(fromDir, entry.name), path.join(toDir, entry.name));
+  }
+}
+copyTree(path.join(root, 'runtime-patches', 'vendor'), path.join(appRoot, 'server', 'vendor'));
+writeFileSync(path.join(appRoot, 'server', 'slip-verify.mjs'), readFileSync(path.join(root, 'runtime-patches', 'slip-verify.mjs'), 'utf8'));
 
 // Telegram: server-side file download only. Bot token never leaves the server or gets persisted.
 let telegram = readFileSync(telegramPath, 'utf8');
@@ -180,8 +191,15 @@ let server = readFileSync(serverPath, 'utf8');
 server = replaceOnce(
   server,
   'import { buildOpsOverview } from "./ops-summary.mjs";',
-  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatAccountPinReply, formatBotHomeReply, formatBotSystemReply, formatIntakeReply, formatIntakeRichMessage, formatIntakeV4Reply, formatIntakeV4RichMessage, formatScanStageReply, formatScanStageRichMessage, formatScanDraftRichMessage, formatSlipPhotoCaption, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
+  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatAccountPinReply, formatBotHomeReply, formatSlipVerifyReply, isSlipQrPayload, verifySlip, formatBotSystemReply, formatIntakeReply, formatIntakeRichMessage, formatIntakeV4Reply, formatIntakeV4RichMessage, formatScanStageReply, formatScanStageRichMessage, formatScanDraftRichMessage, formatSlipPhotoCaption, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
   'LIVE_INTAKE_SERVER_IMPORT_ANCHOR_NOT_FOUND',
+);
+
+server = replaceOnce(
+  server,
+  '} from "./live-intake.mjs";',
+  '} from "./live-intake.mjs";' + '\n' + 'import { decodeSlipQrPayload } from "./slip-verify.mjs";',
+  'SLIP_VERIFY_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
 
 const intakeHelpers = readFileSync(path.join(root, 'runtime-patches', 'server-intake-helpers.txt'), 'utf8');
@@ -200,7 +218,7 @@ const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCall
     await handleTelegramEdit(message);
     return;
   }
-  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
+  if (message?.chat?.id && /^\\/rate(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramRate(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/pin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, false);\n    return;\n  }\n  if (message?.chat?.id && /^\\/unpin(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramPin(message, true);\n    return;\n  }\n  if (message?.chat?.id && isSlipQrPayload(message.text)) {\n    await handleSlipVerifyMessage(message);\n    return;\n  }\n  if (message?.chat?.id && imageFileId(message)) {\n    await handleLiveSlipMessage(message);\n    return;\n  }\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {`;
 server = replaceOnce(server, messageAnchor, messageRouter, 'LIVE_INTAKE_MESSAGE_ROUTER_ANCHOR_NOT_FOUND');
 
 // Public, read-only diagnostics. No secrets or PII.
