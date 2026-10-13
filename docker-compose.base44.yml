@@ -26,7 +26,7 @@ services:
       [
         'sh',
         '-ec',
-        'npm ci --legacy-peer-deps && node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && node scripts/patch-welcome-photo.mjs && node scripts/patch-webm-flow-card.mjs && node scripts/patch-telegram-2026.mjs && cd appsrc && exec node server/index.mjs',
+        'npm ci --legacy-peer-deps && node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && node scripts/patch-welcome-photo.mjs && node scripts/patch-webm-flow-card.mjs && node scripts/patch-telegram-2026.mjs && node scripts/patch-degraded-endpoints.mjs && cd appsrc && exec node server/index.mjs',
       ]
     restart: on-failure
     healthcheck:
