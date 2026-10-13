@@ -51,7 +51,7 @@ export function buildDemoCards() {
   };
   return [
     { id: 'intro', kind: 'text', text: ['🧪 CE DEMO PREVIEW · ตัวอย่างการ์ดทั้งหมด', 'ข้อมูลทั้งหมดเป็น DEMO · ไม่มีรายการจริง · ไม่เขียน Ledger'].join('\n') },
-    { id: 'webm', kind: 'animation', caption: ['⚡ CE EMPIRE · WEB FLOW — ANIMATION DEMO', 'OCR → MATCH → IN → WAIT → DONE'].join('\n') },
+    { id: 'webm', kind: 'animation', caption: formatBotHomeReply(), pin: true },
     { id: 'home', kind: 'photo', caption: formatBotHomeReply(), markup: botHomeReplyMarkup() },
     { id: 'scan', kind: 'text', text: formatScanStageReply() },
     { id: 'verified', kind: 'text', text: formatIntakeV4Reply(verified), markup: buildDemoApprovalMarkup('CE-DEMO-0001') },
@@ -66,7 +66,16 @@ export function buildDemoCards() {
 async function sendDemoAnimationCard(telegram, chatId, webmUrl, card) {
   try {
     const message = await telegram('sendAnimation', { chat_id: chatId, animation: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
-    return message?.animation ? 'sendAnimation:animation' : (message?.document ? 'sendAnimation:document' : 'sendAnimation:unknown');
+    const transport = message?.animation ? 'sendAnimation:animation' : (message?.document ? 'sendAnimation:document' : 'sendAnimation:unknown');
+    if (card.pin && Number(message?.message_id) > 0) {
+      try {
+        await telegram('pinChatMessage', { chat_id: chatId, message_id: Number(message.message_id), disable_notification: true });
+        return transport + ':pinned';
+      } catch {
+        // Pinning is best-effort: return the honest transport without the pin suffix.
+      }
+    }
+    return transport;
   } catch (animationError) {
     try {
       await telegram('sendDocument', { chat_id: chatId, document: webmUrl, caption: card.caption, reply_markup: card.markup, disable_notification: true });
