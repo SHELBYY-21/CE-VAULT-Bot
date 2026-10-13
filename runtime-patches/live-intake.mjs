@@ -704,15 +704,12 @@ export function intakeCapability() {
 
 export function formatBotHomeReply() {
   return [
-    "👑 CE EMPIRE · OPERATOR",
-    "CURRENT STATE  READY",
-    "⚡ ยินดีต้อนรับ BOSS — ระบบปลุกเสร็จ พร้อมรับคำสั่ง",
+    "◈ CE EMPIRE · OPERATOR ONLINE",
+    "⚡ ยินดีต้อนรับ BOSS — พร้อมรับคำสั่ง",
     "🔒 AI OCR ONLINE · SANDBOX LOCKED · คุมเงินได้ คุมทุกบาท",
     "",
-    "FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE",
-    "",
-    "NEXT ACTION",
-    "→ ส่งรูปสลิปธนาคารในแชตนี้",
+    "FLOW ▸ ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE",
+    "NEXT ▸ ส่งรูปสลิปธนาคารในแชตนี้",
     "",
     "/status · /rate · /pin",
   ].join("\n");
@@ -721,6 +718,7 @@ export function formatBotHomeReply() {
 export function formatAccountPinReply() {
   return [
     "◈ CE EMPIRE · ข้อมูลบัญชีรับเงิน",
+    "━━━━━━━━━━━━━━━━━━",
     "ธนาคาร : ไทยพาณิชย์ ( SCB ) 👍",
     "เลขบัญชี : 337-4105629",
     "ชื่อ-สกุล : มาลัย ภู่ชาดา",
@@ -756,33 +754,22 @@ export function formatBotSystemReply({
     : String(Number(pendingUpdates));
   const ready = telegramOnline && webhookVerified && databaseConfigured;
   return [
-    "◈ CE EMPIRE · SYSTEM STATUS",
-    `CURRENT STATE  ${ready ? "READY" : "CHECK REQUIRED"}`,
+    "◈ CE EMPIRE · SYSTEM",
+    `● STATE  ${ready ? "READY" : "CHECK REQUIRED"}`,
+    `TELEGRAM  ${telegramOnline ? "ONLINE" : "CHECK"}`,
+    `WEBHOOK  ${webhookVerified ? "VERIFIED" : "CHECK"}`,
+    `DATABASE  ${databaseConfigured ? "CONFIGURED" : "UNAVAILABLE"}`,
+    `QUEUE  ${queue}`,
+    `SAFETY  ${safety || "LOCKED"}`,
     "",
-    "KEY DATA",
-    `TELEGRAM      ${telegramOnline ? "ONLINE" : "CHECK"}`,
-    `WEBHOOK       ${webhookVerified ? "VERIFIED" : "CHECK"}`,
-    `DATABASE      ${databaseConfigured ? "CONFIGURED" : "UNAVAILABLE"}`,
-    `QUEUE         ${queue}`,
-    `SAFETY        ${safety || "LOCKED"}`,
-    "",
-    "NEXT ACTION",
-    ready ? "→ ส่ง /start หรือส่งรูปสลิปเพื่อเริ่มงาน" : "→ ตรวจรายการที่ขึ้น CHECK ก่อนใช้งาน",
+    ready ? "NEXT ▸ ส่งรูปสลิปเพื่อเริ่มงาน" : "NEXT ▸ ตรวจรายการที่ขึ้น CHECK ก่อนใช้งาน",
   ].join("\n");
 }
 
 export function formatScanStageReply() {
   return [
-    "◈ CE EMPIRE · BANK SLIP → USDT",
-    "CURRENT STATE  ① OCR",
-    "",
-    "① OCR    ACTIVE",
-    "② MATCH  NEXT",
-    "③ IN     LOCKED",
-    "④ WAIT   LOCKED",
-    "⑤ DONE   LOCKED",
-    "",
-    "NEXT ACTION",
+    "◈ CE · AI SCAN",
+    "FLOW ▸ ① OCR ACTIVE · ② MATCH NEXT · ③ IN LOCKED · ④ WAIT LOCKED · ⑤ DONE LOCKED",
     "→ ⚡ AI SCAN — ถอดรหัสสลิปจากภาพจริง",
   ].join("\n");
 }
@@ -1031,9 +1018,9 @@ export function formatSlipPhotoCaption({ pending, pinnedAccount = null }) {
   return [
     "◈ CE · สลิปรับเงิน · TX-" + shortTxRef(pending?.ledger_ref),
     "💵 รับ " + fmt(pending?.thb_in, 2) + " THB",
-    "📤 ต้องส่ง " + fmt(pending?.should_send, 6) + " USDT",
+    "📤 ต้องส่ง " + fmt(pending?.should_send, 2) + " USDT",
     "🏦 " + bank,
-    "กดปุ่มด้านล่าง · เงินเข้าจริง → ยืนยัน · ไม่เข้า → ยกเลิก",
+    "→ เงินเข้าจริง · ยืนยัน / ไม่เข้า · ยกเลิก",
   ].join("\n");
 }
 
@@ -1103,7 +1090,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const accountLast = accountLast4(accountRaw);
   const account = accountLast ? "••••" + accountLast : "—";
   const amount = n(pending?.thb_in);
-  const estimate = n(pending?.should_send, 6);
+  const estimate = n(pending?.should_send, 2);
   const rate = n(pending?.desk_rate ?? deskRate?.sell_rate);
   const due = (isRecorded || verified) && pending?.should_send != null && String(pending.should_send).trim() !== ""
     ? n(pending.should_send, 2) : "—";
@@ -1114,10 +1101,6 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     dueValue != null && cleared <= dueValue;
   const confidence = pending?.ocr_confidence == null || String(pending.ocr_confidence).trim() === ""
     ? null : Number(pending.ocr_confidence);
-  const note = String(pending?.note || "");
-  const slipDate = note.match(/(?:^|;)SLIP_DATE=([^;]*)/)?.[1];
-  const slipTime = note.match(/(?:^|;)SLIP_TIME=([^;]*)/)?.[1];
-  const ocrProvider = note.match(/(?:^|;)OCR=([^;]*)/)?.[1];
   const titles = {
     OCR_FAILED: "🔴 OCR อ่านไม่สำเร็จ", BANK_MISMATCH: "🔴 บัญชีไม่ตรง",
     NEEDS_REVIEW: "🟡 รอตรวจสอบ OCR", PIN_REQUIRED: "🟡 ยังไม่ PIN บัญชี",
@@ -1135,17 +1118,19 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   if (duplicate) {
     lines.push(`🔒 รายการเดิม: ${pending?.ledger_ref || shortTxRef(pending?.ledger_ref)}`);
   } else {
-    lines.push(
-    `💵 THB (รับ): ${amount}`,
-    `📈 RATE: ${rate}`,
-    `💎 USDT (ประเมิน): ${estimate}`,
-    `📤 DUE (ต้องส่ง): ${due} USDT`,
-    `✅ CLEARED (ส่งแล้ว): ${clearedValid ? n(cleared) : "—"} USDT`,
-    `⏳ OUTSTANDING (ค้างส่ง): ${clearedValid ? n(dueValue-cleared) : "—"} USDT`,
-    `🏦 BANK: ${bank || "ไม่ยืนยัน"} · ACCOUNT: ${account}`,
-    );
-    if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 NAME: ${pending.name}`);
-    if (slipDate || slipTime) lines.push(`🗓 สลิป: ${slipDate || "—"} ${slipTime || ""}`.trim());
+    if (amount !== "—") lines.push(`💵 ${amount} THB`);
+    if (rate !== "—") lines.push(`📈 RATE ${rate}`);
+    if (isRecorded || verified) {
+      if (due !== "—") lines.push(`📤 DUE ${due} USDT`);
+    } else if (estimate !== "—") {
+      lines.push(`💎 ~${estimate} USDT`);
+    }
+    if (clearedValid) {
+      lines.push(`✅ SENT ${n(cleared)} USDT`);
+      lines.push(`⏳ LEFT ${n(dueValue - cleared)} USDT`);
+    }
+    if (bank || account !== "—") lines.push(`🏦 ${bank || "ไม่ยืนยัน"}${account !== "—" ? " · " + account : ""}`);
+    if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ${pending.name}`);
   }
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
   const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
@@ -1156,7 +1141,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     status === "PROMOTION_FAILED" ? "OCR ✓ → MATCH ✓ → IN ✗ → WAIT —" :
     status === "REJECTED" ? "OCR ✓ → MATCH ✓ → APPROVE ✗" :
     "OCR ✓ → REVIEW ⏳ → IN —";
-  lines.push("─────────────", flow);
+  lines.push("━━━━━━━━━━━━━━━━━", `TRACE ▸ ${flow}`);
   if (webFlowOn()) {
     if (verified) lines.push("🛡 AI VERIFIED — ตรวจสอบข้อมูลสำเร็จ · SLIP to THB → USDT MATCH");
     else if (isRecorded) lines.push("💰 Check In: System Vault · ⏳ Waiting for transfer");
@@ -1174,7 +1159,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
       "ข้อมูลต้องตรวจสอบ";
     if (!lines.includes("⚠️ " + safeIssue)) lines.push("⚠️ " + safeIssue);
   }
-  lines.push("NEXT: " + (duplicate ? "ตรวจรายการเดิม" : isRecorded ? "รอหลักฐานส่ง USDT" :
+  lines.push("NEXT ▸ " + (duplicate ? "ตรวจรายการเดิม" : isRecorded ? "รอหลักฐานส่ง USDT" :
     verified ? "แอดมินตรวจสลิปแล้วกด Approve" : "ตรวจข้อมูลก่อนอนุมัติ"));
   return lines.join("\n");
 }
@@ -1188,7 +1173,7 @@ export function formatIntakeV4RichMessage(args) {
     fullAccount ? `<tg-button type="copy_text" style="primary" text="${richEscape(fullAccount)}">COPY ACCOUNT</tg-button>` : '',
     pending.ledger_ref ? `<tg-button type="copy_text" style="primary" text="${richEscape(pending.ledger_ref)}">COPY REF</tg-button>` : '',
   ].filter(Boolean).join('');
-  const amountRows = card.slice(2).filter(line => /^(💵|📈|💎|📤|✅|⏳|🏦|👤|🗓|🔖|🔎|📋|🛡)/u.test(line));
+  const amountRows = card.slice(2).filter(line => /^(💵|📈|💎|📤|✅|⏳|🏦|👤|🔖|🔎|📋|🛡)/u.test(line));
   const otherLines = card.slice(2).filter(line => !amountRows.includes(line) && !line.startsWith('⚠️ '));
   return {html:
     `<h3>${richEscape(card[0])}</h3>` +

@@ -7,13 +7,13 @@ const runtime = await import('../runtime-patches/live-intake.mjs');
 test('Telegram home uses the approved five-stage CE EMPIRE workflow', () => {
   const home = runtime.formatBotHomeReply();
   assert.match(home, /CE EMPIRE/);
-  assert.match(home, /CURRENT STATE/);
+  assert.match(home, /OPERATOR ONLINE/);
   assert.match(home, /① OCR/);
   assert.match(home, /② MATCH/);
   assert.match(home, /③ IN/);
   assert.match(home, /④ WAIT/);
   assert.match(home, /⑤ DONE/);
-  assert.match(home, /NEXT ACTION/);
+  assert.match(home, /NEXT ▸/);
   assert.doesNotMatch(home, /01 SCAN|02 OCR \/ EXTRACTED|03 VERIFY|04 RECORD/);
 });
 
@@ -21,7 +21,7 @@ test('scan and intake replies preserve OCR MATCH IN WAIT DONE semantics', () => 
   const scan = runtime.formatScanStageReply();
   assert.match(scan, /① OCR\s+ACTIVE/);
   assert.match(scan, /② MATCH\s+NEXT/);
-  assert.match(scan, /NEXT ACTION/);
+  assert.match(scan, /AI SCAN/);
 
   const mismatch = runtime.formatIntakeReply({
     pending: {
@@ -69,9 +69,9 @@ test('system reply follows Current State, Key Data, Next Action hierarchy', () =
     pendingUpdates: 0,
     safety: 'LOCKED',
   });
-  assert.match(system, /CURRENT STATE\s+READY/);
-  assert.match(system, /KEY DATA/);
-  assert.match(system, /NEXT ACTION/);
+  assert.match(system, /● STATE\s+READY/);
+  assert.match(system, /TELEGRAM/);
+  assert.match(system, /NEXT ▸/);
 });
 
 test('web board patch carries CE EMPIRE fintech visual system and five-stage rail', () => {
@@ -97,7 +97,7 @@ test('web board patch carries CE EMPIRE fintech visual system and five-stage rai
 
 test('home and scan replies stay compact - no per-stage explanations', () => {
   const home = runtime.formatBotHomeReply();
-  assert.match(home, /FLOW  ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE/);
+  assert.match(home, /FLOW ▸ ① OCR · ② MATCH · ③ IN · ④ WAIT · ⑤ DONE/);
   assert.doesNotMatch(home, /รับและอ่านสลิป|บันทึกยอดเมื่อผ่านเงื่อนไข|ปิดเมื่อมีผลลัพธ์จริง/);
   const scan = runtime.formatScanStageReply();
   assert.match(scan, /① OCR\s+ACTIVE/);

@@ -63,7 +63,7 @@ test('Render V4 confirms checks only with explicit fresh market and pin evidence
   assert.match(formatIntakeV4Reply(base), /รอแอดมินอนุมัติ/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, market: { price: '33.1', fresh: false } }), /ALL CHECKS PASS/);
   assert.doesNotMatch(formatIntakeV4Reply({ ...base, pending: { ...base.pending, pin_match: false } }), /ALL CHECKS PASS/);
-  assert.match(formatIntakeV4Reply(base), /30.123456/);
+  assert.match(formatIntakeV4Reply(base), /30\.12 USDT/);
 });
 
 test('Render V4 does not settle a recorded deal and blocks duplicate replay claims', () => {
@@ -155,7 +155,7 @@ test('low confidence 80% shows exactly one actionable CHECKS issue', () => {
   assert.equal((rich.match(/<p>⚠️ /g) || []).length, 1);
   assert.doesNotMatch(rich, /ISSUE:|OCR confidence หรือข้อมูลสลิปต้องตรวจเพิ่ม/);
   assert.doesNotMatch(plain, /ISSUE:/);
-  assert.match(plain, /NEXT:/);
+  assert.match(plain, /NEXT ▸/);
 });
 
 
@@ -180,15 +180,15 @@ test('bilingual financial summary does not invent settlement from OCR', () => {
     should_send: '26.94', account_number: '1234567890', bank: 'SCB' };
   const base = { pending, recorded: { tx_id: 'tx-1' }, deskRate: { sell_rate: '37.12' } };
   const card = formatIntakeV4Reply(base);
-  assert.match(card, /DUE \(ต้องส่ง\): 26.94 USDT/);
-  assert.match(card, /CLEARED \(ส่งแล้ว\): — USDT/);
-  assert.match(card, /OUTSTANDING \(ค้างส่ง\): — USDT/);
+  assert.match(card, /DUE 26.94 USDT/);
+  assert.doesNotMatch(card, /SENT/);
+  assert.doesNotMatch(card, /LEFT/);
   assert.doesNotMatch(card, /1234567890/);
   const paid = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', settlement_verified: true, cleared_usdt: '10.00' } });
-  assert.match(paid, /CLEARED \(ส่งแล้ว\): 10.00 USDT/);
-  assert.match(paid, /OUTSTANDING \(ค้างส่ง\): 16.94 USDT/);
+  assert.match(paid, /SENT 10.00 USDT/);
+  assert.match(paid, /LEFT 16.94 USDT/);
   const unverified = formatIntakeV4Reply({ ...base, recorded: { tx_id: 'tx-1', cleared_usdt: '10.00' } });
-  assert.match(unverified, /CLEARED \(ส่งแล้ว\): — USDT/);
+  assert.doesNotMatch(unverified, /SENT/);
 });
 
 test('OCR remains visible and only explicit admin approval promotes', () => {
@@ -207,7 +207,7 @@ test('OCR remains visible and only explicit admin approval promotes', () => {
     note: 'OCR=typhoon;SLIP_DATE=08/10/26;SLIP_TIME=13:30',
   } });
   assert.ok(card.includes('รอแอดมินอนุมัติ'));
-  assert.ok(card.includes('08/10/26 13:30'));
+  assert.ok(!card.includes('08/10/26'));
   assert.ok(!card.includes('CONF'));
   assert.ok(!card.includes('%'));
   assert.ok(card.includes('/approve 00000000-0000-0000-0000-000000000001'));
@@ -243,10 +243,10 @@ test('compact OCR card does not leak full OCR document into bank field', () => {
     ocr_confidence:'90',
   }});
   assert.ok(card.includes('วันที่สลิปไม่ตรง'));
-  assert.ok(card.includes('BANK: ไม่ยืนยัน'));
+  assert.ok(card.includes('ไม่ยืนยัน'));
   assert.ok(!card.includes('BOUSCDOYHHT1YMM4'));
-  assert.ok(card.includes('💎 USDT (ประเมิน): 0.130000'));
-  assert.ok(card.includes('📤 DUE (ต้องส่ง): — USDT'));
+  assert.ok(card.includes('💎 ~0.13 USDT'));
+  assert.ok(!card.includes('DUE'));
   assert.ok(!card.includes('CONF'));
   assert.ok(!card.includes('%'));
   assert.ok(!card.includes('OCR Confidence): 90.0%'));
@@ -283,17 +283,17 @@ test('state gate: ADMIN APPROVED must precede ledger IN RECORDED', () => {
 test('state gate: SETTLED requires verified ledger evidence, not just an OCR or caller amount', () => {
   const pending = {status:'RECORDED', tx_id:'tx-fixture', should_send:'25'};
   const noEvidence = formatIntakeV4Reply({pending, recorded:{tx_id:'tx-fixture', cleared_usdt:'25'}});
-  assert.match(noEvidence, /CLEARED \(ส่งแล้ว\): — USDT/);
-  assert.match(noEvidence, /OUTSTANDING \(ค้างส่ง\): — USDT/);
+  assert.doesNotMatch(noEvidence, /SENT/);
+  assert.doesNotMatch(noEvidence, /LEFT/);
   const partial = formatIntakeV4Reply({pending, recorded:{
     tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'20'}});
-  assert.match(partial, /CLEARED \(ส่งแล้ว\): 20.00 USDT/);
-  assert.match(partial, /OUTSTANDING \(ค้างส่ง\): 5.00 USDT/);
+  assert.match(partial, /SENT 20.00 USDT/);
+  assert.match(partial, /LEFT 5.00 USDT/);
   assert.doesNotMatch(partial, /SETTLED/);
   const full = formatIntakeV4Reply({pending, recorded:{
     tx_id:'tx-fixture', settlement_verified:true, cleared_usdt:'25'}});
-  assert.match(full, /CLEARED \(ส่งแล้ว\): 25.00 USDT/);
-  assert.match(full, /OUTSTANDING \(ค้างส่ง\): 0.00 USDT/);
+  assert.match(full, /SENT 25.00 USDT/);
+  assert.match(full, /LEFT 0.00 USDT/);
   assert.doesNotMatch(full, /SETTLED/);
 });
 
@@ -316,7 +316,7 @@ test('exception gate: SHORT cannot be called SETTLED', () => {
   const pending = {status:'RECORDED', tx_id:'tx-fixture',should_send:'25'};
   const partial = formatIntakeV4Reply({pending,recorded:{
     tx_id:'tx-fixture',settlement_verified:true,cleared_usdt:'24.99'}});
-  assert.match(partial, /OUTSTANDING \(ค้างส่ง\): 0.01 USDT/);
+  assert.match(partial, /LEFT 0.01 USDT/);
   assert.doesNotMatch(partial, /SETTLED/);
   assert.doesNotMatch(partial, /DONE ✓/);
 });
@@ -336,7 +336,7 @@ test('V4 stage flow is accurate for every real status and stays compact', () => 
   const compact = formatIntakeV4Reply(base);
   assert.doesNotMatch(compact, /Ref:/);
   assert.doesNotMatch(compact, /typhoon/);
-  assert.match(compact, /🗓 สลิป: 08\/10\/26 13:30/);
+  assert.doesNotMatch(compact, /🗓/);
 });
 
 
@@ -349,7 +349,7 @@ test('compact duplicate card: no financial table, only original-record pointer',
   assert.doesNotMatch(dup, /CONF:/);
   assert.doesNotMatch(dup, /BANK:/);
   assert.match(dup, /DUP ⚠/);
-  assert.match(dup, /NEXT: ตรวจรายการเดิม/);
+  assert.match(dup, /NEXT ▸ ตรวจรายการเดิม/);
 });
 
 test('VERIFIED intake attaches slip photo evidence with Thai confirm/cancel buttons', () => {

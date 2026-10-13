@@ -55,7 +55,7 @@ test('slip photo caption: slip + amounts, no percent, confirm/cancel hint', () =
   const caption = formatSlipPhotoCaption({ pending: { ledger_ref: 'CE-20261012-AB12CD34', thb_in: '5000', should_send: '150.150150', bank: 'SCB' } });
   assert.ok(caption.includes('TX-'));
   assert.ok(caption.includes('💵 รับ 5,000.00 THB'));
-  assert.ok(caption.includes('📤 ต้องส่ง 150.150150 USDT'));
+  assert.ok(caption.includes('📤 ต้องส่ง 150.15 USDT'));
   assert.ok(caption.includes('ยืนยัน'));
   assert.ok(caption.includes('ยกเลิก'));
   assert.ok(!caption.includes('%'));
