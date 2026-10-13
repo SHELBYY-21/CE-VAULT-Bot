@@ -1185,3 +1185,85 @@ export function formatIntakeV4RichMessage(args) {
   };
 }
 
+
+export function resolveSlipVerifyConfig(env = process.env) {
+  const first = (names) => {
+    for (const name of names) {
+      const value = String(env[name] || "").trim();
+      if (value) return value;
+    }
+    return "";
+  };
+  const forced = first(["SLIPVERIFY_PROVIDER"]).toLowerCase();
+  const slipokBranch = first(["SLIPOK_BRANCH_ID", "SLIP_OK_BRANCH_ID", "SLIPVERIFY_BRANCH_ID"]);
+  const slipokKey = first(["SLIPOK_API_KEY", "SLIP_OK_API_KEY", "SLIPVERIFY_API_KEY"]);
+  const scbKey = first(["SCB_API_KEY", "SCB_APPLICATION_KEY", "SLIPVERIFY_SCB_KEY"]);
+  const scbSecret = first(["SCB_API_SECRET", "SCB_APPLICATION_SECRET", "SLIPVERIFY_SCB_SECRET"]);
+  if (forced === "slipok" || (!forced && slipokBranch && slipokKey)) {
+    return slipokBranch && slipokKey ? { provider: "slipok", branchId: slipokBranch, apiKey: slipokKey } : null;
+  }
+  if (forced === "scb" || (!forced && scbKey && scbSecret)) return { provider: "scb" };
+  return null;
+}
+
+export function isSlipQrPayload(text) {
+  const t = String(text || "").trim();
+  if (t.length < 30 || t.length > 512) return false;
+  for (const ch of t) {
+    if ((ch < "0" || ch > "9") && (ch < "A" || ch > "Z")) return false;
+  }
+  return t.startsWith("00");
+}
+
+export async function verifySlip(payload, env = process.env, fetchImpl = globalThis.fetch) {
+  if (env.CE_SLIP_VERIFY === "0") return { status: "DISABLED", provider: null };
+  const config = resolveSlipVerifyConfig(env);
+  if (!config) return { status: "NOT_CONFIGURED", provider: null };
+  const text = String(payload || "").trim();
+  if (!isSlipQrPayload(text)) return { status: "INVALID_PAYLOAD", provider: config.provider };
+  if (config.provider !== "slipok") return { status: "PROVIDER_PENDING", provider: config.provider };
+  try {
+    const response = await fetchImpl("https://api.slipok.com/api/line/apikey/" + encodeURIComponent(config.branchId), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-authorization": config.apiKey },
+      body: JSON.stringify({ data: text }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await response.json();
+    const info = body?.data || {};
+    if (!response.ok) return { status: "ERROR", provider: "slipok", reason: "PROVIDER_HTTP_" + response.status };
+    return {
+      status: info.success === true ? "VALID" : "INVALID",
+      provider: "slipok",
+      amount: info.amount ?? null,
+      receiver: info.receiverName ?? info.receiver ?? null,
+      ref: info.transRef ?? info.transactionId ?? null,
+    };
+  } catch {
+    return { status: "ERROR", provider: "slipok", reason: "PROVIDER_UNREACHABLE" };
+  }
+}
+
+export function formatSlipVerifyReply(result, context = "") {
+  const r = result || {};
+  const head = "◈ CE · SLIP VERIFY";
+  let lines;
+  if (r.status === "VALID") {
+    lines = [head, "🛡 VERIFIED — ตรวจกับ API จริงแล้ว · สลิปถูกต้อง"];
+    if (r.amount != null) lines.push("💵 " + r.amount + " THB");
+    if (r.receiver) lines.push("👤 " + r.receiver);
+    if (r.ref) lines.push("🧾 REF " + r.ref);
+    lines.push("", "TRACE ▸ QR → SLIPOK → ✓", context === "photo" ? "NEXT ▸ ยืนยันที่การ์ดสลิปด้านบน" : "NEXT ▸ ส่งรูปสลิปเพื่อบันทึกรายการ");
+  } else if (r.status === "INVALID") {
+    lines = [head, "🔴 ไม่ผ่าน — ข้อมูลสลิปไม่ถูกต้อง", "TRACE ▸ QR → SLIPOK → ✗", context === "photo" ? "NEXT ▸ ตรวจสลิปต้นฉบับก่อนกดยืนยัน" : "NEXT ▸ ตรวจสลิปต้นฉบับ"];
+  } else if (r.status === "NOT_CONFIGURED") {
+    lines = [head, "🟡 ยังไม่มี credentials ผู้ให้บริการ", "ตั้ง SLIPOK_BRANCH_ID + SLIPOK_API_KEY ใน env แล้วระบบจะเปิดใช้งานอัตโนมัติ"];
+  } else if (r.status === "PROVIDER_PENDING") {
+    lines = [head, "🟡 พบ credentials ของ " + (r.provider || "?") + " · provider นี้ยังไม่เปิดใช้งาน"];
+  } else if (r.status === "DISABLED") {
+    lines = [head, "🔒 ปิดใช้งาน · CE_SLIP_VERIFY=0"];
+  } else {
+    lines = [head, "🔴 ตรวจสลิปไม่สำเร็จ · ลองใหม่อีกครั้ง"];
+  }
+  return lines.join("\n");
+}
