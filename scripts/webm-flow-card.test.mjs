@@ -21,7 +21,7 @@ test('home handler sends the webm animation first, falls back to photo and text'
   assert.ok(helpers.includes('await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());'));
   assert.ok(helpers.includes('await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());'));
-  assert.ok(helpers.includes('/brand/webflow.mp4'));
+  assert.ok(helpers.includes('await telegram.pinChatMessage(message.chat.id, Number(animationMessage.message_id));'));
   assert.ok(helpers.includes('/brand/welcome.jpg'));
 });
 
@@ -30,7 +30,8 @@ test('webm patch wires asset, route and telegram method at real anchors', () => 
   assert.ok(patch.includes('/brand/webflow.mp4'));
   assert.ok(patch.includes('sendAnimationWithMarkup'));
   assert.ok(patch.includes('WEBM_FLOW_ROUTE_ANCHOR_NOT_FOUND'));
-  assert.ok(patch.includes('WEBM_FLOW_TELEGRAM_ANCHOR_NOT_FOUND'));
+  assert.ok(patch.includes('WEBM_FLOW_PIN_TELEGRAM_ANCHOR_NOT_FOUND'));
+  assert.ok(patch.includes('pinChatMessage'));
 });
 
 test('build runs the webm patch after the welcome photo patch', () => {
