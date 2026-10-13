@@ -29,7 +29,7 @@ async function handleTelegramHome(message) {
   const welcomeOrigin = String(process.env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com");
   const brandBase = welcomeOrigin.endsWith("/") ? welcomeOrigin.slice(0, -1) : welcomeOrigin;
   const welcomeUrl = brandBase + "/brand/welcome.jpg";
-  const webmUrl = brandBase + "/brand/webflow.webm";
+  const webmUrl = brandBase + "/brand/webflow.mp4";
   if (typeof telegram.sendAnimationWithMarkup === "function" && process.env.CE_RESPONSE_WEBM !== "0") {
     try {
       await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
