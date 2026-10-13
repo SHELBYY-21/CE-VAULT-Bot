@@ -1,0 +1,32 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/api/v1/health",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "SUPABASE_SERVICE_ROLE_KEY",
+      "description": "Supabase service-role key for database writes. Get it from Supabase Dashboard → Project Settings → API → service_role key.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "BOT_TOKEN",
+      "description": "Telegram bot token from @BotFather. Needed for Telegram webhook/bot integration.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "TELEGRAM_WEBHOOK_SECRET",
+      "description": "Secret token for Telegram webhook verification. Set when configuring the webhook via /api/telegram/set-webhook.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "TELEGRAM_CALLBACK_SECRET",
+      "description": "Secret used to sign and verify Telegram inline callback data.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "CE_VAULT_SANDBOX_API_KEY",
+      "description": "Operator key required for sandbox write API commands (POST /api/v1/jobs, etc.).",
+      "requiredAtBoot": false
+    }
+  ]
+}

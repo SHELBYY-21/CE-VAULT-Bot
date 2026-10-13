@@ -63,3 +63,20 @@ Backup baseline: `archive/pre-menu-first-20260929`. Legacy experiments remain in
 - **Report:** Thai-first and brief. Clearly distinguish DONE / PROPOSED / NOT VERIFIED; include actual branch, changed files, tests, failures and real commit SHA/PR URL where available. Never fabricate evidence.
 
 These rules guide human/agent decisions; they do not independently install a sandbox, grant scopes or enforce runtime quotas.
+
+## Base44 dev environment
+
+The live app is the Vite + Express app reconstructed from `.manus-source/parts/` into `appsrc/` by `scripts/bootstrap.mjs`. The root-level Next.js files (`app/`, `src/`, `next.config.js`) are a separate codebase and are NOT what the preview serves.
+
+**Setup:** `docker compose -f docker-compose.base44.yml up -d` — reconstructs `appsrc/` on first start (if `appsrc/node_modules` is missing), then runs `npm run dev` (Express + Vite middleware on port 3000).
+
+**Required env vars to boot:** `CE_VAULT_SANDBOX=true`, `LIVE_SETTLEMENT=false`, `LIVE_SETTLEMENT_ENABLED=false` (set in `.env.base44-defaults`). Without these the server exits with `SANDBOX_MODE_REQUIRED` or `LIVE_SETTLEMENT_MUST_BE_FALSE`.
+
+**Optional credentials** (app boots and renders demo fixtures without them):
+- `SUPABASE_SERVICE_ROLE_KEY` — enables database reads/writes. Without it, health shows `MISSING_SERVER_SECRET` and the frontend falls back to demo fixtures.
+- `BOT_TOKEN` — enables Telegram bot integration. Without it, health shows `MISSING_BOT_TOKEN`.
+- `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_CALLBACK_SECRET`, `CE_VAULT_SANDBOX_API_KEY` — webhook/callback/write API security.
+
+**Verify:** `curl http://localhost:3000/api/v1/health` → JSON with `safety: "LOCKED"`. The dashboard at `/` renders the operator console with demo data when no database is configured.
+
+**Quirk:** `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` must be passed to the container (bare env var in compose) or Vite 6.x middleware rejects the preview origin with 403.

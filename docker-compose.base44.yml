@@ -1,0 +1,41 @@
+# Base44 development environment for CE VAULT / YOUNGBOSS LIVE.
+# The app is reconstructed from .manus-source/parts/ on first start,
+# then run with Vite middleware (live frontend HMR) on port 3000.
+services:
+  app:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    # Reconstruct appsrc from the Manus archive on first start only.
+    # Subsequent restarts skip bootstrap and start the dev server directly.
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -d appsrc/node_modules ]; then
+          echo "Reconstructing appsrc from Manus archive…"
+          node scripts/bootstrap.mjs
+        fi
+        cd appsrc
+        exec npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - BASE44_PREVIEW_MODE=1
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
