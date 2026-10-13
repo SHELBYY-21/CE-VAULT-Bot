@@ -191,7 +191,7 @@ let server = readFileSync(serverPath, 'utf8');
 server = replaceOnce(
   server,
   'import { buildOpsOverview } from "./ops-summary.mjs";',
-  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatAccountPinReply, formatBotHomeReply, formatSlipVerifyReply, isSlipQrPayload, verifySlip, formatBotSystemReply, formatIntakeReply, formatIntakeRichMessage, formatIntakeV4Reply, formatIntakeV4RichMessage, formatScanStageReply, formatScanStageRichMessage, formatScanDraftRichMessage, formatSlipPhotoCaption, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
+  'import { buildOpsOverview } from "./ops-summary.mjs";\nimport { accountLast4, analyzeSlipBuffer, bangkokDateKey, decideIntake, divideDecimal, fetchBinanceThSpot, findPinnedMatch, fingerprintImage, botHomeReplyMarkup, formatAccountPinReply, formatBotHomeReply, formatBotCeBriefReply, ceBriefReplyMarkup, formatSlipVerifyReply, isSlipQrPayload, verifySlip, formatBotSystemReply, formatIntakeReply, formatIntakeRichMessage, formatIntakeV4Reply, formatIntakeV4RichMessage, formatScanStageReply, formatScanStageRichMessage, formatScanDraftRichMessage, formatSlipPhotoCaption, intakeCapability, makeLedgerIdentity, normalizeBank } from "./live-intake.mjs";',
   'LIVE_INTAKE_SERVER_IMPORT_ANCHOR_NOT_FOUND',
 );
 
@@ -206,7 +206,7 @@ const intakeHelpers = readFileSync(path.join(root, 'runtime-patches', 'server-in
 server = replaceOnce(server, '\nasync function processTelegramUpdate(update) {', `${intakeHelpers}\nasync function processTelegramUpdate(update) {`, 'LIVE_INTAKE_PROCESS_ANCHOR_NOT_FOUND');
 
 const messageAnchor = '  const message = update.message;\n  if (message?.chat?.type === "private" && /^\\/sandbox(?:\\s|$)/i.test(message.text || "")) {';
-const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCallback?.message?.chat?.id && /^ce:/.test(String(ceCallback.data || ""))) {\n    await handleTelegramCallback(ceCallback);\n    return;\n  }\n  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:start|help|menu|ce)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/approve(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
+const messageRouter = `  const ceCallback = update.callback_query;\n  if (ceCallback?.message?.chat?.id && /^ce:/.test(String(ceCallback.data || ""))) {\n    await handleTelegramCallback(ceCallback);\n    return;\n  }\n  const message = update.message;\n  if (message?.chat?.id && /^\\/(?:ce|brief)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramCeBrief(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:start|help|menu)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramHome(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/(?:ping|status)(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramSystemStatus(message);\n    return;\n  }\n  if (message?.chat?.id && /^\\/approve(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {
     await handleTelegramApprove(message);
     return;
   }
