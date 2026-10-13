@@ -256,8 +256,10 @@ server = replaceOnce(server, telegramStatusAnchor, diagnosticsRoutes, 'LIVE_INTA
 // Feed live Binance market into the operational board endpoint created by patch-ops-board.
 server = replaceOnce(
   server,
-  'const [transactions, pendingSlips, rates, cycles, bankAccounts, exceptions] = await Promise.all([',
-  'const [transactions, pendingSlips, rates, cycles, bankAccounts, exceptions, market] = await Promise.all([',
+  'const [transactions, pendingSlips, rates, cycles, bankAccounts, exceptions] = await Promise.all([' +
+    '\n      repository.listOpsTransactions(transactionLimit),',
+  'const [transactions, pendingSlips, rates, cycles, bankAccounts, exceptions, market] = await Promise.all([' +
+    '\n      repository.listOpsTransactions(transactionLimit),',
   'LIVE_INTAKE_OPS_PROMISE_HEADER_NOT_FOUND',
 );
 server = replaceOnce(

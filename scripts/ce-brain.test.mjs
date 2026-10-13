@@ -83,3 +83,16 @@ test('real Thai bank logos are vendored and routed', () => {
   assert.ok(pkg.scripts.build.includes('patch-bank-logos.mjs'));
   assert.ok(pkg.scripts.build.includes('ce-brain.test.mjs'));
 });
+
+
+test('ops market promise header needle stays route-unique', () => {
+  const patchSource = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
+  assert.ok(patchSource.includes('LIVE_INTAKE_OPS_PROMISE_HEADER_NOT_FOUND'));
+  const routeUniqueNeedle = String.fromCharCode(92) + 'n      repository.listOpsTransactions(transactionLimit),';
+  assert.strictEqual(patchSource.split(routeUniqueNeedle).length - 1, 2,
+    'header needle and replacement must both extend with the route-unique ops route line so ' +
+    'replaceOnce cannot be hijacked by the CE brief handler destructure substring');
+  const continuationMarker = 'Promise.all(' + String.fromCharCode(91) + String.fromCharCode(39) + ' +';
+  assert.strictEqual(patchSource.split(continuationMarker).length - 1, 2,
+    'header needle and replacement must both carry the continuation operator');
+});
