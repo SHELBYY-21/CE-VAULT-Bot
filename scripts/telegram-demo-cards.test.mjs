@@ -74,5 +74,5 @@ test('demo broadcast carries the animated WEB FLOW card with a resilient transpo
   assert.match(demo, /kind: 'animation'/);
   assert.match(demo, /sendAnimation/);
   assert.match(demo, /sendDocument/);
-  assert.match(demo, /\/brand\/webflow\.webm/);
+  assert.match(demo, /\/brand\/webflow\.mp4/);
 });
