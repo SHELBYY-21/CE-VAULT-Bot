@@ -64,6 +64,18 @@ async function handleTelegramHome(message) {
   return true;
 }
 
+async function handleSlipVerifyMessage(message) {
+  if (!message?.chat?.id) return true;
+  const payload = String(message.text || "").trim();
+  try {
+    const result = await verifySlip(payload);
+    await telegram.sendMessageWithMarkup(message.chat.id, formatSlipVerifyReply(result), undefined);
+  } catch {
+    await telegram.sendMessageWithMarkup(message.chat.id, "🔴 ตรวจสลิปไม่สำเร็จ · ลองใหม่อีกครั้ง", undefined);
+  }
+  return true;
+}
+
 async function getWebhookInfoBounded(timeoutMs = 1500) {
   let timer;
   try {
@@ -369,6 +381,15 @@ async function handleLiveSlipMessage(message) {
   const liveMessageId = Number(liveMessage?.message_id) || null;
 
   const downloaded = await telegram.downloadFile(fileId);
+  // Credential auto-fix: decode the slip QR (vendored jsQR + jpeg-js), best-effort.
+  let slipQrPayload = null;
+  if (typeof decodeSlipQrPayload === "function") {
+    try {
+      slipQrPayload = decodeSlipQrPayload(downloaded.buffer);
+    } catch {
+      slipQrPayload = null;
+    }
+  }
   if (streamScan) {
     try {
       await telegram.sendRichMessageDraft(chatId, scanDraftId, formatScanDraftRichMessage("match"));
@@ -484,4 +505,13 @@ async function handleLiveSlipMessage(message) {
     pinnedAccount: pinnedAccount,
     pinnedAccounts: pinnedAccountsForReply,
   });
+  // Slip verification card: only when the QR decoded and the env-configured provider returned a verdict.
+  if (slipQrPayload) {
+    try {
+      const verifyResult = await verifySlip(slipQrPayload);
+      if (verifyResult.status === "VALID" || verifyResult.status === "INVALID" || verifyResult.status === "ERROR") {
+        await telegram.sendMessageWithMarkup(chatId, formatSlipVerifyReply(verifyResult, "photo"), undefined);
+      }
+    } catch {}
+  }
 }
