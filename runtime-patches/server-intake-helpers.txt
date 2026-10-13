@@ -30,25 +30,36 @@ async function handleTelegramHome(message) {
   const brandBase = welcomeOrigin.endsWith("/") ? welcomeOrigin.slice(0, -1) : welcomeOrigin;
   const welcomeUrl = brandBase + "/brand/welcome.jpg";
   const webmUrl = brandBase + "/brand/webflow.mp4";
+  let homeSent = false;
   if (typeof telegram.sendAnimationWithMarkup === "function" && process.env.CE_RESPONSE_WEBM !== "0") {
     try {
-      const animationMessage = await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
-      if (typeof telegram.pinChatMessage === "function" && Number(animationMessage?.message_id) > 0) {
-        try {
-          await telegram.pinChatMessage(message.chat.id, Number(animationMessage.message_id));
-        } catch {
-          // Pinning is best-effort: chat type or client may reject it.
-        }
-      }
-      return true;
+      await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
+      homeSent = true;
     } catch {
       // WEB FLOW animation rejected: fall back to the static photo, then plain text.
     }
   }
-  try {
-    await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());
-  } catch {
-    await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());
+  if (!homeSent) {
+    try {
+      await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());
+      homeSent = true;
+    } catch {
+      await telegram.sendMessageWithMarkup(message.chat.id, formatBotHomeReply(), botHomeReplyMarkup());
+    }
+  }
+  if (process.env.CE_RESPONSE_ACCOUNT_PIN !== "0") {
+    try {
+      const pinMessage = await telegram.sendMessageWithMarkup(message.chat.id, formatAccountPinReply(), botHomeReplyMarkup());
+      if (typeof telegram.pinChatMessage === "function" && Number(pinMessage?.message_id) > 0) {
+        try {
+          await telegram.pinChatMessage(message.chat.id, Number(pinMessage.message_id));
+        } catch {
+          // Pinning is best-effort: chat type or client may reject it.
+        }
+      }
+    } catch {
+      // Account pin card is best-effort: the home flow already succeeded.
+    }
   }
   return true;
 }
