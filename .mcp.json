@@ -7,6 +7,10 @@
     "registry": {
       "type": "http",
       "url": "https://mcp.notion.com/mcp"
+    },
+    "hostinger": {
+      "command": "npx",
+      "args": ["-y", "@hostinger/mcp@latest"]
     }
   }
 }
