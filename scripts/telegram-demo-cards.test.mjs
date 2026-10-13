@@ -33,13 +33,13 @@ test('demo preview covers every operator card', () => {
   assert.match(byId.get('scan').text, /① OCR/);
   assert.match(byId.get('verified').text, /TX-0001/);
   assert.match(byId.get('verified').text, /รอแอดมินอนุมัติ/);
-  assert.match(byId.get('verified').text, /THB \(รับ\): 5,000.00/);
+  assert.match(byId.get('verified').text, /5,000\.00 THB/);
   assert.match(byId.get('blocked').text, /TX-0002/);
   assert.match(byId.get('blocked').text, /บัญชีไม่ตรง/);
   assert.match(byId.get('blocked').text, /MATCH ✗/);
   assert.match(byId.get('recorded').text, /TX-0003/);
   assert.match(byId.get('recorded').text, /บันทึก IN แล้ว/);
-  assert.match(byId.get('status').text, /CE EMPIRE · SYSTEM STATUS/);
+  assert.match(byId.get('status').text, /CE EMPIRE · SYSTEM/);
 });
 
 test('demo duplicate card stays compact: original-record pointer without a financial table', () => {
