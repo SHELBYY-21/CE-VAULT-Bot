@@ -8,6 +8,10 @@ const PADDLEOCR_MODEL = "PaddleOCR-VL-1.6";
 const PADDLEOCR_TIMEOUT_MS = Math.max(5_000, Math.min(Number(process.env.PADDLEOCR_TIMEOUT_MS || 20_000), 60_000));
 let marketCache = null;
 
+// WEB FLOW (1063.jpg): rollback switch CE_RESPONSE_WEB_FLOW=0 restores the
+// pre-web-flow card strings without a code revert. Default on.
+const webFlowOn = () => process.env.CE_RESPONSE_WEB_FLOW !== "0";
+
 function asError(code, message = code) {
   const error = new Error(message);
   error.code = code;
@@ -1115,7 +1119,7 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
   const headline = duplicate ? "⛔ สลิปซ้ำ · ห้ามบันทึกซ้ำ" : isRecorded ? titles.RECORDED :
     (titles[status] || "🟡 รอตรวจสอบ");
   const lines = [
-    `◈ CE · TX-${shortTxRef(pending?.ledger_ref)}`,
+    `${webFlowOn() ? "◈ CE · WEB FLOW · TX-" : "◈ CE · TX-"}${shortTxRef(pending?.ledger_ref)}`,
     headline,
   ];
   if (duplicate) {
@@ -1143,6 +1147,10 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     status === "REJECTED" ? "OCR ✓ → MATCH ✓ → APPROVE ✗" :
     "OCR ✓ → REVIEW ⏳ → IN —";
   lines.push("─────────────", flow);
+  if (webFlowOn()) {
+    if (verified) lines.push("🛡 AI VERIFIED — ตรวจสอบข้อมูลสำเร็จ · SLIP to THB → USDT MATCH");
+    else if (isRecorded) lines.push("💰 Check In: System Vault · ⏳ Waiting for transfer");
+  }
   const issues = intakeV3Issues({pending,market,deskRate,pinnedAccount,pinnedAccounts,duplicate})
     .filter(x => x !== "🟢 ALL CHECKS PASS" && x !== "ข้อมูลตรวจสอบไม่มีข้อผิดพลาดที่ต้องแสดง");
   if (confidence != null && Number.isFinite(confidence) && confidence < 90) {
