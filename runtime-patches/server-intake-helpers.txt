@@ -27,7 +27,17 @@ function fullBank(account) {
 async function handleTelegramHome(message) {
   if (!message?.chat?.id) return true;
   const welcomeOrigin = String(process.env.RENDER_EXTERNAL_URL || "https://ce-vault-menu-first.onrender.com");
-  const welcomeUrl = (welcomeOrigin.endsWith("/") ? welcomeOrigin.slice(0, -1) : welcomeOrigin) + "/brand/welcome.jpg";
+  const brandBase = welcomeOrigin.endsWith("/") ? welcomeOrigin.slice(0, -1) : welcomeOrigin;
+  const welcomeUrl = brandBase + "/brand/welcome.jpg";
+  const webmUrl = brandBase + "/brand/webflow.webm";
+  if (typeof telegram.sendAnimationWithMarkup === "function" && process.env.CE_RESPONSE_WEBM !== "0") {
+    try {
+      await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
+      return true;
+    } catch {
+      // WEB FLOW animation rejected: fall back to the static photo, then plain text.
+    }
+  }
   try {
     await telegram.sendPhotoWithMarkup(message.chat.id, welcomeUrl, formatBotHomeReply(), botHomeReplyMarkup());
   } catch {
