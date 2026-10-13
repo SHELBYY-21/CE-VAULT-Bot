@@ -85,7 +85,9 @@ test('generated runtime router owns home and ping commands', () => {
   const patch = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
   const helpers = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
 
-  assert.match(patch, /start\|help\|menu\|ce/);
+  assert.match(patch, /start\|help\|menu/);
+  assert.match(patch, /ce\|brief/);
+  assert.match(patch, /handleTelegramCeBrief\(message\)/);
   assert.match(patch, /ping\|status/);
   assert.match(helpers, /handleTelegramHome/);
   assert.match(helpers, /handleTelegramSystemStatus/);
@@ -113,7 +115,7 @@ test('home reply exposes a real read-only inline navigation keyboard', () => {
   assert.ok(buttons.every((button) => typeof button.callback_data === 'string'));
   assert.deepEqual(
     buttons.map((button) => button.callback_data),
-    ['ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin'],
+    ['ce:brief', 'ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin'],
   );
 });
 
