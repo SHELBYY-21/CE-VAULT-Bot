@@ -32,7 +32,14 @@ async function handleTelegramHome(message) {
   const webmUrl = brandBase + "/brand/webflow.mp4";
   if (typeof telegram.sendAnimationWithMarkup === "function" && process.env.CE_RESPONSE_WEBM !== "0") {
     try {
-      await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
+      const animationMessage = await telegram.sendAnimationWithMarkup(message.chat.id, webmUrl, formatBotHomeReply(), botHomeReplyMarkup());
+      if (typeof telegram.pinChatMessage === "function" && Number(animationMessage?.message_id) > 0) {
+        try {
+          await telegram.pinChatMessage(message.chat.id, Number(animationMessage.message_id));
+        } catch {
+          // Pinning is best-effort: chat type or client may reject it.
+        }
+      }
       return true;
     } catch {
       // WEB FLOW animation rejected: fall back to the static photo, then plain text.
