@@ -1,0 +1,43 @@
+# Base44 development environment for CE VAULT.
+# The appsrc/ directory is generated from .manus-source/parts/ + runtime patches
+# during startup, then served by an Express + Vite-dev-middleware server on port 3000.
+services:
+  web:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - '3000:3000'
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - BASE44_PREVIEW_MODE=1
+      - BASE44_PUBLIC_HOST_SUFFIX=${BASE44_PUBLIC_HOST_SUFFIX:-}
+      - BASE44_SANDBOX_HOST_DOMAIN=${BASE44_SANDBOX_HOST_DOMAIN:-}
+      - CE_VAULT_SANDBOX=true
+      - LIVE_SETTLEMENT=false
+      - LIVE_SETTLEMENT_ENABLED=false
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS:-}
+    command:
+      [
+        'sh',
+        '-ec',
+        'npm ci --legacy-peer-deps && node scripts/bootstrap.mjs && node scripts/patch-runtime-health.mjs && node scripts/patch-runtime-activity.mjs && node scripts/patch-ce-brand-ui.mjs && node scripts/patch-posthog-telemetry.mjs && node scripts/patch-ops-board.mjs && node scripts/patch-live-intake-v2.mjs && node scripts/patch-welcome-photo.mjs && node scripts/patch-webm-flow-card.mjs && node scripts/patch-telegram-2026.mjs && cd appsrc && exec node server/index.mjs',
+      ]
+    restart: on-failure
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s

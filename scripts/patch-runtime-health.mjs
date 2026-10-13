@@ -63,3 +63,18 @@ source = source.replace(
 
 writeFileSync(mainPath, source);
 console.log('Patched CE VAULT health stack to runtime API probes.');
+
+// Add /api/health compatibility alias so Dockerfile and docker-compose.yml
+// healthchecks (which probe /api/health) succeed against the Express server.
+const serverPath = path.join(root, 'appsrc', 'server', 'index.mjs');
+let serverSource = readFileSync(serverPath, 'utf8');
+const healthAnchor = 'app.get("/api/v1/health", (req, res) => {';
+if (!serverSource.includes(healthAnchor)) throw new Error('RUNTIME_HEALTH_SERVER_ANCHOR_NOT_FOUND');
+if (!serverSource.includes('app.get("/api/health"')) {
+  serverSource = serverSource.replace(
+    healthAnchor,
+    'app.get("/api/health", (req, res) => res.redirect("/api/v1/health"));\n' + healthAnchor,
+  );
+  writeFileSync(serverPath, serverSource);
+  console.log('Patched /api/health compatibility alias onto CE VAULT server.');
+}
