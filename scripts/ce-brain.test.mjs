@@ -5,6 +5,7 @@ import {
   botHomeReplyMarkup,
   ceBriefReplyMarkup,
   formatBotCeBriefReply,
+  formatBotBanksReply,
 } from '../runtime-patches/live-intake.mjs';
 
 const OVERVIEW = {
@@ -49,11 +50,11 @@ test('brief never echoes credential values', () => {
 test('command board buttons are wired with 2026 styles', () => {
   const board = ceBriefReplyMarkup();
   const buttons = board.inline_keyboard.flat();
-  assert.deepEqual(buttons.map((b) => b.callback_data), ['ce:brief', 'ce:status', 'ce:scan', 'ce:rate', 'ce:pin']);
+  assert.deepEqual(buttons.map((b) => b.callback_data), ['ce:brief', 'ce:status', 'ce:scan', 'ce:rate', 'ce:pin', 'ce:banks']);
   assert.equal(buttons.find((b) => b.callback_data === 'ce:brief').style, 'primary');
   const home = botHomeReplyMarkup();
   const homeButtons = home.inline_keyboard.flat();
-  assert.deepEqual(homeButtons.map((b) => b.callback_data), ['ce:brief', 'ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin']);
+  assert.deepEqual(homeButtons.map((b) => b.callback_data), ['ce:brief', 'ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin', 'ce:banks']);
 });
 
 test('handler, callback and router wiring pinned at real anchors', () => {
@@ -95,4 +96,20 @@ test('ops market promise header needle stays route-unique', () => {
   const continuationMarker = 'Promise.all(' + String.fromCharCode(91) + String.fromCharCode(39) + ' +';
   assert.strictEqual(patchSource.split(continuationMarker).length - 1, 2,
     'header needle and replacement must both carry the continuation operator');
+});
+
+test('banks category card lists the 7 leading Thai banks with real logos', () => {
+  const card = formatBotBanksReply();
+  assert.match(card, /ธนาคารชั้นนำ/);
+  for (const bank of ['ไทยพาณิชย์', 'กรุงไทย', 'กสิกรไทย', 'กรุงเทพ', 'กรุงศรีอยุธยา', 'ออมสิน', 'ทีทีบี']) {
+    assert.ok(card.includes(bank), 'missing bank ' + bank);
+  }
+  assert.match(card, /SCB/);
+  assert.match(card, /TTB/);
+  assert.ok(card.includes('/brand/banks'));
+  assert.match(card, /NEXT/);
+  const helpers = readFileSync(new URL('../runtime-patches/server-intake-helpers.txt', import.meta.url), 'utf8');
+  assert.ok(helpers.includes('data === "ce:banks"'), 'banks callback route missing');
+  const patch = readFileSync(new URL('./patch-live-intake.mjs', import.meta.url), 'utf8');
+  assert.ok(patch.includes('formatBotBanksReply'), 'missing from production imports');
 });
