@@ -168,6 +168,10 @@ async function handleTelegramCallback(callback) {
     message.text = "/pin";
     return handleTelegramPin(message, false);
   }
+  if (data === "ce:banks") {
+    await telegram.sendMessageWithMarkup(chatId, formatBotBanksReply(), botHomeReplyMarkup());
+    return true;
+  }
   return true;
 }
 
