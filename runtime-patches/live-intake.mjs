@@ -741,6 +741,9 @@ export function botHomeReplyMarkup() {
         { text: "💱 RATE", callback_data: "ce:rate" },
         { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
       ],
+      [
+        { text: "🏛 BANKS", callback_data: "ce:banks" },
+      ],
     ],
   };
 }
@@ -1246,6 +1249,24 @@ export function formatSlipVerifyReply(result, context = "") {
   return lines.join("\n");
 }
 
+export function formatBotBanksReply() {
+  // Leading Thai banks with real vendored logos (runtime-patches/brand/banks, omise/banks-logo MIT).
+  // Emoji color follows each bank public brand color.
+  const banks = [
+    { emoji: "🟣", name: "ไทยพาณิชย์", code: "SCB" },
+    { emoji: "🔵", name: "กรุงไทย", code: "KTB" },
+    { emoji: "🟢", name: "กสิกรไทย", code: "KBANK" },
+    { emoji: "🔵", name: "กรุงเทพ", code: "BBL" },
+    { emoji: "🟡", name: "กรุงศรีอยุธยา", code: "BAY" },
+    { emoji: "🩷", name: "ออมสิน", code: "GSB" },
+    { emoji: "⚫", name: "ทีทีบี", code: "TTB" },
+  ];
+  const lines = ["◈ CE EMPIRE · ธนาคารชั้นนำ", "━━━━━━━━━━━━━━━━━━", "● โลโก้จริงรองรับ " + banks.length + " ธนาคารชั้นนำ"];
+  for (const bank of banks) lines.push(bank.emoji + " " + bank.name + " · " + bank.code);
+  lines.push("━━━━━━━━━━━━━━━━━━");
+  lines.push("NEXT ▸ โลโก้จริงที่ /brand/banks/{code} · บัญชีรับเงินจริงกด ACCOUNTS");
+  return lines.join("\n");
+}
 export function ceBriefReplyMarkup() {
   return {
     inline_keyboard: [
@@ -1257,6 +1278,9 @@ export function ceBriefReplyMarkup() {
         { text: "📄 SCAN", callback_data: "ce:scan" },
         { text: "💱 RATE", callback_data: "ce:rate" },
         { text: "🏦 ACCOUNTS", callback_data: "ce:pin" },
+      ],
+      [
+        { text: "🏛 BANKS", callback_data: "ce:banks" },
       ],
     ],
   };
