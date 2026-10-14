@@ -19,21 +19,21 @@ test('brief reflects real KPIs and never invents money rows', () => {
   assert.match(brief, /100 USDT/);
   assert.match(brief, /13\.5 USDT/);
   assert.match(brief, /35\.2 THB\/USDT/);
-  const empty = formatBotCeBriefReply({ kpis: {} }, { SLIPOK_BRANCH_ID: 'B', SLIPOK_API_KEY: 'K' });
+  const empty = formatBotCeBriefReply({ kpis: {} }, { SCB_API_KEY: 'B', SCB_API_SECRET: 'K' });
   assert.match(empty, /วันนี้ยังไม่มีรายการจริง/);
   assert.ok(!/THB/.test(empty.split('TRACE')[0].split('BRIEF')[1] || ''));
 });
 
 test('brain prioritizes honest NEXT actions per state', () => {
   const noCreds = formatBotCeBriefReply(OVERVIEW, {});
-  assert.match(noCreds, /SLIPOK_BRANCH_ID \+ SLIPOK_API_KEY/);
-  const ready = formatBotCeBriefReply({ kpis: {} }, { SLIPOK_BRANCH_ID: 'B', SLIPOK_API_KEY: 'K' });
-  assert.match(ready, /ระบบพร้อม/);
+  assert.match(noCreds, /SCB_API_KEY \+ SCB_API_SECRET/);
+  const ready = formatBotCeBriefReply({ kpis: {} }, { SCB_API_KEY: 'B', SCB_API_SECRET: 'K' });
+  assert.match(ready, /พบ credentials scb/);
   const scb = formatBotCeBriefReply({ kpis: {} }, { SCB_API_KEY: 'k', SCB_API_SECRET: 's' });
   assert.match(scb, /พบ credentials scb/);
   const disabled = formatBotCeBriefReply({ kpis: {} }, { CE_SLIP_VERIFY: '0' });
   assert.match(disabled, /CE_SLIP_VERIFY=0/);
-  const exceptions = formatBotCeBriefReply({ kpis: { open_exceptions: 2, pending_slips: 0 } }, { SLIPOK_BRANCH_ID: 'B', SLIPOK_API_KEY: 'K' });
+  const exceptions = formatBotCeBriefReply({ kpis: { open_exceptions: 2, pending_slips: 0 } }, { SCB_API_KEY: 'B', SCB_API_SECRET: 'K' });
   assert.match(exceptions, /EXCEPTIONS เปิด 2 รายการ/);
   assert.match(exceptions, /จัดการ exceptions 2 รายการก่อนอื่น/);
   const broken = formatBotCeBriefReply(null, {});
@@ -41,7 +41,7 @@ test('brain prioritizes honest NEXT actions per state', () => {
 });
 
 test('brief never echoes credential values', () => {
-  const brief = formatBotCeBriefReply({ kpis: {} }, { SLIPOK_BRANCH_ID: 'BRANCHX', SLIPOK_API_KEY: 'SECRETK' });
+  const brief = formatBotCeBriefReply({ kpis: {} }, { SCB_API_KEY: 'BRANCHX', SCB_API_SECRET: 'SECRETK' });
   assert.ok(!brief.includes('SECRETK'));
   assert.ok(!brief.includes('BRANCHX'));
 });

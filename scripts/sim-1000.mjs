@@ -24,20 +24,12 @@ const GARBAGE = 'hello world not a qr at all';
 
 const ENV_STATES = [
   {},
-  { SLIPOK_BRANCH_ID: 'BR', SLIPOK_API_KEY: 'SECRET-XYZ-9182' },
-  { SLIP_OK_BRANCH_ID: 'BR2', SLIP_OK_API_KEY: 'SECRET-ABC-3344' },
-  { SLIPVERIFY_BRANCH_ID: 'BR3', SLIPVERIFY_API_KEY: 'SECRET-QQQ-7788' },
+  { SCB_APPLICATION_KEY: 'ak', SCB_APPLICATION_SECRET: 'SECRET-SCB-7788' },
+  { SLIPVERIFY_SCB_KEY: 'vk', SLIPVERIFY_SCB_SECRET: 'SECRET-SCB-9900' },
   { SCB_API_KEY: 'sk', SCB_API_SECRET: 'SECRET-SCB-5566' },
-  { CE_SLIP_VERIFY: '0', SLIPOK_BRANCH_ID: 'BR', SLIPOK_API_KEY: 'SECRET-XYZ-9182' },
+  { CE_SLIP_VERIFY: '0', SCB_API_KEY: 'sk', SCB_API_SECRET: 'SECRET-SCB-5566' },
 ];
 const PAYLOADS = [QR_VALID, QR_VALID, QR_SHORT, THAI_TEXT, GARBAGE, '', '   ' + QR_VALID.trim() + '   ', QR_VALID.slice(0, 511), QR_VALID + 'x'];
-const API_BEHAVIORS = [
-  { ok: true, json: async () => ({ data: { success: true, amount: 500, receiverName: 'มาลัย ภู่ชาดา', transRef: 'R1' } }) },
-  { ok: true, json: async () => ({ data: { success: false, message: 'SLIP_NOT_FOUND' } }) },
-  { ok: false, status: 500, json: async () => ({}) },
-  () => { throw new Error('network down'); },
-  () => { throw new Error('timeout'); },
-];
 
 const stats = { rounds: 0, exceptions: 0, secretLeaks: 0, dishonest: 0, statuses: {}, gate: { accept: 0, reject: 0 }, timings: [], slowest: [] };
 const errors = [];
@@ -47,20 +39,23 @@ function record(status) { stats.statuses[status] = (stats.statuses[status] || 0)
 for (let i = 0; i < 1000; i++) {
   const env = pick(ENV_STATES);
   const payload = pick(PAYLOADS);
-  const api = pick(API_BEHAVIORS);
   const t0 = process.hrtime.bigint();
   try {
-    const verdict = await verifySlip(payload, env, typeof api === 'function' ? api : () => Promise.resolve(api));
+    const verdict = await verifySlip(payload, env);
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
     stats.timings.push(ms);
     if (ms > 50) stats.slowest.push({ round: i, ms: Number(ms.toFixed(2)) });
     record(verdict.status);
     const card = formatSlipVerifyReply(verdict);
-    if (card.includes('SECRET-XYZ-9182') || card.includes('SECRET-ABC-3344') || card.includes('SECRET-QQQ-7788') || card.includes('SECRET-SCB-5566')) { stats.secretLeaks++; errors.push('SECRET_LEAK round ' + i); }
+    if (card.includes('SECRET-SCB-5566') || card.includes('SECRET-SCB-7788') || card.includes('SECRET-SCB-9900')) { stats.secretLeaks++; errors.push('SECRET_LEAK round ' + i); }
     const cfg = resolveSlipVerifyConfig(env);
-    const expectsVerify = Boolean(cfg && cfg.provider === 'slipok' && isSlipQrPayload(payload) && env.CE_SLIP_VERIFY !== '0');
-    if (expectsVerify && verdict.status !== 'VALID' && verdict.status !== 'INVALID' && verdict.status !== 'ERROR') {
-      stats.dishonest++; errors.push('DISHONEST round ' + i + ' status=' + verdict.status);
+    let expected;
+    if (env.CE_SLIP_VERIFY === '0') expected = 'DISABLED';
+    else if (!cfg) expected = 'NOT_CONFIGURED';
+    else if (!isSlipQrPayload(payload)) expected = 'INVALID_PAYLOAD';
+    else expected = 'PROVIDER_PENDING';
+    if (verdict.status !== expected) {
+      stats.dishonest++; errors.push('DISHONEST round ' + i + ' status=' + verdict.status + ' expected=' + expected);
     }
     if (isSlipQrPayload(payload)) stats.gate.accept++; else stats.gate.reject++;
   } catch (err) {
