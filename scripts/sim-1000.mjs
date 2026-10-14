@@ -87,7 +87,7 @@ for (let i = 0; i < 200; i++) {
 for (let i = 0; i < 100; i++) {
   const home = botHomeReplyMarkup().inline_keyboard.flat().map((b) => b.callback_data);
   const board = ceBriefReplyMarkup().inline_keyboard.flat().map((b) => b.callback_data);
-  if (home.length !== 6 || board.length !== 5) { stats.exceptions++; errors.push('KEYBOARD round ' + i); }
+  if (home.length !== 7 || board.length !== 6) { stats.exceptions++; errors.push('KEYBOARD round ' + i); }
 }
 
 const times = stats.timings.sort((a, b) => a - b);
