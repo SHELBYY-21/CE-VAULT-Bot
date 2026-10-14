@@ -19,23 +19,48 @@ let server = readFileSync(serverPath, 'utf8');
 const telegramStatusAnchor = 'app.get("/api/v1/telegram/status", async (req, res) => {';
 const hardenedStatusRoute = String.raw`app.get("/api/v1/telegram/status", async (req, res) => {
   const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN);
+  if (!configured || !telegram) {
+    res.set("Cache-Control", "no-store").json({ configured: false, webhook: null });
+    return;
+  }
+  const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
   const attempts = 3;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
     try {
-      const webhook = await telegram.getWebhookInfo();
+      // Scope the deadline to diagnostics; never retry outbound messages.
+      const response = await fetch("https://api.telegram.org/bot" + token + "/getWebhookInfo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) {
+        const status = response.ok ? Number(payload?.error_code) : response.status;
+        const error = new Error(status === 401 || status === 403 ? "TELEGRAM_AUTH_FAILED" : "TELEGRAM_API_ERROR");
+        error.transient = status === 429 || status >= 500;
+        throw error;
+      }
+      const webhook = payload.result;
       res.set("Cache-Control", "no-store").json({ configured, webhook });
       return;
     } catch (error) {
-      if (attempt < attempts) {
+      clearTimeout(timeout);
+      if (error?.transient !== false && attempt < attempts) {
         await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
         continue;
       }
       res.set("Cache-Control", "no-store").json({
         configured,
         webhook: null,
-        degraded: "TELEGRAM_API_UNREACHABLE",
-        detail: String(error?.message || "TELEGRAM_API_UNREACHABLE").slice(0, 120),
+        degraded: error?.transient === false ? error.message : "TELEGRAM_API_UNREACHABLE",
+        detail: error?.transient === false ? error.message : "TELEGRAM_API_UNREACHABLE",
       });
+      return;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 });
