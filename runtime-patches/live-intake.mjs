@@ -1139,12 +1139,12 @@ export function formatIntakeV4Reply({pending,market,deskRate,recorded,duplicate,
     if (pending?.name && String(pending.name).length <= 80) lines.push(`👤 ${pending.name}`);
   }
   if (verified && pending?.id) lines.push(`🛡 /approve ${pending.id}`);
-  const flow = isRecorded ? "OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —" :
+  const flow = isRecorded ? "OCR ✓ → MATCH ✓ → APPROVE ✓ → IN ✓ → WAIT ⏳ → DONE —" :
     verified ? "OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → WAIT — → DONE —" :
     duplicate ? "OCR ✓ → DUP ⚠" :
     status === "BANK_MISMATCH" || status === "STALE_SLIP" ? "OCR ✓ → MATCH ✗ → IN —" :
     status === "OCR_FAILED" ? "OCR ✗ → MATCH — → IN —" :
-    status === "PROMOTION_FAILED" ? "OCR ✓ → MATCH ✓ → IN ✗ → WAIT —" :
+    status === "PROMOTION_FAILED" ? "OCR ✓ → MATCH ✓ → APPROVE ✓ → IN ✗ → WAIT —" :
     status === "REJECTED" ? "OCR ✓ → MATCH ✓ → APPROVE ✗" :
     "OCR ✓ → REVIEW ⏳ → IN —";
   lines.push("━━━━━━━━━━━━━━━━━", `TRACE ▸ ${flow}`);

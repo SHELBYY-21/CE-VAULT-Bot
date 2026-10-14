@@ -167,7 +167,7 @@ test('Telegram five-stage reply never promotes a review or recorded slip to DONE
   assert.match(review, /OCR ✓ → REVIEW ⏳ → IN —/);
   assert.doesNotMatch(review, /IN ✓|DONE ✓/);
   const recorded = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'RECORDED', pin_match: true, ocr_confidence: 98, tx_id: 'tx-1' }, recorded: { tx_id: 'tx-1' } });
-  assert.match(recorded, /OCR ✓ → MATCH ✓ → IN ✓ → WAIT ⏳ → DONE —/);
+  assert.match(recorded, /OCR ✓ → MATCH ✓ → APPROVE ✓ → IN ✓ → WAIT ⏳ → DONE —/);
   assert.doesNotMatch(recorded, /DONE ✓|SETTLED ✓/);
   const mismatch = formatIntakeV4Reply({ ...base, pending: { ...base.pending, status: 'BANK_MISMATCH' } });
   assert.match(mismatch, /MATCH ✗ → IN —/);
@@ -359,4 +359,29 @@ test('VERIFIED intake attaches slip photo evidence with Thai confirm/cancel butt
   assert.ok(helper.includes('approvalHandled: approvalHandled'));
   assert.ok(helper.includes('✅ เข้า · ยืนยัน'));
   assert.ok(helper.includes('⛔ ไม่เข้า · ยกเลิก'));
+});
+
+test('design system T1-T5: canonical 6-step TRACE and per-status colors are pinned', () => {
+  const base = { deskRate: { sell_rate: '37' }, market: { price: '37', fresh: true } };
+  // T1 Pending Admin (VERIFIED): yellow + 6-step with APPROVE pending + AI VERIFIED + approve NEXT
+  const t1 = formatIntakeV4Reply({ ...base, pending: { status: 'VERIFIED', ledger_ref: 'CE-11aa', thb_in: '1000', should_send: '25', desk_rate: '37', pin_match: true } });
+  assert.match(t1, /◈ CE · WEB FLOW · TX-/);
+  assert.match(t1, /🟡 รอแอดมินอนุมัติ/);
+  assert.match(t1, /OCR ✓ → MATCH ✓ → APPROVE ⏳ → IN — → WAIT — → DONE —/);
+  assert.match(t1, /🛡 AI VERIFIED/);
+  assert.match(t1, /NEXT ▸ แอดมินตรวจสลิปแล้วกด Approve/);
+  // T2 Mismatch (BANK_MISMATCH): red + match failed trace
+  const t2 = formatIntakeV4Reply({ ...base, pending: { status: 'BANK_MISMATCH', ledger_ref: 'CE-22bb', thb_in: '1000' } });
+  assert.match(t2, /🔴 บัญชีไม่ตรง/);
+  assert.match(t2, /OCR ✓ → MATCH ✗ → IN —/);
+  // T3 Waiting USDT (RECORDED): yellow + full 6-step with APPROVE done
+  const t3 = formatIntakeV4Reply({ ...base, pending: { status: 'RECORDED', ledger_ref: 'CE-33cc', tx_id: 'tx-3', thb_in: '1000', should_send: '25', desk_rate: '37' }, recorded: { tx_id: 'tx-3' } });
+  assert.match(t3, /🟡 บันทึก IN แล้ว · WAIT USDT/);
+  assert.match(t3, /OCR ✓ → MATCH ✓ → APPROVE ✓ → IN ✓ → WAIT ⏳ → DONE —/);
+  assert.match(t3, /💰 Check In: System Vault · ⏳ Waiting for transfer/);
+  // T4 Duplicate: blocked + compact pointer only
+  const t4 = formatIntakeV4Reply({ ...base, pending: { status: 'RECORDED', ledger_ref: 'CE-44dd' }, duplicate: true });
+  assert.match(t4, /⛔ สลิปซ้ำ · ห้ามบันทึกซ้ำ/);
+  assert.match(t4, /TRACE ▸ OCR ✓ → DUP ⚠/);
+  assert.ok(!t4.includes('💵'));
 });
