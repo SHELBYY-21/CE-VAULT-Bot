@@ -115,7 +115,7 @@ test('home reply exposes a real read-only inline navigation keyboard', () => {
   assert.ok(buttons.every((button) => typeof button.callback_data === 'string'));
   assert.deepEqual(
     buttons.map((button) => button.callback_data),
-    ['ce:brief', 'ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin'],
+    ['ce:brief', 'ce:home', 'ce:scan', 'ce:status', 'ce:rate', 'ce:pin', 'ce:banks'],
   );
 });
 
