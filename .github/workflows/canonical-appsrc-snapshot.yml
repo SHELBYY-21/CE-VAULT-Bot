@@ -1,0 +1,58 @@
+name: Canonical appsrc snapshot
+
+# Phase 0 step 3-4: reconstruct appsrc/ exactly as production build does,
+# then commit the result to this branch as a reviewable Git snapshot.
+# Run order mirrors package.json build (bootstrap -> patches -> appsrc check)
+# so the snapshot IS the source production currently runs.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [vibe/canonical-appsrc]
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Reconstruct appsrc exactly like production build
+        run: |
+          npm ci
+          node scripts/bootstrap.mjs
+          node scripts/patch-runtime-health.mjs
+          node scripts/patch-runtime-activity.mjs
+          node scripts/patch-ce-brand-ui.mjs
+          node scripts/patch-posthog-telemetry.mjs
+          node scripts/patch-ops-board.mjs
+          node scripts/patch-live-intake-v2.mjs
+          node scripts/patch-telegram-status-degrade.mjs
+          node scripts/patch-welcome-photo.mjs
+          node scripts/patch-webm-flow-card.mjs
+          node scripts/patch-telegram-2026.mjs
+          node scripts/patch-bank-logos.mjs
+          (cd appsrc && npm run check)
+
+      - name: Unignore appsrc for the snapshot commit
+        run: |
+          sed -i '/^appsrc\/$/d; /^\.manus-source\/cevault\.tgz$/d' .gitignore
+
+      - name: Commit canonical snapshot
+        run: |
+          git config user.name "ce-vault-oracle"
+          git config user.email "oracle@ce-vault.local"
+          git add appsrc .gitignore
+          git commit -m "chore: snapshot canonical appsrc/ (reconstructed from production build pipeline)
+
+Snapshot of exactly what the production build produces on main @ 3982d80a.
+Review-only: production build behavior unchanged until a follow-up PR
+switches the build to use the tracked source directly." || echo "nothing to commit"
+          git push
