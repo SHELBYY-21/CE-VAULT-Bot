@@ -79,6 +79,59 @@ function bangkokDateKey(isoTimestamp) {
   return byType.year + '-' + byType.month + '-' + byType.day;
 }
 
+function bangkokHourKey(isoTimestamp) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  }).formatToParts(new Date(isoTimestamp));
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const hour = byType.hour === '24' ? '00' : byType.hour;
+  return { date: byType.year + '-' + byType.month + '-' + byType.day, hour };
+}
+
+function safeExceptionRow(row, now) {
+  const createdMs = row.created_at ? new Date(row.created_at).getTime() : NaN;
+  const ageMinutes = Number.isFinite(createdMs)
+    ? Math.max(0, Math.round((new Date(now).getTime() - createdMs) / 60000))
+    : null;
+  return {
+    exception_type: row.exception_type || 'UNKNOWN',
+    status: row.status,
+    age_minutes: ageMinutes,
+    created_at: row.created_at,
+  };
+}
+
+function buildHourlyCashflow(rows, now, bucketCount = 12) {
+  const reference = new Date(now);
+  const buckets = [];
+  for (let offset = bucketCount - 1; offset >= 0; offset -= 1) {
+    const slot = new Date(reference.getTime() - offset * 3600000);
+    const key = bangkokHourKey(slot.toISOString());
+    buckets.push({
+      key: key.date + ' ' + key.hour,
+      hour: key.hour,
+      thb_in: '0',
+      usdt_sent: '0',
+    });
+  }
+  const index = new Map(buckets.map((bucket, position) => [bucket.key, position]));
+  for (const row of rows) {
+    if (!row.created_at) continue;
+    const key = bangkokHourKey(row.created_at);
+    const position = index.get(key.date + ' ' + key.hour);
+    if (position == null) continue;
+    const bucket = buckets[position];
+    if (row.type === 'THB_DEPOSIT') bucket.thb_in = addDecimal(bucket.thb_in, row.thb_amount ?? '0');
+    bucket.usdt_sent = addDecimal(bucket.usdt_sent, row.sent_usdt ?? '0');
+  }
+  return buckets.map((bucket) => ({
+    hour_label: bucket.hour + ':00',
+    thb_in: bucket.thb_in,
+    usdt_sent: bucket.usdt_sent,
+  }));
+}
+
 function maskedReference(value) {
   if (!value) return null;
   const text = String(value);
@@ -176,6 +229,8 @@ export function buildOpsOverview({
     })),
     recent_transactions: transactions.slice(0, 25).map(safeRecentTransaction),
     pending_slips: pendingSlips.slice(0, 25).map(safePendingSlip),
+    exceptions_detail: exceptions.slice(0, 25).map((row) => safeExceptionRow(row, now)),
+    hourly_cashflow: buildHourlyCashflow(today, now),
     coverage: {
       transactions_scanned: transactions.length,
       transactions_capped: transactions.length >= transactionLimit,
@@ -327,6 +382,42 @@ function accountRows(items) {
   }).join('') + '</div>';
 }
 
+function renderTriage(o) {
+  const alerts = [];
+  const k = o.kpis || {};
+  if (Number(k.open_exceptions || 0) > 0) alerts.push({ label: 'Exceptions เปิด ' + k.open_exceptions + ' รายการ', tone: 'danger' });
+  if (Number(k.stale_slips || 0) > 0) alerts.push({ label: 'สลิป stale ' + k.stale_slips + ' รายการ', tone: 'warning' });
+  if (o.coverage && o.coverage.transactions_capped) alerts.push({ label: 'ยอดวันนี้อาจไม่ครบ (อ่านครบขีด ' + o.coverage.transactions_scanned + ')', tone: 'warning' });
+  const pendingUpdates = state.telegram && state.telegram.webhook ? Number(state.telegram.webhook.pending_update_count ?? 0) : 0;
+  if (pendingUpdates > 0) alerts.push({ label: 'Telegram ค้าง ' + pendingUpdates + ' update', tone: 'warning' });
+  const apiOk = state.health && state.health.mode === 'SANDBOX' && state.health.database === 'CONFIGURED';
+  if (!apiOk) alerts.push({ label: 'Runtime health ผิดปกติ', tone: 'danger' });
+  if (!alerts.length) return '<section class="triage"><span class="triage-chip ok">ALL CLEAR — ไม่มีสิ่งที่ต้องจัดการทันที</span></section>';
+  return '<section class="triage">' + alerts.map(function (a) {
+    return '<span class="triage-chip ' + a.tone + '">' + esc(a.label) + '</span>';
+  }).join('') + '</section>';
+}
+
+function exceptionRows(items) {
+  if (!items.length) return empty('ไม่มี settlement exception สถานะ OPEN');
+  return '<div class="rows">' + items.map(function (item) {
+    const age = item.age_minutes == null ? '—' : (item.age_minutes >= 60 ? Math.floor(item.age_minutes / 60) + ' ชม. ' + (item.age_minutes % 60) + ' น.' : item.age_minutes + ' นาที');
+    return '<article class="row"><div><strong>' + esc(item.exception_type || 'UNKNOWN') + '</strong><span>เปิดเมื่อ ' + esc(timeBangkok(item.created_at)) + '</span></div><div class="amount"><strong>' + esc(age) + '</strong><span>อายุค้าง</span></div><span class="pill danger">' + esc(item.status || 'OPEN') + '</span></article>';
+  }).join('') + '</div>';
+}
+
+function trendChart(items) {
+  if (!items.length) return empty('จะแสดงกราฟเมื่อมีรายการวันนี้');
+  const maxThb = items.reduce(function (mx, b) { return Math.max(mx, Number(b.thb_in || 0)); }, 0);
+  return '<div class="trend-wrap">' + items.map(function (b, index) {
+    const pct = maxThb > 0 ? Math.max(3, Math.round((Number(b.thb_in || 0) / maxThb) * 100)) : 3;
+    const active = Number(b.thb_in || 0) > 0 ? ' active' : '';
+    const tip = b.hour_label + ' · เข้า ' + decimalText(b.thb_in, 'THB') + ' · ส่ง ' + decimalText(b.usdt_sent, 'USDT');
+    const showLabel = index % 2 === 0 ? '' : ' hide-sm';
+    return '<div class="trend-col" title="' + esc(tip) + '"><div class="trend-bar' + active + '" style="height:' + pct + '%"></div><small class="' + showLabel + '">' + esc(b.hour_label) + '</small></div>';
+  }).join('') + '</div>';
+}
+
 function serviceRow(name, ok, detail) {
   return '<div class="service"><span class="dot ' + (ok ? 'ok' : 'warn') + '"></span><div><strong>' + esc(name) + '</strong><span>' + esc(detail) + '</span></div><b>' + (ok ? 'OK' : 'CHECK') + '</b></div>';
 }
@@ -364,6 +455,7 @@ function render() {
     '<section class="hero"><div><span class="eyebrow">CE EMPIRE · MONEY CONTROL</span><h1>BANK SLIP → USDT</h1><p>Source of truth: Supabase operational tables · อัปเดต ' + esc(timeBangkok(o.generated_at)) + '</p></div><div class="date">' + esc(o.business_date) + '</div></section>',
     coverageWarn,
     workflowRail(),
+    renderTriage(o),
     '<section class="kpis">',
       kpi('ยอดรับวันนี้', decimalText(k.thb_in, 'THB'), String(k.transactions || 0) + ' รายการวันนี้', 'gold'),
       kpi('ส่ง USDT แล้ว', decimalText(k.sent_usdt, 'USDT'), 'จาก sent_usdt ที่บันทึกจริง', 'cyan'),
@@ -383,6 +475,8 @@ function render() {
       '<article class="panel smart-inbox"><div class="heading"><div><span class="eyebrow">SMART INBOX</span><h2>งานที่ต้องจัดการ</h2></div><b>' + esc(String(k.pending_slips || 0)) + '</b></div>' + pendingRows(o.pending_slips || []) + '</article>',
       '<article class="panel"><div class="heading"><div><span class="eyebrow">RECENT</span><h2>ธุรกรรมล่าสุด</h2></div><b>' + esc(String((o.recent_transactions || []).length)) + '</b></div>' + transactionRows(o.recent_transactions || []) + '</article>',
     '</section>',
+    '<section class="panel exceptions-panel"><div class="heading"><div><span class="eyebrow">EXCEPTIONS NOW</span><h2>งานผิดปกติที่ต้องปิด</h2></div><b>' + esc(String(k.open_exceptions || 0)) + '</b></div>' + exceptionRows(o.exceptions_detail || []) + '</section>',
+    '<section class="panel"><div class="heading"><div><span class="eyebrow">CASHFLOW TREND</span><h2>เงินไหล 12 ชั่วโมงล่าสุด</h2></div><span class="readonly">BANGKOK TIME</span></div>' + trendChart(o.hourly_cashflow || []) + '<div class="trend-note">แท่งละ 1 ชั่วโมง · ความสูง = THB เข้า · พักเมาส์เพื่อดู USDT ส่ง · ข้อมูลจริงจาก transactions เท่านั้น</div></section>',
     '<section class="panel"><div class="heading"><div><span class="eyebrow">SYSTEM</span><h2>สถานะระบบ</h2></div><span class="readonly">READ-ONLY</span></div><div class="services">',
       serviceRow('Workflow API', apiOk, apiOk ? 'SANDBOX / LOCKED' : 'ตรวจ health endpoint'),
       serviceRow('Supabase', state.health?.database === 'CONFIGURED', state.health?.database || 'unknown'),
@@ -430,7 +524,7 @@ window.setInterval(refresh, 30_000);
 `;
 writeFileSync(path.join(srcPath, 'ops-main.js'), opsMain);
 
-const opsCss = String.raw`:root{font-family:Inter,Manrope,"Noto Sans Thai",system-ui,sans-serif;color:#eef6fa;background:#071019;font-synthesis:none;--void:#071019;--navy:#0b1623;--surface:#101e2d;--raised:#14263a;--border:#234057;--cyan:#35e7ff;--gold:#f3c96b;--gold2:#ffe2a0;--muted:#91a7b8;--success:#4ee28a;--warning:#ffbf4d;--danger:#ff5f65}*{box-sizing:border-box}body{margin:0;min-width:320px;background:radial-gradient(circle at 50% -20%,#14314b 0,transparent 38%),linear-gradient(180deg,#071019,#08131f 58%,#050b11);color:#eef6fa}button{font:inherit;min-height:44px;border:1px solid var(--border);border-radius:10px;background:#13263a;color:#eef6fa;padding:0 16px;cursor:pointer}button:hover{border-color:var(--cyan)}.shell{width:min(1440px,100%);margin:auto;padding:16px 20px 40px}.top{position:sticky;top:0;z-index:5;margin:-16px -20px 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(35,64,87,.8);background:rgba(7,16,25,.94);backdrop-filter:blur(14px)}.identity{display:flex;flex-direction:column}.brand{font-weight:900;letter-spacing:.16em;color:var(--gold2)}.identity small{color:var(--muted);font-size:11px;letter-spacing:.12em;margin-top:3px}.top-actions{display:flex;gap:10px;align-items:center}.mode,.readonly{font-size:12px;color:var(--cyan);border:1px solid rgba(50,217,244,.25);padding:7px 10px;border-radius:999px}.hero{display:flex;justify-content:space-between;align-items:end;padding:28px 2px 16px}.eyebrow{font-size:11px;letter-spacing:.14em;color:var(--cyan)}h1,h2,p{margin:0}h1{font-size:clamp(25px,4vw,42px);margin-top:5px}.hero p{color:var(--muted);margin-top:8px;font-size:13px}.date{font:700 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.notice{padding:10px 12px;border:1px solid rgba(255,191,77,.35);background:rgba(255,191,77,.08);border-radius:10px;margin-bottom:12px;color:#ffe0a0}.workflow-shell{margin:8px 0 14px;padding:14px;border:1px solid rgba(53,231,255,.28);border-radius:16px;background:linear-gradient(145deg,rgba(9,24,38,.96),rgba(8,17,28,.96));box-shadow:0 0 0 1px rgba(243,201,107,.06),0 18px 42px rgba(0,0,0,.2)}.workflow-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.workflow-heading h2{font-size:17px;margin-top:3px}.workflow-rail{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr;gap:8px;align-items:stretch}.flow-step{min-width:0;padding:12px;border:1px solid rgba(35,64,87,.85);border-radius:12px;background:linear-gradient(180deg,rgba(18,37,55,.92),rgba(9,20,31,.94));display:grid;gap:4px}.flow-step .flow-index{font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.flow-step strong{font-size:14px;letter-spacing:.06em}.flow-step small{font-size:9px;letter-spacing:.12em;color:var(--muted)}.flow-step.cyan{border-color:rgba(53,231,255,.34);box-shadow:inset 0 1px 0 rgba(53,231,255,.08)}.flow-step.cyan strong{color:var(--cyan)}.flow-step.gold{border-color:rgba(243,201,107,.34)}.flow-step.gold strong{color:var(--gold)}.flow-step.success{border-color:rgba(78,226,138,.28)}.flow-step.success strong{color:var(--success)}.flow-step.warning{border-color:rgba(255,191,77,.32)}.flow-step.warning strong{color:var(--warning)}.flow-arrow{align-self:center;color:var(--gold);font-size:24px;opacity:.85}.smart-inbox{border-color:rgba(53,231,255,.26)}.account-directory{border-color:rgba(243,201,107,.28)}.account-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.account-card{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px;border:1px solid rgba(243,201,107,.2);border-radius:12px;background:rgba(8,20,31,.78)}.account-card>div{min-width:0;display:grid;gap:4px}.account-card small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-card>b{font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2);white-space:nowrap}.account-number{font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;color:#eef6fa;word-break:break-all}.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.kpi,.context,.panel{background:linear-gradient(150deg,rgba(16,30,45,.96),rgba(9,20,31,.96));border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 30px rgba(0,0,0,.16)}.kpi{padding:14px;min-height:118px;display:flex;flex-direction:column}.kpi span,.context span{font-size:12px;color:var(--muted)}.kpi strong{font:750 21px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:auto}.kpi small{font-size:11px;color:var(--muted);margin-top:5px}.kpi.gold strong{color:var(--gold2)}.kpi.cyan strong{color:var(--cyan)}.kpi.warning strong{color:var(--warning)}.kpi.success strong{color:var(--success)}.context-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.context{padding:14px}.context strong{display:block;margin-top:8px;font:700 16px ui-monospace,SFMono-Regular,Menlo,monospace}.context small{display:block;margin-top:5px;color:var(--muted)}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.panel{padding:14px;margin-top:12px}.two-col .panel{margin-top:0}.heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.heading h2{font-size:18px;margin-top:3px}.heading>b{font:700 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.rows{display:flex;flex-direction:column;gap:7px}.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,.75fr) auto;gap:12px;align-items:center;padding:11px;border:1px solid rgba(35,64,87,.72);border-radius:10px;background:rgba(8,20,31,.72)}.row div{min-width:0}.row strong{font-size:13px}.row div>span{display:block;color:var(--muted);font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.amount{text-align:right}.amount strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.pill{justify-self:end;font-size:10px;border-radius:999px;padding:5px 8px;border:1px solid var(--border);white-space:nowrap}.pill.success{color:var(--success);border-color:rgba(66,213,154,.3)}.pill.warning{color:var(--warning);border-color:rgba(242,184,75,.3)}.pill.danger{color:var(--danger);border-color:rgba(238,107,114,.3)}.pill.neutral{color:var(--muted)}.empty{min-height:130px;display:grid;place-content:center;text-align:center;border:1px dashed var(--border);border-radius:10px}.empty strong{color:#d7e5ee}.empty span{font-size:12px;color:var(--muted);margin-top:5px}.services{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.service{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid rgba(35,64,87,.65);border-radius:10px}.dot{width:8px;height:8px;border-radius:50%}.dot.ok{background:var(--success);box-shadow:0 0 12px rgba(66,213,154,.35)}.dot.warn{background:var(--warning)}.service div span{display:block;color:var(--muted);font-size:10px;margin-top:3px}.service b{font-size:10px;color:var(--cyan)}footer{text-align:center;color:#60798b;font-size:11px;padding:20px}.loading,.error{margin:18vh auto;max-width:600px;padding:26px;border:1px solid var(--border);border-radius:14px;background:var(--surface);text-align:center}.error{display:flex;flex-direction:column;gap:7px}.error span{color:var(--muted)}@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.services{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.shell{padding:12px 12px 28px}.account-list{grid-template-columns:1fr}.workflow-heading{align-items:flex-start}.workflow-rail{grid-template-columns:1fr}.flow-arrow{display:none}.flow-step{grid-template-columns:auto 1fr auto;align-items:center}.flow-step small{text-align:right}.top{margin:-12px -12px 0;padding:10px 12px}.mode{display:none}.hero{align-items:start}.date{font-size:11px}.kpis{grid-template-columns:repeat(2,1fr)}.context-grid{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}.services{grid-template-columns:1fr}.row{grid-template-columns:1fr auto}.amount{text-align:left}.row>.pill{grid-column:2;grid-row:1/3}.kpi{min-height:105px}.kpi strong{font-size:18px}}@media(max-width:390px){.kpis,.context-grid{grid-template-columns:1fr}.brand{font-size:14px}.top button{padding:0 12px}.hero{padding-top:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}`;
+const opsCss = String.raw`:root{font-family:Inter,Manrope,"Noto Sans Thai",system-ui,sans-serif;color:#eef6fa;background:#071019;font-synthesis:none;--void:#071019;--navy:#0b1623;--surface:#101e2d;--raised:#14263a;--border:#234057;--cyan:#35e7ff;--gold:#f3c96b;--gold2:#ffe2a0;--muted:#91a7b8;--success:#4ee28a;--warning:#ffbf4d;--danger:#ff5f65}*{box-sizing:border-box}body{margin:0;min-width:320px;background:radial-gradient(circle at 50% -20%,#14314b 0,transparent 38%),linear-gradient(180deg,#071019,#08131f 58%,#050b11);color:#eef6fa}button{font:inherit;min-height:44px;border:1px solid var(--border);border-radius:10px;background:#13263a;color:#eef6fa;padding:0 16px;cursor:pointer}button:hover{border-color:var(--cyan)}.shell{width:min(1440px,100%);margin:auto;padding:16px 20px 40px}.top{position:sticky;top:0;z-index:5;margin:-16px -20px 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(35,64,87,.8);background:rgba(7,16,25,.94);backdrop-filter:blur(14px)}.identity{display:flex;flex-direction:column}.brand{font-weight:900;letter-spacing:.16em;color:var(--gold2)}.identity small{color:var(--muted);font-size:11px;letter-spacing:.12em;margin-top:3px}.top-actions{display:flex;gap:10px;align-items:center}.mode,.readonly{font-size:12px;color:var(--cyan);border:1px solid rgba(50,217,244,.25);padding:7px 10px;border-radius:999px}.hero{display:flex;justify-content:space-between;align-items:end;padding:28px 2px 16px}.eyebrow{font-size:11px;letter-spacing:.14em;color:var(--cyan)}h1,h2,p{margin:0}h1{font-size:clamp(25px,4vw,42px);margin-top:5px}.hero p{color:var(--muted);margin-top:8px;font-size:13px}.date{font:700 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.notice{padding:10px 12px;border:1px solid rgba(255,191,77,.35);background:rgba(255,191,77,.08);border-radius:10px;margin-bottom:12px;color:#ffe0a0}.workflow-shell{margin:8px 0 14px;padding:14px;border:1px solid rgba(53,231,255,.28);border-radius:16px;background:linear-gradient(145deg,rgba(9,24,38,.96),rgba(8,17,28,.96));box-shadow:0 0 0 1px rgba(243,201,107,.06),0 18px 42px rgba(0,0,0,.2)}.workflow-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.workflow-heading h2{font-size:17px;margin-top:3px}.workflow-rail{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr;gap:8px;align-items:stretch}.flow-step{min-width:0;padding:12px;border:1px solid rgba(35,64,87,.85);border-radius:12px;background:linear-gradient(180deg,rgba(18,37,55,.92),rgba(9,20,31,.94));display:grid;gap:4px}.flow-step .flow-index{font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.flow-step strong{font-size:14px;letter-spacing:.06em}.flow-step small{font-size:9px;letter-spacing:.12em;color:var(--muted)}.flow-step.cyan{border-color:rgba(53,231,255,.34);box-shadow:inset 0 1px 0 rgba(53,231,255,.08)}.flow-step.cyan strong{color:var(--cyan)}.flow-step.gold{border-color:rgba(243,201,107,.34)}.flow-step.gold strong{color:var(--gold)}.flow-step.success{border-color:rgba(78,226,138,.28)}.flow-step.success strong{color:var(--success)}.flow-step.warning{border-color:rgba(255,191,77,.32)}.flow-step.warning strong{color:var(--warning)}.flow-arrow{align-self:center;color:var(--gold);font-size:24px;opacity:.85}.smart-inbox{border-color:rgba(53,231,255,.26)}.account-directory{border-color:rgba(243,201,107,.28)}.account-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.account-card{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px;border:1px solid rgba(243,201,107,.2);border-radius:12px;background:rgba(8,20,31,.78)}.account-card>div{min-width:0;display:grid;gap:4px}.account-card small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-card>b{font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2);white-space:nowrap}.account-number{font:700 15px ui-monospace,SFMono-Regular,Menlo,monospace;color:#eef6fa;word-break:break-all}.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.kpi,.context,.panel{background:linear-gradient(150deg,rgba(16,30,45,.96),rgba(9,20,31,.96));border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 30px rgba(0,0,0,.16)}.kpi{padding:14px;min-height:118px;display:flex;flex-direction:column}.kpi span,.context span{font-size:12px;color:var(--muted)}.kpi strong{font:750 21px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:auto}.kpi small{font-size:11px;color:var(--muted);margin-top:5px}.kpi.gold strong{color:var(--gold2)}.kpi.cyan strong{color:var(--cyan)}.kpi.warning strong{color:var(--warning)}.kpi.success strong{color:var(--success)}.context-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}.context{padding:14px}.context strong{display:block;margin-top:8px;font:700 16px ui-monospace,SFMono-Regular,Menlo,monospace}.context small{display:block;margin-top:5px;color:var(--muted)}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.panel{padding:14px;margin-top:12px}.two-col .panel{margin-top:0}.heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.heading h2{font-size:18px;margin-top:3px}.heading>b{font:700 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.rows{display:flex;flex-direction:column;gap:7px}.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,.75fr) auto;gap:12px;align-items:center;padding:11px;border:1px solid rgba(35,64,87,.72);border-radius:10px;background:rgba(8,20,31,.72)}.row div{min-width:0}.row strong{font-size:13px}.row div>span{display:block;color:var(--muted);font-size:11px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.amount{text-align:right}.amount strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold2)}.pill{justify-self:end;font-size:10px;border-radius:999px;padding:5px 8px;border:1px solid var(--border);white-space:nowrap}.pill.success{color:var(--success);border-color:rgba(66,213,154,.3)}.pill.warning{color:var(--warning);border-color:rgba(242,184,75,.3)}.pill.danger{color:var(--danger);border-color:rgba(238,107,114,.3)}.pill.neutral{color:var(--muted)}.empty{min-height:130px;display:grid;place-content:center;text-align:center;border:1px dashed var(--border);border-radius:10px}.empty strong{color:#d7e5ee}.empty span{font-size:12px;color:var(--muted);margin-top:5px}.services{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.service{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid rgba(35,64,87,.65);border-radius:10px}.dot{width:8px;height:8px;border-radius:50%}.dot.ok{background:var(--success);box-shadow:0 0 12px rgba(66,213,154,.35)}.dot.warn{background:var(--warning)}.service div span{display:block;color:var(--muted);font-size:10px;margin-top:3px}.service b{font-size:10px;color:var(--cyan)}footer{text-align:center;color:#60798b;font-size:11px;padding:20px}.loading,.error{margin:18vh auto;max-width:600px;padding:26px;border:1px solid var(--border);border-radius:14px;background:var(--surface);text-align:center}.error{display:flex;flex-direction:column;gap:7px}.error span{color:var(--muted)}.triage{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 2px}.triage-chip{font-size:12px;font-weight:700;border-radius:999px;padding:8px 14px;border:1px solid var(--border);color:var(--muted)}.triage-chip.ok{color:var(--success);border-color:rgba(66,213,154,.35)}.triage-chip.warning{color:var(--warning);border-color:rgba(255,191,77,.35)}.triage-chip.danger{color:var(--danger);border-color:rgba(255,95,101,.45)}.exceptions-panel{border-color:rgba(255,95,101,.3)}.trend-wrap{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;align-items:end;height:150px}.trend-col{display:flex;flex-direction:column;justify-content:end;align-items:center;height:100%;gap:6px}.trend-bar{width:100%;min-height:3px;border-radius:6px 6px 2px 2px;background:rgba(53,231,255,.14);border:1px solid rgba(53,231,255,.22)}.trend-bar.active{background:linear-gradient(180deg,var(--cyan),rgba(53,231,255,.35));border-color:rgba(53,231,255,.5);box-shadow:0 0 14px rgba(53,231,255,.25)}.trend-col small{font:600 9px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}.trend-note{margin-top:10px;font-size:11px;color:var(--muted)}@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.services{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.shell{padding:12px 12px 28px}.account-list{grid-template-columns:1fr}.workflow-heading{align-items:flex-start}.workflow-rail{grid-template-columns:1fr}.flow-arrow{display:none}.flow-step{grid-template-columns:auto 1fr auto;align-items:center}.flow-step small{text-align:right}.top{margin:-12px -12px 0;padding:10px 12px}.mode{display:none}.hero{align-items:start}.date{font-size:11px}.kpis{grid-template-columns:repeat(2,1fr)}.context-grid{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}.services{grid-template-columns:1fr}.row{grid-template-columns:1fr auto}.amount{text-align:left}.row>.pill{grid-column:2;grid-row:1/3}.kpi{min-height:105px}.kpi strong{font-size:18px}.trend-wrap{height:120px}.trend-col small.hide-sm{display:none}}@media(max-width:390px){.kpis,.context-grid{grid-template-columns:1fr}.brand{font-size:14px}.top button{padding:0 12px}.hero{padding-top:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}`;
 writeFileSync(path.join(srcPath, 'ops.css'), opsCss);
 
 const indexHtml = String.raw`<!doctype html>
@@ -501,8 +595,45 @@ test('empty production tables produce honest zero state', () => {
   assert.deepEqual(data.kpis, { thb_in: '0', sent_usdt: '0', pending_usdt: '0', transactions: 0, pending_slips: 0, open_exceptions: 0, stale_slips: 0, bank_balance_thb: '0' });
   assert.equal(data.recent_transactions.length, 0);
   assert.equal(data.pending_slips.length, 0);
+  assert.equal(data.exceptions_detail.length, 0);
+  assert.equal(data.hourly_cashflow.length, 12);
+});
+
+test('hourly cashflow groups by Bangkok hour with exact decimals', () => {
+  const data = buildOpsOverview({
+    now: '2026-10-06T12:30:00Z',
+    transactions: [
+      { type: 'THB_DEPOSIT', thb_amount: '100.10', expected_usdt: '3', sent_usdt: '1', created_at: '2026-10-06T11:00:00Z', is_reversed: false },
+      { type: 'THB_DEPOSIT', thb_amount: '0.20', expected_usdt: '1', sent_usdt: '1', created_at: '2026-10-06T10:30:00Z', is_reversed: false },
+      { type: 'THB_DEPOSIT', thb_amount: '777', expected_usdt: '20', sent_usdt: '20', created_at: '2026-10-05T09:00:00Z', is_reversed: false },
+    ],
+  });
+  const buckets = data.hourly_cashflow;
+  assert.equal(buckets.length, 12);
+  const hour18 = buckets.find((b) => b.hour_label === '18:00');
+  assert.equal(hour18.thb_in, '100.1');
+  assert.equal(hour18.usdt_sent, '1');
+  const hour17 = buckets.find((b) => b.hour_label === '17:00');
+  assert.equal(hour17.thb_in, '0.2');
+  const totalThb = buckets.reduce((sum, b) => addDecimal(sum, b.thb_in), '0');
+  assert.equal(totalThb, '100.3');
+});
+
+test('exceptions detail carries type, status and age in minutes', () => {
+  const data = buildOpsOverview({
+    now: '2026-10-06T12:30:00Z',
+    exceptions: [
+      { status: 'OPEN', exception_type: 'SETTLEMENT_SHORT', created_at: '2026-10-06T12:00:00Z' },
+      { status: 'OPEN', exception_type: 'BANK_MATCH_MISSING', created_at: null },
+    ],
+  });
+  assert.equal(data.exceptions_detail.length, 2);
+  assert.equal(data.exceptions_detail[0].exception_type, 'SETTLEMENT_SHORT');
+  assert.equal(data.exceptions_detail[0].age_minutes, 30);
+  assert.equal(data.exceptions_detail[1].exception_type, 'BANK_MATCH_MISSING');
+  assert.equal(data.exceptions_detail[1].age_minutes, null);
 });
 `;
 writeFileSync(path.join(testsPath, 'ops-summary.test.mjs'), opsTests);
 
-console.log('Patched CE VAULT root into a live read-only operational board backed by Supabase operational tables.');
+console.log('Patched CE VAULT root into a live read-only operational board backed by Supabase operational tables. v2: triage strip, exceptions detail, hourly cashflow trend.');
