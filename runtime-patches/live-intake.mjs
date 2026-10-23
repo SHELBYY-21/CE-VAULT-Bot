@@ -1204,6 +1204,9 @@ export function resolveSlipVerifyConfig(env = process.env) {
   const scbKey = first(["SCB_API_KEY", "SCB_APPLICATION_KEY", "SLIPVERIFY_SCB_KEY"]);
   const scbSecret = first(["SCB_API_SECRET", "SCB_APPLICATION_SECRET", "SLIPVERIFY_SCB_SECRET"]);
   if (forced === "scb" || (!forced && scbKey && scbSecret)) return { provider: "scb" };
+  const typhoonReady = Boolean(String(env.TYPHOON_OCR_API_KEY || "").trim() || String(env.TYPHOON_OCR_BASE_URL || "").trim());
+  const xaiReady = Boolean(String(env.GROK_API_KEY || env.XAI_API_KEY || "").trim());
+  if (forced === "ai-ocr" || (!forced && (typhoonReady || xaiReady))) return { provider: "ai-ocr", ai: { typhoon: typhoonReady, xai: xaiReady } };
   return null;
 }
 
@@ -1225,6 +1228,57 @@ export async function verifySlip(payload, env = process.env, fetchImpl = globalT
   return { status: "PROVIDER_PENDING", provider: config.provider };
 }
 
+export function crc16Emv(text) {
+  let crc = 0xffff;
+  const s = String(text || "");
+  for (let i = 0; i < s.length; i++) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let bit = 0; bit < 8; bit++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+
+export function emvQrCrcOk(text) {
+  const t = String(text || "").trim();
+  const m = /^.*6304([0-9A-F]{4})$/.exec(t);
+  if (!m) return false;
+  return crc16Emv(t.slice(0, t.length - 4)) === parseInt(m[1], 16);
+}
+
+export function verifySlipAi(payload, extraction = null, expected = null, env = process.env) {
+  if (env.CE_SLIP_VERIFY === "0") return { status: "DISABLED", provider: null };
+  if (env.CE_SLIP_VERIFY_AI === "0") return { status: "AI_DISABLED", provider: null };
+  const config = resolveSlipVerifyConfig(env);
+  if (!config || config.provider !== "ai-ocr") return { status: "NOT_CONFIGURED", provider: null };
+  const text = String(payload || "").trim();
+  if (!isSlipQrPayload(text)) return { status: "INVALID_PAYLOAD", provider: config.provider };
+  const crcOk = emvQrCrcOk(text);
+  const ocrAmountRaw = Number(extraction && extraction.thbAmount);
+  const ocrAmount = Number.isFinite(ocrAmountRaw) && ocrAmountRaw > 0 ? ocrAmountRaw : null;
+  const ocrBank = extraction && extraction.bank ? String(extraction.bank) : null;
+  const ocrProvider = extraction && extraction.provider ? String(extraction.provider) : null;
+  const expectedAmountRaw = expected == null ? NaN : Number(expected);
+  const expectedAmount = Number.isFinite(expectedAmountRaw) && expectedAmountRaw > 0 ? expectedAmountRaw : null;
+  const amountMatch = ocrAmount != null && expectedAmount != null
+    ? (Math.abs(ocrAmount - expectedAmount) < 0.005 ? "MATCH" : "MISMATCH")
+    : null;
+  let status;
+  if (!crcOk) status = "AI_REJECTED";
+  else if (amountMatch === "MISMATCH") status = "AI_MISMATCH";
+  else if (ocrAmount != null && (amountMatch === "MATCH" || expectedAmount == null)) status = "AI_VERIFIED";
+  else status = "AI_PARTIAL";
+  return {
+    status,
+    provider: "ai-ocr",
+    ai: { typhoon: Boolean(config.ai && config.ai.typhoon), xai: Boolean(config.ai && config.ai.xai), ocr_provider: ocrProvider },
+    crc_ok: crcOk,
+    amount: ocrAmount,
+    bank: ocrBank,
+    amount_match: amountMatch,
+    note: "AI CHECK — ตรวจด้วย OCR (Typhoon/Grok) + ลายเซ็น CRC ของ QR · ไม่ใช่การยืนยันจากธนาคาร",
+  };
+}
+
 export function formatSlipVerifyReply(result, context = "") {
   const r = result || {};
   const head = "◈ CE · SLIP VERIFY";
@@ -1243,6 +1297,25 @@ export function formatSlipVerifyReply(result, context = "") {
     lines = [head, "🟡 พบ credentials ของ " + (r.provider || "?") + " · provider นี้ยังไม่เปิดใช้งาน"];
   } else if (r.status === "DISABLED") {
     lines = [head, "🔒 ปิดใช้งาน · CE_SLIP_VERIFY=0"];
+  } else if (r.status === "AI_VERIFIED") {
+    lines = [head, "🛡 AI CHECK ผ่าน — QR CRC ถูกต้อง + OCR อ่านยอดได้"];
+    if (r.amount != null) lines.push("💵 " + r.amount + " THB" + (r.amount_match === "MATCH" ? " · ตรงกับยอดที่บันทึก" : ""));
+    if (r.bank) lines.push("🏦 " + r.bank);
+    if (r.ai && r.ai.ocr_provider) lines.push("🧠 OCR ▸ " + r.ai.ocr_provider);
+    lines.push("ℹ ยืนยันด้วย AI · ไม่ใช่การยืนยันจากธนาคาร");
+    lines.push("", "TRACE ▸ QR → CRC ✓ → AI OCR ✓", context === "photo" ? "NEXT ▸ ยืนยันที่การ์ดสลิปด้านบน" : "NEXT ▸ ส่งรูปสลิปเพื่อบันทึกรายการ");
+  } else if (r.status === "AI_MISMATCH") {
+    lines = [head, "🔴 AI CHECK ไม่ผ่าน — ยอดจาก OCR ไม่ตรงกับยอดที่บันทึก"];
+    if (r.amount != null) lines.push("💵 OCR อ่านได้ " + r.amount + " THB ≠ ยอดที่บันทึก");
+    lines.push("TRACE ▸ QR → CRC ✓ → AI OCR ✗", "NEXT ▸ ตรวจสลิปต้นฉบับก่อนยืนยัน");
+  } else if (r.status === "AI_PARTIAL") {
+    lines = [head, "🟡 AI CHECK บางส่วน — QR CRC ถูกต้อง แต่ยังไม่มียอดจาก OCR ประกอบ"];
+    lines.push("TRACE ▸ QR → CRC ✓ → AI OCR —", "NEXT ▸ ส่งรูปสลิปเพื่อให้ OCR อ่านยอด");
+  } else if (r.status === "AI_REJECTED") {
+    lines = [head, "🔴 AI CHECK ไม่ผ่าน — ลายเซ็น CRC ของ QR ไม่ถูกต้อง"];
+    lines.push("TRACE ▸ QR → CRC ✗", "NEXT ▸ ตรวจสลิปต้นฉบับ (สลิปอาจถูกแก้ไข)");
+  } else if (r.status === "AI_DISABLED") {
+    lines = [head, "🔒 ปิดใช้งาน AI CHECK · CE_SLIP_VERIFY_AI=0"];
   } else {
     lines = [head, "🔴 ตรวจสลิปไม่สำเร็จ · ลองใหม่อีกครั้ง"];
   }
