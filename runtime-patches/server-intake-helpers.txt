@@ -68,7 +68,14 @@ async function handleSlipVerifyMessage(message) {
   if (!message?.chat?.id) return true;
   const payload = String(message.text || "").trim();
   try {
-    const result = await verifySlip(payload);
+    let result = await verifySlip(payload);
+    if (result.status === "NOT_CONFIGURED") {
+      try {
+        result = await verifySlipAi(payload, null, null);
+      } catch {
+        result = { status: "NOT_CONFIGURED", provider: null };
+      }
+    }
     await telegram.sendMessageWithMarkup(message.chat.id, formatSlipVerifyReply(result), undefined);
   } catch {
     await telegram.sendMessageWithMarkup(message.chat.id, "🔴 ตรวจสลิปไม่สำเร็จ · ลองใหม่อีกครั้ง", undefined);
@@ -537,8 +544,15 @@ async function handleLiveSlipMessage(message) {
   // Slip verification card: only when the QR decoded and the env-configured provider returned a verdict.
   if (slipQrPayload) {
     try {
-      const verifyResult = await verifySlip(slipQrPayload);
-      if (verifyResult.status === "VALID" || verifyResult.status === "INVALID" || verifyResult.status === "ERROR") {
+      let verifyResult = await verifySlip(slipQrPayload);
+      if (verifyResult.status === "NOT_CONFIGURED") {
+        try {
+          verifyResult = await verifySlipAi(slipQrPayload, slip, pending.thb_in);
+        } catch {
+          verifyResult = { status: "NOT_CONFIGURED", provider: null };
+        }
+      }
+      if (["VALID", "INVALID", "ERROR", "AI_VERIFIED", "AI_MISMATCH", "AI_PARTIAL", "AI_REJECTED"].includes(verifyResult.status)) {
         await telegram.sendMessageWithMarkup(chatId, formatSlipVerifyReply(verifyResult, "photo"), undefined);
       }
     } catch {}
