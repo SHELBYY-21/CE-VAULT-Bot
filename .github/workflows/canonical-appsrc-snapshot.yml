@@ -52,7 +52,7 @@ jobs:
           git add appsrc .gitignore
           git commit -m "chore: snapshot canonical appsrc/ (reconstructed from production build pipeline)
 
-Snapshot of exactly what the production build produces on main @ 3982d80a.
-Review-only: production build behavior unchanged until a follow-up PR
-switches the build to use the tracked source directly." || echo "nothing to commit"
+          Snapshot of exactly what the production build produces on main @ 3982d80a.
+          Review-only: production build behavior unchanged until a follow-up PR
+          switches the build to use the tracked source directly." || echo "nothing to commit"
           git push
