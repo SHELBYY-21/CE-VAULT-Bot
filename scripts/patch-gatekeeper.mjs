@@ -70,7 +70,9 @@ export function parseApproverAllowlist(rawIds) {
 
 export function isAuthorizedApprover(telegramUserId, allowlist) {
   if (!Array.isArray(allowlist) || allowlist.length === 0) return false;
-  const id = Number(telegramUserId);
+  const raw = String(telegramUserId == null ? '' : telegramUserId).trim();
+  if (!/^\d{1,19}$/.test(raw)) return false;
+  const id = Number(raw);
   return Number.isSafeInteger(id) && allowlist.includes(id);
 }
 
@@ -292,7 +294,9 @@ test('approver allowlist parsing and authorization', () => {
   assert.equal(isAuthorizedApprover(111, [111, 222]), true);
   assert.equal(isAuthorizedApprover(999, [111, 222]), false);
   assert.equal(isAuthorizedApprover(111, []), false);
-  assert.equal(isAuthorizedApprover('111', [111]), false);
+  assert.equal(isAuthorizedApprover('111', [111]), true);
+  assert.equal(isAuthorizedApprover(null, [111]), false);
+  assert.equal(isAuthorizedApprover('abc', [111]), false);
 });
 
 test('gate is inert until CE_GATEKEEPER_TELEGRAM_IDS is configured', async () => {
