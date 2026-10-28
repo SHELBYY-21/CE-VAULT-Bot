@@ -2,17 +2,17 @@
 -- Spec: docs/GATEKEEPER.md. Applying this migration goes through the
 -- migration approval gate itself; this PR only ships the file.
 
--- One row per approval attempt. Status lifecycle:
---   EXECUTING -> EXECUTED | FAILED
--- Refusals recorded without lifecycle: DENIED_NOT_AUTHORIZED,
--- REJECTED_UNRECOGNIZED, REJECTED_NOT_IMPLEMENTED.
+-- One row per approval attempt AND per refusal decision (kind/target are
+-- nullable for audit-only rows such as DENIED_NOT_AUTHORIZED or
+-- REJECTED_UNRECOGNIZED). Status lifecycle: EXECUTING -> EXECUTED | FAILED.
 create table if not exists public.gatekeeper_approvals (
   id uuid primary key default gen_random_uuid(),
-  kind text not null check (kind in ('pr', 'migration', 'settle')),
-  target text not null,
+  kind text,
+  target text,
   approver_telegram_id bigint,
   command_text text,
   requested_at timestamptz not null default now(),
+  updated_at timestamptz,
   status text not null,
   result jsonb,
   detail text,

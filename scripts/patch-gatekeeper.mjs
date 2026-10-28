@@ -1,14 +1,22 @@
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appRoot = path.join(root, 'appsrc');
 const serverPath = path.join(appRoot, 'server', 'gatekeeper.mjs');
+const runtimePath = path.join(appRoot, 'server', 'gatekeeper-runtime.mjs');
 const testsPath = path.join(appRoot, 'tests', 'gatekeeper.test.mjs');
+const repoPath = path.join(appRoot, 'server', 'repositories', 'supabase.mjs');
+const indexPath = path.join(appRoot, 'server', 'index.mjs');
 
 mkdirSync(path.dirname(serverPath), { recursive: true });
 mkdirSync(path.dirname(testsPath), { recursive: true });
+
+function replaceOnce(source, needle, replacement, errorCode) {
+  if (!source.includes(needle)) throw new Error(errorCode);
+  return source.replace(needle, replacement);
+}
 
 // ---------------------------------------------------------------------------
 // CE VAULT GATEKEEPER — MVP skeleton (Empire Command Architecture)
@@ -204,6 +212,144 @@ export function createGatekeeper({ repository, github, clock, log }) {
 }
 `;
 
+// ---------------------------------------------------------------------------
+// gatekeeper-runtime.mjs — Phase 2 wiring: real adapters around the pure core.
+// Command surface: /gate (namespace avoids the existing /approve slip flow).
+//   /gate approve 42 | /gate approve migration <id> | /gate approve settle <id>
+//   /gate lock | /gate unlock | /gate status | bare /gate = status
+// ---------------------------------------------------------------------------
+
+const runtimeSource = String.raw`// CE VAULT GATEKEEPER runtime wiring (docs/GATEKEEPER.md)
+import { createGatekeeper } from "./gatekeeper.mjs";
+
+// Translate the /gate Telegram namespace into the core /approve grammar.
+// Returns null when the text is not a gate command at all.
+export function normalizeGateText(rawText) {
+  const text = String(rawText == null ? '' : rawText).trim();
+  const match = /^\/gate(?:@\w+)?\s*(.*)$/i.exec(text);
+  if (!match) return null;
+  const rest = match[1].trim();
+  if (!rest) return '/gatestatus';
+  if (/^approve\b/i.test(rest)) return '/' + rest;
+  if (/^migration\b/i.test(rest) || /^settle\b/i.test(rest)) return '/approve ' + rest;
+  if (/^gatestatus$/i.test(rest)) return '/gatestatus';
+  if (/^status$/i.test(rest)) return '/gatestatus';
+  if (/^(lock|unlock)$/i.test(rest)) return '/' + rest.toLowerCase();
+  if (/^#?\d{1,6}$/.test(rest)) return '/approve ' + rest.replace(/^#/, '');
+  return '/' + rest;
+}
+
+export function gateReplyText(result) {
+  if (!result) return 'GATEKEEPER · INTERNAL_ERROR';
+  if (result.ok && result.code === 'APPROVED') {
+    const sha = result.result && result.result.sha ? ' · ' + result.result.sha : '';
+    return 'GATEKEEPER · APPROVED · ' + result.kind.toUpperCase() + ' ' + result.target + sha;
+  }
+  if (result.ok && result.code === 'GATE_STATUS') {
+    if (result.locked) {
+      return 'GATEKEEPER · LOCKED since ' + String(result.lockedAt || 'unknown') + ' by ' + String(result.lockedBy || 'unknown');
+    }
+    return 'GATEKEEPER · UNLOCKED · approvals allowed';
+  }
+  if (result.ok && result.code === 'GATE_LOCKED') return 'GATEKEEPER · GATE LOCKED · approvals refused';
+  if (result.ok && result.code === 'GATE_UNLOCKED') return 'GATEKEEPER · GATE UNLOCKED · approvals allowed';
+  const detail = result.detail ? '\n' + result.detail : '';
+  return 'GATEKEEPER · ' + String(result.code || 'INTERNAL_ERROR') + detail;
+}
+
+// GitHub merge adapter. Fail-closed: no token -> throw, never a silent no-op.
+export function createGitHubMergeAdapter(env, fetchImpl) {
+  const doFetch = fetchImpl || ((...args) => fetch(...args));
+  return Object.freeze({
+    async mergePullRequest(prNumber) {
+      const token = String(env.GATEKEEPER_GITHUB_TOKEN || '').trim();
+      if (!token) throw new Error('GATEKEEPER_GITHUB_TOKEN_NOT_CONFIGURED');
+      const repoSlug = String(env.GATEKEEPER_REPO || 'SHELBYY-21/CE-VAULT-Bot');
+      const response = await doFetch('https://api.github.com/repos/' + repoSlug + '/pulls/' + prNumber + '/merge', {
+        method: 'PUT',
+        headers: {
+          authorization: 'Bearer ' + token,
+          accept: 'application/vnd.github+json',
+          'content-type': 'application/json',
+          'x-github-api-version': '2022-11-28',
+        },
+        body: JSON.stringify({ merge_method: 'merge' }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const reason = String((payload && payload.message) || '').replace(/\s+/g, ' ').slice(0, 120);
+        throw new Error('GITHUB_MERGE_HTTP_' + response.status + (reason ? ': ' + reason : ''));
+      }
+      return { merged: true, sha: (payload && payload.sha) || null, pr: prNumber };
+    },
+  });
+}
+
+// Map the core repository contract onto the Supabase-backed repo methods.
+export function makeRepositoryAdapter(repo) {
+  const requireRepo = () => {
+    if (!repo) throw new Error('REPOSITORY_NOT_CONFIGURED');
+    return repo;
+  };
+  return Object.freeze({
+    async getLock() {
+      const row = await requireRepo().gatekeeperGetLock();
+      return row
+        ? { locked: Boolean(row.locked), locked_by: row.locked_by || null, locked_at: row.locked_at || null }
+        : { locked: false, locked_by: null, locked_at: null };
+    },
+    async setLock(input) {
+      await requireRepo().gatekeeperSetLock({ locked: input.locked, by: input.by, at: input.at });
+      return { locked: input.locked };
+    },
+    async findApproval(kind, target) {
+      return requireRepo().gatekeeperFindApproval(kind, target);
+    },
+    async startApproval(input) {
+      return requireRepo().gatekeeperStartApproval(input);
+    },
+    async finalizeApproval(id, patch) {
+      return requireRepo().gatekeeperFinalizeApproval(id, patch);
+    },
+    async recordDecision(input) {
+      return requireRepo().gatekeeperRecordDecision(input);
+    },
+  });
+}
+
+export function createGatekeeperRuntime({ repository, telegram, env, fetchImpl, clock }) {
+  const gate = createGatekeeper({
+    repository: makeRepositoryAdapter(repository),
+    github: createGitHubMergeAdapter(env || process.env, fetchImpl),
+    clock,
+  });
+  return Object.freeze({
+    async handleTelegramGateMessage(message) {
+      const chatId = message && message.chat && message.chat.id;
+      const fromUserId = message && message.from && message.from.id;
+      const text = (message && message.text) || '';
+      const normalized = normalizeGateText(text);
+      if (normalized == null) return false;
+      let result;
+      try {
+        result = await gate.handleCommand({ text: normalized, fromUserId, commandText: text });
+      } catch (error) {
+        result = { ok: false, code: 'INTERNAL_ERROR', detail: String((error && error.message) || error) };
+      }
+      if (telegram && chatId) {
+        try {
+          await telegram.sendMessageWithMarkup(String(chatId), gateReplyText(result), undefined);
+        } catch {
+          // Reply delivery is best-effort; the audit record in Supabase is the
+          // source of truth for what happened.
+        }
+      }
+      return true;
+    },
+  });
+}
+`;
+
 const testSource = String.raw`import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -213,6 +359,13 @@ import {
   createGatekeeper,
   GATE_KINDS,
 } from '../server/gatekeeper.mjs';
+import {
+  normalizeGateText,
+  gateReplyText,
+  createGitHubMergeAdapter,
+  makeRepositoryAdapter,
+  createGatekeeperRuntime,
+} from '../server/gatekeeper-runtime.mjs';
 
 function makeRepository(options) {
   const calls = [];
@@ -431,8 +584,277 @@ test('unrecognized commands are audited then refused', async () => {
   const recorded = repo.calls.find((entry) => entry[0] === 'recordDecision');
   assert.equal(recorded[1].decision, 'REJECTED_UNRECOGNIZED');
 });
+
+// --- Phase 2: /gate namespace + runtime wiring ---
+
+test('gate namespace normalization maps /gate to the core grammar', () => {
+  assert.equal(normalizeGateText('/gate approve 42'), '/approve 42');
+  assert.equal(normalizeGateText('/gate@cevault_bot approve 42'), '/approve 42');
+  assert.equal(normalizeGateText('/gate 42'), '/approve 42');
+  assert.equal(normalizeGateText('/gate #42'), '/approve 42');
+  assert.equal(normalizeGateText('/gate approve migration mig-1'), '/approve migration mig-1');
+  assert.equal(normalizeGateText('/gate migration mig-1'), '/approve migration mig-1');
+  assert.equal(normalizeGateText('/gate settle st-1'), '/approve settle st-1');
+  assert.equal(normalizeGateText('/gate lock'), '/lock');
+  assert.equal(normalizeGateText('/gate unlock'), '/unlock');
+  assert.equal(normalizeGateText('/gate status'), '/gatestatus');
+  assert.equal(normalizeGateText('/gate'), '/gatestatus');
+  assert.equal(normalizeGateText('/gate nonsense x'), '/nonsense x');
+  assert.equal(normalizeGateText('/approve 42'), null);
+  assert.equal(normalizeGateText('hello'), null);
+  assert.equal(normalizeGateText(null), null);
+});
+
+test('gate reply text maps results to operator messages', () => {
+  assert.match(gateReplyText({ ok: true, code: 'APPROVED', kind: 'pr', target: '42', result: { sha: 'abc' } }), /APPROVED · PR 42 · abc/);
+  assert.equal(gateReplyText({ ok: true, code: 'GATE_STATUS', locked: false }), 'GATEKEEPER · UNLOCKED · approvals allowed');
+  assert.match(gateReplyText({ ok: true, code: 'GATE_STATUS', locked: true, lockedAt: 't', lockedBy: 111 }), /LOCKED since t by 111/);
+  assert.match(gateReplyText({ ok: false, code: 'NOT_AUTHORIZED' }), /NOT_AUTHORIZED/);
+  assert.match(gateReplyText({ ok: false, code: 'AUDIT_UNAVAILABLE', detail: 'x' }), /AUDIT_UNAVAILABLE\nx/);
+  assert.equal(gateReplyText(null), 'GATEKEEPER · INTERNAL_ERROR');
+});
+
+test('github merge adapter fails closed without a token and surfaces HTTP errors', async () => {
+  const calls = [];
+  const fakeFetch = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, status: 200, json: async () => ({ sha: 'deadbeef' }) };
+  };
+  const adapter = createGitHubMergeAdapter({ GATEKEEPER_GITHUB_TOKEN: 't' }, fakeFetch);
+  const result = await adapter.mergePullRequest(42);
+  assert.equal(result.merged, true);
+  assert.equal(result.sha, 'deadbeef');
+  assert.match(calls[0].url, /SHELBYY-21\/CE-VAULT-Bot\/pulls\/42\/merge$/);
+  assert.equal(calls[0].init.method, 'PUT');
+  assert.equal(JSON.parse(calls[0].init.body).merge_method, 'merge');
+
+  const noToken = createGitHubMergeAdapter({}, fakeFetch);
+  await assert.rejects(() => noToken.mergePullRequest(42), /GATEKEEPER_GITHUB_TOKEN_NOT_CONFIGURED/);
+  assert.equal(calls.length, 1); // no network call attempted
+
+  const failing = createGitHubMergeAdapter({ GATEKEEPER_GITHUB_TOKEN: 't' }, async () => ({
+    ok: false, status: 405, json: async () => ({ message: 'Pull Request is not mergeable' }),
+  }));
+  await assert.rejects(() => failing.mergePullRequest(42), /GITHUB_MERGE_HTTP_405: Pull Request is not mergeable/);
+});
+
+test('repository adapter guards against unconfigured repository and maps locks', async () => {
+  await assert.rejects(async () => makeRepositoryAdapter(null).getLock(), /REPOSITORY_NOT_CONFIGURED/);
+  const repo = {
+    async gatekeeperGetLock() { return { locked: true, locked_by: 111, locked_at: '2026-10-28T00:00:00Z' }; },
+    async gatekeeperSetLock() {},
+    async gatekeeperFindApproval() { return null; },
+    async gatekeeperStartApproval() { return 'id-1'; },
+    async gatekeeperFinalizeApproval() {},
+    async gatekeeperRecordDecision() {},
+  };
+  const adapter = makeRepositoryAdapter(repo);
+  const lock = await adapter.getLock();
+  assert.equal(lock.locked, true);
+  assert.equal(lock.locked_by, 111);
+  const missing = await makeRepositoryAdapter({ async gatekeeperGetLock() { return null; } }).getLock();
+  assert.deepEqual(missing, { locked: false, locked_by: null, locked_at: null });
+});
+
+function makeRuntimeRepository(options) {
+  const raw = {
+    lock: (options && options.lock) || { locked: false, locked_by: null, locked_at: null },
+    decisions: (options && options.decisions) || [],
+    approvals: (options && options.approvals) || [],
+  };
+  raw.gatekeeperGetLock = async () => raw.lock;
+  raw.gatekeeperSetLock = async (input) => { raw.lock = { locked: input.locked, locked_by: input.by, locked_at: input.at }; };
+  raw.gatekeeperFindApproval = async (kind, target) => raw.approvals.find((row) => row.kind === kind && row.target === target) || null;
+  raw.gatekeeperStartApproval = async (input) => {
+    raw.approvals.push({ id: 'a1', kind: input.kind, target: input.target, status: 'EXECUTING' });
+    return 'a1';
+  };
+  raw.gatekeeperFinalizeApproval = async (id, patch) => {
+    const row = raw.approvals.find((entry) => entry.id === id);
+    if (row) row.status = patch.status;
+  };
+  raw.gatekeeperRecordDecision = async (input) => { raw.decisions.push(input); };
+  return raw;
+}
+
+function makeRuntimeTelegram() {
+  const sent = [];
+  return { sent, async sendMessageWithMarkup(chatId, text) { sent.push({ chatId, text }); } };
+}
+
+function makeRuntimeFetch(sha) {
+  return async () => ({ ok: true, status: 200, json: async () => ({ sha: sha || 'mergedsha' }) });
+}
+
+test('runtime handles /gate approve end to end and replies in Telegram', async () => {
+  process.env.CE_GATEKEEPER_TELEGRAM_IDS = '111';
+  process.env.GATEKEEPER_GITHUB_TOKEN = 'tok';
+  const repo = makeRuntimeRepository({});
+  const telegram = makeRuntimeTelegram();
+  const runtime = createGatekeeperRuntime({
+    repository: repo,
+    telegram,
+    env: process.env,
+    fetchImpl: makeRuntimeFetch(),
+    clock: () => '2026-10-28T00:00:00Z',
+  });
+  const handled = await runtime.handleTelegramGateMessage({ text: '/gate approve 42', chat: { id: 555 }, from: { id: 111 } });
+  assert.equal(handled, true);
+  assert.equal(telegram.sent.length, 1);
+  assert.match(telegram.sent[0].text, /APPROVED · PR 42 · mergedsha/);
+  assert.equal(telegram.sent[0].chatId, '555');
+  const notGate = await runtime.handleTelegramGateMessage({ text: '/start', chat: { id: 555 }, from: { id: 111 } });
+  assert.equal(notGate, false);
+  assert.equal(telegram.sent.length, 1);
+});
+
+test('runtime refuses unauthorized /gate approvals with a Telegram reply', async () => {
+  process.env.CE_GATEKEEPER_TELEGRAM_IDS = '111';
+  const repo = makeRuntimeRepository({});
+  const telegram = makeRuntimeTelegram();
+  const runtime = createGatekeeperRuntime({
+    repository: repo,
+    telegram,
+    env: process.env,
+    fetchImpl: makeRuntimeFetch(),
+    clock: () => '2026-10-28T00:00:00Z',
+  });
+  await runtime.handleTelegramGateMessage({ text: '/gate approve 42', chat: { id: 555 }, from: { id: 666 } });
+  assert.equal(telegram.sent.length, 1);
+  assert.match(telegram.sent[0].text, /NOT_AUTHORIZED/);
+  assert.equal(repo.approvals.length, 0); // no approval row, no merge
+});
+
+test('runtime reports INTERNAL_ERROR without crashing when the repository is unavailable', async () => {
+  process.env.CE_GATEKEEPER_TELEGRAM_IDS = '111';
+  const telegram = makeRuntimeTelegram();
+  const runtime = createGatekeeperRuntime({
+    repository: null,
+    telegram,
+    env: process.env,
+    fetchImpl: makeRuntimeFetch(),
+    clock: () => '2026-10-28T00:00:00Z',
+  });
+  const handled = await runtime.handleTelegramGateMessage({ text: '/gate status', chat: { id: 555 }, from: { id: 111 } });
+  assert.equal(handled, true);
+  assert.match(telegram.sent[0].text, /INTERNAL_ERROR|REPOSITORY_NOT_CONFIGURED/);
+});
 `;
 
 writeFileSync(serverPath, moduleSource);
+writeFileSync(runtimePath, runtimeSource);
 writeFileSync(testsPath, testSource);
-console.log('Patched CE VAULT GATEKEEPER MVP skeleton (server/gatekeeper.mjs + tests).');
+
+// --- Phase 2 wiring: Supabase repository adapter methods ---
+// Anchor is created by patch-live-intake (which always runs before this patch):
+// the getOperatorByTelegramId method is the first entry of the frozen repo object.
+const repoSource = readFileSync(repoPath, 'utf8');
+const repoAnchor = '  return Object.freeze({\n    async getOperatorByTelegramId(telegramUserId) {';
+const repoGateMethods = String.raw`  return Object.freeze({
+    async gatekeeperGetLock() {
+      return ensureData(await db.from("gatekeeper_locks")
+        .select("locked,locked_by,locked_at")
+        .eq("id", true)
+        .maybeSingle());
+    },
+    async gatekeeperSetLock({ locked, by, at }) {
+      return ensureData(await db.from("gatekeeper_locks")
+        .upsert({ id: true, locked: Boolean(locked), locked_by: by ?? null, locked_at: at, reason: "telegram /gate lock" })
+        .select("locked,locked_by,locked_at")
+        .single());
+    },
+    async gatekeeperFindApproval(kind, target) {
+      return ensureData(await db.from("gatekeeper_approvals")
+        .select("id,kind,target,status")
+        .eq("kind", kind)
+        .eq("target", target)
+        .in("status", ["EXECUTING", "EXECUTED"])
+        .limit(1)
+        .maybeSingle());
+    },
+    async gatekeeperStartApproval({ kind, target, approverId, commandText, at }) {
+      // The partial unique index on (kind,target) is the hard idempotency guard.
+      return ensureData(await db.from("gatekeeper_approvals")
+        .insert({ kind, target, approver_telegram_id: approverId ?? null, command_text: commandText ?? null, requested_at: at, status: "EXECUTING" })
+        .select("id")
+        .single());
+    },
+    async gatekeeperFinalizeApproval(id, { status, result, detail, at }) {
+      return ensureData(await db.from("gatekeeper_approvals")
+        .update({ status, result: result ?? null, detail: detail ?? null, updated_at: at })
+        .eq("id", id)
+        .select("id,status")
+        .single());
+    },
+    async gatekeeperRecordDecision({ state, decision, detail, at }) {
+      return ensureData(await db.from("gatekeeper_approvals")
+        .insert({
+          kind: state?.kind ?? null,
+          target: state?.target ?? null,
+          approver_telegram_id: state?.approverId ?? null,
+          command_text: state?.commandText ?? null,
+          requested_at: at,
+          status: decision,
+          detail: detail ?? null,
+        })
+        .select("id")
+        .single());
+    },
+    async getOperatorByTelegramId(telegramUserId) {`;
+if (!repoSource.includes(repoAnchor)) throw new Error('GATEKEEPER_REPO_ANCHOR_NOT_FOUND');
+writeFileSync(repoPath, repoSource.replace(repoAnchor, repoGateMethods));
+
+// --- Phase 2 wiring: Telegram /gate command route in server/index.mjs ---
+let serverIndex = readFileSync(indexPath, 'utf8');
+
+// 1. Import the runtime module next to the slip-verify import (created by patch-live-intake).
+const importAnchor = 'import { decodeSlipQrPayload } from "./slip-verify.mjs";';
+if (!serverIndex.includes(importAnchor)) throw new Error('GATEKEEPER_IMPORT_ANCHOR_NOT_FOUND');
+serverIndex = replaceOnce(
+  serverIndex,
+  importAnchor,
+  importAnchor + '\nimport { createGatekeeperRuntime } from "./gatekeeper-runtime.mjs";',
+  'GATEKEEPER_IMPORT_DUPLICATE',
+);
+if ((serverIndex.match(/from "\.\/gatekeeper-runtime\.mjs"/g) || []).length !== 1) {
+  throw new Error('GATEKEEPER_IMPORT_ALREADY_PRESENT');
+}
+
+// 2. Handler + lazy runtime binding, injected right before processTelegramUpdate
+//    (the helpers block added by patch-live-intake sits above it, so this anchor is unique).
+const processAnchor = '\nasync function processTelegramUpdate(update) {';
+if (!serverIndex.includes(processAnchor)) throw new Error('GATEKEEPER_PROCESS_ANCHOR_NOT_FOUND');
+const gateHandler = `
+// CE GATEKEEPER: Telegram approval gate (/gate namespace). Audit record in
+// Supabase happens BEFORE any merge action; see docs/GATEKEEPER.md.
+let gatekeeperRuntimeRef = null;
+function getGatekeeperRuntime() {
+  if (!gatekeeperRuntimeRef) {
+    gatekeeperRuntimeRef = createGatekeeperRuntime({ repository, telegram });
+  }
+  return gatekeeperRuntimeRef;
+}
+
+async function handleGateCommand(message) {
+  try {
+    await getGatekeeperRuntime().handleTelegramGateMessage(message);
+  } catch (error) {
+    console.error("[CE GATEKEEPER] command failed: " + String(error?.message || error));
+  }
+}
+
+async function processTelegramUpdate(update) {`;
+serverIndex = replaceOnce(serverIndex, processAnchor, gateHandler, 'GATEKEEPER_HANDLER_INJECT_FAILED');
+
+// 3. Route /gate BEFORE the existing /approve slip flow (namespace separation).
+const approveAnchor = '  if (message?.chat?.id && /^\\/approve(?:@\\w+)?(?:\\s|$)/i.test(message.text || "")) {\n    await handleTelegramApprove(message);\n    return;\n  }';
+if (!serverIndex.includes(approveAnchor)) throw new Error('GATEKEEPER_APPROVE_ANCHOR_NOT_FOUND');
+const gateRoute = String.raw`  if (message?.chat?.id && /^\/gate(?:@\w+)?(?:\s|$)/i.test(message.text || "")) {
+    await handleGateCommand(message);
+    return;
+  }
+` + approveAnchor;
+serverIndex = replaceOnce(serverIndex, approveAnchor, gateRoute, 'GATEKEEPER_ROUTE_INJECT_FAILED');
+writeFileSync(indexPath, serverIndex);
+
+console.log('Patched CE VAULT GATEKEEPER: core module + runtime wiring + /gate Telegram route + Supabase audit adapters.');

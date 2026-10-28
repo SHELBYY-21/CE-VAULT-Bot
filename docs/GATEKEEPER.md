@@ -4,14 +4,16 @@
 
 ## Commands
 
+The runtime already routes `/approve` to the slip-approval flow, so the gate lives under the **`/gate` namespace** — the two approval surfaces can never collide.
+
 | Command | Meaning | Who |
 |---|---|---|
-| `/approve <PR>` (or `#PR`) | Merge a pull request into `main` via GitHub API | Allowlisted approver only |
-| `/approve migration <id>` | Approve a DB migration (executor: later phase) | Allowlisted approver only |
-| `/approve settle <id>` | Approve a settlement run (executor: later phase) | Allowlisted approver only |
-| `/lock` | Refuse all approvals (e.g. during a large settle) | Allowlisted approver only |
-| `/unlock` | Re-allow approvals | Allowlisted approver only |
-| `/gatestatus` | Show lock state | Anyone (read-only) |
+| `/gate approve <PR>` (also `/gate <PR>`, `/gate #PR`) | Merge a pull request into `main` via GitHub API | Allowlisted approver only |
+| `/gate approve migration <id>` (also `/gate migration <id>`) | Approve a DB migration (executor: later phase) | Allowlisted approver only |
+| `/gate approve settle <id>` (also `/gate settle <id>`) | Approve a settlement run (executor: later phase) | Allowlisted approver only |
+| `/gate lock` | Refuse all approvals (e.g. during a large settle) | Allowlisted approver only |
+| `/gate unlock` | Re-allow approvals | Allowlisted approver only |
+| `/gate status` (or bare `/gate`) | Show lock state | Anyone (read-only) |
 
 ## Security invariants (enforced in code, tests in `appsrc/tests/gatekeeper.test.mjs`)
 
@@ -25,10 +27,15 @@
 
 ## Environment variables
 
+All three can be set in Render **or** in the Supabase Vault (`ce_secret_get`); `scripts/start.mjs` loads them into the runtime env when unset.
+
 | Var | Purpose |
 |---|---|
 | `CE_GATEKEEPER_TELEGRAM_IDS` | Comma-separated Telegram user IDs allowed to approve / lock / unlock |
-| `GATEKEEPER_GITHUB_TOKEN` | (Phase 2) token used by the runtime's GitHub adapter, merge-scoped |
+| `GATEKEEPER_GITHUB_TOKEN` | Token used by the merge adapter (fine-grained, PR merge scope only) |
+| `GATEKEEPER_REPO` | Repository slug for merges (default `SHELBYY-21/CE-VAULT-Bot`) |
+
+The gate stays inert (`GATEKEEPER_DISABLED`) until `CE_GATEKEEPER_TELEGRAM_IDS` is present, and the merge adapter refuses to act without `GATEKEEPER_GITHUB_TOKEN` — every refusal is still audited.
 
 ## Supabase audit schema
 
@@ -53,8 +60,8 @@ github.mergePullRequest(prNumber)                     -> result
 
 ## Phasing
 
-- **Phase 1 (this PR, `vibe/gatekeeper-mvp`):** module skeleton + full test coverage + audit schema file + this spec. Not wired to the Telegram webhook yet — zero runtime behavior change.
-- **Phase 2:** wire `parseApprovalCommand` into the existing Telegram command router in `appsrc/server/index.mjs` (patch script), implement the Supabase repository adapter, and configure `CE_GATEKEEPER_TELEGRAM_IDS` in Render. Rollout: deploy with the allowlist configured, gate remains inert until then.
-- **Phase 3:** migration + settle executors, each behind its own `/approve` form; every action still audited before execution.
+- **Phase 1 (merged, PR #182):** module skeleton + full test coverage + audit schema file + this spec.
+- **Phase 2 (this PR):** runtime wiring — `/gate` route in the Telegram command router, Supabase audit adapters on the repository, GitHub merge adapter, vault loading in `start.mjs`, runtime tests. Zero behavior until env vars are configured; the audit tables are not applied yet, so the gate fails closed (`AUDIT_UNAVAILABLE`) even if the allowlist is set.
+- **Phase 3:** migration + settle executors, each behind its own `/gate approve` form; every action still audited before execution.
 
-**Deployment order rule:** the gate system must be used on its own first PR — this one — before it is allowed to gate anything else.
+**Deployment order rule:** the gate system must be used on its own first PR — Phase 1 — before it is allowed to gate anything else.
