@@ -39,6 +39,7 @@ jobs:
           node scripts/patch-webm-flow-card.mjs
           node scripts/patch-telegram-2026.mjs
           node scripts/patch-bank-logos.mjs
+          node scripts/patch-gatekeeper.mjs
           (cd appsrc && npm run check)
 
       - name: Unignore appsrc for the snapshot commit
