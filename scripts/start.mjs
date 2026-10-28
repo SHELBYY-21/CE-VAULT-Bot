@@ -98,6 +98,17 @@ async function buildRuntimeEnv() {
     const value = await loadVaultSecret('ADMIN_TELEGRAM_IDS');
     if (value) env.ADMIN_TELEGRAM_IDS = value;
   }
+  if (!env.CE_GATEKEEPER_TELEGRAM_IDS) {
+    const value = await loadVaultSecret('CE_GATEKEEPER_TELEGRAM_IDS');
+    if (value) env.CE_GATEKEEPER_TELEGRAM_IDS = value;
+  }
+  if (!env.GATEKEEPER_GITHUB_TOKEN) {
+    const value = await loadVaultSecret('GATEKEEPER_GITHUB_TOKEN');
+    if (value) {
+      env.GATEKEEPER_GITHUB_TOKEN = value;
+      console.log('[CE Secret Hub] GATEKEEPER_GITHUB_TOKEN loaded from Supabase Vault.');
+    }
+  }
   return env;
 }
 
